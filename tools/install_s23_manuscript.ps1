@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('debug', 'release')]
+    [ValidateSet('debug')]
     [string]$Variant,
 
     [string]$Serial = 'R5CW20R46WD',
@@ -56,22 +56,10 @@ foreach ($requiredTool in @($adb, $apkSignerTool, $apkanalyzer)) {
     }
 }
 
-$expectedPackage = if ($Variant -eq 'debug') {
-    'com.remote.Manuscript.v2.debug'
-} else {
-    'com.remote.Manuscript.v2'
-}
-$oppositePackage = if ($Variant -eq 'debug') {
-    'com.remote.Manuscript.v2'
-} else {
-    'com.remote.Manuscript.v2.debug'
-}
+$expectedPackage = 'com.remote.Manuscript.v2.debug'
+$oppositePackage = 'com.remote.Manuscript.v2'
 $expectedService = "$expectedPackage/com.echolink.mobile.ManuscriptAccessibilityService"
-$defaultApk = if ($Variant -eq 'debug') {
-    Join-Path $projectRoot 'app\build\outputs\apk\debug\app-debug.apk'
-} else {
-    Join-Path $projectRoot 'app\build\outputs\apk\release\app-release.apk'
-}
+$defaultApk = Join-Path $projectRoot 'app\build\outputs\apk\debug\app-debug.apk'
 $resolvedApk = if ([string]::IsNullOrWhiteSpace($ApkPath)) {
     $defaultApk
 } else {

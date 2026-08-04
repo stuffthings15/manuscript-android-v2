@@ -78,6 +78,12 @@ android {
     }
 }
 
+androidComponents {
+    beforeVariants(selector().all()) { variantBuilder ->
+        variantBuilder.enableUnitTest = true
+    }
+}
+
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }

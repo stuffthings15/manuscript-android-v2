@@ -137,5 +137,7 @@ Describe 'Manuscript S23 safe installer' {
         $source | Should Match 'install.+-r.+-t'
         $source | Should Match 'force-stop'
         $source | Should Match 'INSTALL_FAILED_UPDATE_INCOMPATIBLE'
+        $source | Should Match "\[ValidateSet\('debug'\)\]"
+        $source | Should Not Match 'outputs\\apk\\release'
     }
 }

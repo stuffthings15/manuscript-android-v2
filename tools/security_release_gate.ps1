@@ -2,7 +2,7 @@ param([string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot))
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
-$safeDirectory = $projectRoot.Replace('\\', '/')
+$safeDirectory = $projectRoot.Replace('\', '/')
 
 foreach ($required in @(
     'gradle\\verification-metadata.xml',
@@ -25,7 +25,7 @@ $git = Get-Command git -ErrorAction Stop
 & $git.Source -c "safe.directory=$safeDirectory" -C $projectRoot diff --check -- .
 if ($LASTEXITCODE -ne 0) { throw 'Git whitespace validation failed.' }
 
-$secretPattern = '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|sk-[A-Za-z0-9_-]{20,}|MANUSCRIPT_UPLOAD_STORE_PASSWORD\\s*=)'
+$secretPattern = '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|sk-[A-Za-z0-9_-]{20,}|MANUSCRIPT_UPLOAD_STORE_PASSWORD\s*=)'
 $matches = & $git.Source -c "safe.directory=$safeDirectory" -C $projectRoot grep -l -I -E $secretPattern -- . ':(exclude)tools/security_release_gate.ps1' 2>$null
 $allowedFixturePath = 'vendor/llama.cpp/tools/server/tests/unit/test_security.py'
 if ($LASTEXITCODE -eq 0 -and @($matches | Where-Object { $_ -ne $allowedFixturePath }).Count -gt 0) {

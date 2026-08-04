@@ -114,6 +114,12 @@ Describe 'Manuscript Android Version 2 identity isolation' {
         }
 
         $gradle = Join-Path $root 'gradlew.bat'
+        if ([string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
+            $env:JAVA_HOME = 'C:\Program Files\Android\openjdk\jdk-21.0.8'
+        }
+        if ([string]::IsNullOrWhiteSpace($env:ANDROID_HOME)) {
+            $env:ANDROID_HOME = 'C:\Users\stuff\AppData\Local\Android\Sdk'
+        }
         $arguments = @(
             '--no-daemon',
             '--max-workers=1',
