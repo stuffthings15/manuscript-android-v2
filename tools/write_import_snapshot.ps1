@@ -75,14 +75,75 @@ function Get-RelativePath([string]$Root, [string]$Path) {
     return [System.Uri]::UnescapeDataString($rootUri.MakeRelativeUri($pathUri).ToString()).Replace('\', '/')
 }
 
-function Get-FileEntry([string]$Root, [string]$RelativePath) {
-    $path = Join-Path $Root ($RelativePath.Replace('/', '\'))
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        throw "Imported file is missing: $RelativePath"
-    }
+function Get-ImportFileEntry([string]$Root, [string]$RelativePath) {
     return [pscustomobject][ordered]@{
         path = $RelativePath
-        sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+        sha256 = $importBlobHashes[$RelativePath]
+    }
+}
+
+function Read-GitBatchLine([System.IO.Stream]$Stream) {
+    $lineBytes = [System.Collections.Generic.List[byte]]::new()
+    while ($true) {
+        $value = $Stream.ReadByte()
+        if ($value -lt 0) { throw 'Unexpected end of git cat-file output.' }
+        if ($value -eq 10) { break }
+        if ($value -ne 13) { $lineBytes.Add([byte]$value) }
+    }
+    return [System.Text.Encoding]::ASCII.GetString($lineBytes.ToArray())
+}
+
+function Read-GitBatchBytes([System.IO.Stream]$Stream, [int]$Length) {
+    $bytes = [byte[]]::new($Length)
+    $offset = 0
+    while ($offset -lt $Length) {
+        $read = $Stream.Read($bytes, $offset, $Length - $offset)
+        if ($read -le 0) { throw 'Unexpected end of git cat-file blob.' }
+        $offset += $read
+    }
+    if ($Stream.ReadByte() -ne 10) { throw 'Git cat-file blob delimiter is missing.' }
+    return ,$bytes
+}
+
+function Get-ImportBlobHashes([string]$Root, [object[]]$Entries) {
+    $safeDirectory = Get-SafeDirectory $Root
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = 'git'
+    $startInfo.Arguments = ('-c "safe.directory={0}" -C "{1}" cat-file --batch' -f $safeDirectory, $Root)
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardInput = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.CreateNoWindow = $true
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    [void]$process.Start()
+    $inputBytes = [System.Text.Encoding]::ASCII.GetBytes((($Entries | ForEach-Object { $_.blob }) -join "`n") + "`n")
+    $inputStream = [System.IO.MemoryStream]::new($inputBytes)
+    $inputTask = $inputStream.CopyToAsync($process.StandardInput.BaseStream)
+    $hashes = @{}
+    $stream = $process.StandardOutput.BaseStream
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        foreach ($entry in $Entries) {
+            $header = Read-GitBatchLine $stream
+            if ($header -notmatch '^[0-9a-f]+ blob (?<size>\d+)$') {
+                throw "Unexpected git cat-file header: $header"
+            }
+            $bytes = Read-GitBatchBytes $stream ([int]$Matches.size)
+            $hashes[$entry.path] = [System.BitConverter]::ToString($sha256.ComputeHash($bytes)) -replace '-', ''
+        }
+        [void]$inputTask.GetAwaiter().GetResult()
+        $process.StandardInput.Close()
+        [void]$process.WaitForExit()
+        $errorText = $process.StandardError.ReadToEnd()
+        if ($process.ExitCode -ne 0) { throw "git cat-file failed: $errorText" }
+        return $hashes
+    }
+    finally {
+        [void]$sha256.Dispose()
+        [void]$inputStream.Dispose()
+        [void]$process.Dispose()
     }
 }
 
@@ -122,7 +183,17 @@ if ($vendorCommit -ne $expectedVendorCommit) {
 }
 [void](Invoke-GitLines $ProjectRoot @('cat-file', '-e', "$importCommit^{commit}"))
 
-$importPaths = Invoke-GitLines $ProjectRoot @('ls-tree', '-r', '--name-only', $importCommit)
+$importEntries = @(
+    Invoke-GitLines $ProjectRoot @('ls-tree', '-r', $importCommit) |
+        ForEach-Object {
+            if ($_ -notmatch '^[0-9]+ blob (?<blob>[0-9a-f]+)\t(?<path>.+)$') {
+                throw "Unexpected git tree entry: $_"
+            }
+            [pscustomobject]@{ blob = $Matches.blob; path = $Matches.path }
+        }
+)
+$importPaths = @($importEntries | ForEach-Object { $_.path })
+$importBlobHashes = Get-ImportBlobHashes $ProjectRoot $importEntries
 $forbiddenPatterns = @(
     '(^|/)local\.properties$',
     '(^|/)(build|\.cxx|releases)/',
@@ -140,7 +211,7 @@ if ($forbiddenFiles.Count -gt 0) {
     throw "Forbidden import files found: $($forbiddenFiles -join ', ')"
 }
 
-$copiedFiles = @($importPaths | Sort-Object | ForEach-Object { Get-FileEntry $ProjectRoot $_ })
+$copiedFiles = @($importPaths | Sort-Object | ForEach-Object { Get-ImportFileEntry $ProjectRoot $_ })
 $manifestJson = $copiedFiles | ConvertTo-Json -Depth 3 -Compress
 $manifestBytes = [System.Text.Encoding]::UTF8.GetBytes($manifestJson)
 $manifestHash = [System.BitConverter]::ToString(
@@ -180,7 +251,7 @@ $corpusFiles = @(
             if ($sourceHash -ne $copiedHash) {
                 throw "Corpus file changed during import: $($_.Name)"
             }
-            [pscustomobject][ordered]@{ path = "quality/animal-pet-essays/source/$($_.Name)"; sha256 = $copiedHash }
+            Get-ImportFileEntry $ProjectRoot "quality/animal-pet-essays/source/$($_.Name)"
         }
 )
 if ($corpusFiles.Count -ne 20) {
@@ -197,7 +268,7 @@ if ($sourceZipHash -ne $expectedZipSha256 -or $copiedZipHash -ne $expectedZipSha
 
 $officialIcons = @(
     @('brand/canonical/manuscript.svg', 'brand/canonical/manuscript.png') |
-        ForEach-Object { Get-FileEntry $ProjectRoot $_ }
+        ForEach-Object { Get-ImportFileEntry $ProjectRoot $_ }
 )
 
 $receiptRelativePath = Get-RelativePath $ProjectRoot $ReceiptPath
@@ -208,8 +279,8 @@ $receipt = [pscustomobject][ordered]@{
     sourceDirtyDiffSha256 = Get-GitOutputSha256 $SourceRoot @('diff', '--binary', '--no-ext-diff', 'HEAD', '--', '.')
     vendorDirtyDiffSha256 = Get-GitOutputSha256 $vendorRoot @('diff', '--binary', '--no-ext-diff', 'HEAD')
     copiedUntrackedFiles = $copiedUntrackedFiles
-    canonicalZipSha256 = $copiedZipHash
-    canonicalZip = [pscustomobject][ordered]@{ path = 'quality/animal-pet-essays/20_Animal_Pet_Essays_800_Percent_More_Errors.zip'; sha256 = $copiedZipHash }
+    canonicalZipSha256 = (Get-ImportFileEntry $ProjectRoot 'quality/animal-pet-essays/20_Animal_Pet_Essays_800_Percent_More_Errors.zip').sha256
+    canonicalZip = Get-ImportFileEntry $ProjectRoot 'quality/animal-pet-essays/20_Animal_Pet_Essays_800_Percent_More_Errors.zip'
     corpusFiles = $corpusFiles
     officialIcons = $officialIcons
     copiedFileManifestSha256 = $manifestHash
@@ -225,5 +296,10 @@ $receipt = [pscustomobject][ordered]@{
 
 $receiptDirectory = Split-Path -Parent $ReceiptPath
 New-Item -ItemType Directory -Force -Path $receiptDirectory | Out-Null
-$receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $ReceiptPath -Encoding UTF8
+$receiptJson = ($receipt | ConvertTo-Json -Depth 6).Replace("`r`n", "`n")
+[System.IO.File]::WriteAllText(
+    $ReceiptPath,
+    $receiptJson + "`n",
+    [System.Text.UTF8Encoding]::new($false)
+)
 Write-Output "Wrote import snapshot receipt: $ReceiptPath"

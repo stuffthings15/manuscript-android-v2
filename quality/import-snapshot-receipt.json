@@ -1,4 +1,4 @@
-﻿{
+{
     "formatVersion":  1,
     "sourceCommit":  "b2baa9442858a8f20218d50d0f9d1d235ec17e55",
     "vendorCommit":  "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
@@ -1163,7 +1163,7 @@
                                  },
                                  {
                                      "path":  "tools/security_release_gate.ps1",
-                                     "sha256":  "F04E60D4516534508C2C66411C48E04D4EDE3A00D9620A0CE1E6FC5D0BAAB5A0"
+                                     "sha256":  "BE29BC05A4B24CE6DF5D4124AB29C94D14FCAD9F2AEBDA84FC058199C5F9F442"
                                  },
                                  {
                                      "path":  "tools/tests/install_s23_manuscript.Tests.ps1",
@@ -1795,7 +1795,7 @@
                               "sha256":  "7D4E71968686DF861B0BD8D1AC3D1D38AC7CB17BC048D1BE6F7DB1F42C9ED9E7"
                           }
                       ],
-    "copiedFileManifestSha256":  "FD921FCAE1F037B83B9680312A134FFE6FEF9760653638FBF6BDABD901B5E0F6",
+    "copiedFileManifestSha256":  "191811D976D2A1DD36CEB40AA601D00834E1BD1628639DCC4FDEEC656F241D75",
     "copiedFiles":  [
                         {
                             "path":  ".gitattributes",
@@ -2955,7 +2955,7 @@
                         },
                         {
                             "path":  "tools/security_release_gate.ps1",
-                            "sha256":  "F04E60D4516534508C2C66411C48E04D4EDE3A00D9620A0CE1E6FC5D0BAAB5A0"
+                            "sha256":  "BE29BC05A4B24CE6DF5D4124AB29C94D14FCAD9F2AEBDA84FC058199C5F9F442"
                         },
                         {
                             "path":  "tools/tests/install_s23_manuscript.Tests.ps1",
