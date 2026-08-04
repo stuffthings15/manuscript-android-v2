@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.lang.reflect.Modifier
 
 class ReviewSurfaceControllerTest {
     private val targetId = ReviewTargetId("field-17")
@@ -133,18 +134,140 @@ class ReviewSurfaceControllerTest {
     }
 
     @Test
-    fun stateContractContainsIdentifiersAndEligibilityButNoTextPayloadFields() {
-        val contractTypes = listOf(
+    fun reconnectIsIdempotentUntilFocusedTargetResolution() {
+        val controller = ReviewSurfaceController()
+
+        val first = controller.dispatch(ReviewSurfaceEvent.ServiceReconnected)
+        val repeated = controller.dispatch(ReviewSurfaceEvent.ServiceReconnected)
+
+        assertEquals(listOf(ReviewSurfaceEffect.ReacquireFocusedTarget(null)), first)
+        assertTrue(repeated.isEmpty())
+
+        controller.dispatch(ReviewSurfaceEvent.FocusedTargetAvailable(eligibleTarget))
+        assertEquals(
+            listOf(ReviewSurfaceEffect.ReacquireFocusedTarget(targetId)),
+            controller.dispatch(ReviewSurfaceEvent.ServiceReconnected),
+        )
+    }
+
+    @Test
+    fun reconnectPendingClearsForEveryResolutionAndInvalidationEvent() {
+        val resolutionEvents = listOf(
+            ReviewSurfaceEvent.FocusedTargetAvailable(eligibleTarget),
+            ReviewSurfaceEvent.RestorationCompleted(eligibleTarget),
+            ReviewSurfaceEvent.RestorationFailed,
+            ReviewSurfaceEvent.TargetLost,
+            ReviewSurfaceEvent.PasswordFocused,
+            ReviewSurfaceEvent.ApplicationSwitched,
+        )
+
+        resolutionEvents.forEach { resolution ->
+            val controller = ReviewSurfaceController()
+            controller.dispatch(ReviewSurfaceEvent.ServiceReconnected)
+            assertTrue(controller.dispatch(ReviewSurfaceEvent.ServiceReconnected).isEmpty())
+
+            controller.dispatch(resolution)
+
+            assertEquals(
+                "resolution=$resolution",
+                1,
+                controller.dispatch(ReviewSurfaceEvent.ServiceReconnected).size,
+            )
+        }
+    }
+
+    @Test
+    fun detachReacquisitionAlsoSuppressesReconnectUntilRestorationFinishes() {
+        val controller = openController()
+        controller.dispatch(ReviewSurfaceEvent.CloseRequested)
+        assertEquals(2, controller.dispatch(ReviewSurfaceEvent.PanelDetached).size)
+
+        assertTrue(controller.dispatch(ReviewSurfaceEvent.ServiceReconnected).isEmpty())
+
+        controller.dispatch(ReviewSurfaceEvent.RestorationFailed)
+        assertEquals(
+            listOf(ReviewSurfaceEffect.ReacquireFocusedTarget(null)),
+            controller.dispatch(ReviewSurfaceEvent.ServiceReconnected),
+        )
+    }
+
+    @Test
+    fun everyConcreteContractTypeRejectsPlaintextPayloadFields() {
+        val rootTypes = listOf(
             ReviewTarget::class.java,
+            ReviewTargetId::class.java,
             ReviewSurfaceState::class.java,
             ReviewSurfaceEvent::class.java,
             ReviewSurfaceEffect::class.java,
         )
+        val concreteTypes = rootTypes.flatMap(::concreteContractTypes).distinct()
+        val concreteNames = concreteTypes.map(Class<*>::getSimpleName).toSet()
         val forbiddenNames = Regex("(?i)(editor|correction|snapshot|plain.?text|content|draft)")
+        val opaqueIdentifierFields = setOf(
+            "ReviewTargetId.value",
+            "ReviewTarget.id",
+            "TriggerVisible.targetId",
+            "Opening.targetId",
+            "ReviewOpen.targetId",
+            "RestoringFocus.targetId",
+            "ReacquireFocusedTarget.expectedTargetId",
+            "RestoreKeyboard.targetId",
+        )
 
-        contractTypes.flatMap { it.declaredFields.toList() }.forEach { field ->
-            assertFalse("Forbidden field ${field.name}", forbiddenNames.containsMatchIn(field.name))
+        assertEquals(
+            setOf(
+                "ReviewTarget",
+                "ReviewTargetId",
+                "Hidden",
+                "TriggerVisible",
+                "Opening",
+                "ReviewOpen",
+                "Closing",
+                "RestoringFocus",
+                "Destroyed",
+                "FocusedTargetAvailable",
+                "OpenRequested",
+                "ReviewAttached",
+                "CloseRequested",
+                "StaleWorkCancelled",
+                "PanelDetached",
+                "RestorationCompleted",
+                "RestorationFailed",
+                "TargetLost",
+                "PasswordFocused",
+                "ApplicationSwitched",
+                "ServiceReconnected",
+                "Destroy",
+                "CancelStaleCorrectionAndCallbackWork",
+                "DetachReviewPanelSafely",
+                "ScrubTransientTextHolders",
+                "ReacquireFocusedTarget",
+                "RestoreKeyboard",
+            ),
+            concreteNames,
+        )
+
+        concreteTypes.flatMap { type ->
+            type.declaredFields
+                .filterNot { Modifier.isStatic(it.modifiers) || it.isSynthetic }
+                .map { type to it }
+        }.forEach { (owner, field) ->
+            val fieldLabel = "${owner.simpleName}.${field.name}"
+            assertFalse("Forbidden field $fieldLabel", forbiddenNames.containsMatchIn(field.name))
+            if (field.type == String::class.java || CharSequence::class.java.isAssignableFrom(field.type)) {
+                assertTrue(
+                    "Unexpected string payload $fieldLabel",
+                    fieldLabel in opaqueIdentifierFields,
+                )
+            }
         }
+    }
+
+    private fun concreteContractTypes(root: Class<*>): List<Class<*>> {
+        if (!root.isInterface && !Modifier.isAbstract(root.modifiers)) return listOf(root)
+        return root.declaredClasses
+            .filterNot { it.isInterface || Modifier.isAbstract(it.modifiers) }
+            .sortedBy(Class<*>::getSimpleName)
     }
 
     private fun openController(): ReviewSurfaceController = ReviewSurfaceController().apply {

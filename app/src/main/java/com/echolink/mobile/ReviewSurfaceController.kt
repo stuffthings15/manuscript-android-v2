@@ -68,11 +68,36 @@ class ReviewSurfaceController(
 ) {
     var state: ReviewSurfaceState = initialState
         private set
+    private var reacquisitionPending = false
 
     fun dispatch(event: ReviewSurfaceEvent): List<ReviewSurfaceEffect> {
+        if (event.resolvesPendingReacquisition()) {
+            reacquisitionPending = false
+        }
+        if (event == ReviewSurfaceEvent.ServiceReconnected && reacquisitionPending) {
+            return emptyList()
+        }
         val transition = reduce(state, event)
         state = transition.state
+        if (transition.effects.any { it is ReviewSurfaceEffect.ReacquireFocusedTarget }) {
+            reacquisitionPending = true
+        }
+        if (state == ReviewSurfaceState.Destroyed) {
+            reacquisitionPending = false
+        }
         return transition.effects
+    }
+
+    private fun ReviewSurfaceEvent.resolvesPendingReacquisition(): Boolean = when (this) {
+        is ReviewSurfaceEvent.FocusedTargetAvailable,
+        is ReviewSurfaceEvent.RestorationCompleted,
+        ReviewSurfaceEvent.RestorationFailed,
+        ReviewSurfaceEvent.TargetLost,
+        ReviewSurfaceEvent.PasswordFocused,
+        ReviewSurfaceEvent.ApplicationSwitched,
+        ReviewSurfaceEvent.Destroy,
+        -> true
+        else -> false
     }
 
     companion object {
