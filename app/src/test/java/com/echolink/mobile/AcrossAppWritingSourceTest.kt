@@ -92,10 +92,11 @@ class AcrossAppWritingSourceTest {
         assertTrue(service.contains("putExtra(EXTRA_OPEN_PERSONALIZE, true)"))
         assertTrue(service.contains("targetCandidateScore(candidate, captured)"))
         assertTrue(service.contains("idMatches.ifEmpty { candidates }"))
-        assertTrue(service.contains("restoreTargetRunnable"))
-        assertTrue(service.contains("target !== captured"))
+        assertTrue(service.contains("restoreKeyboardToReacquiredTarget"))
+        assertTrue(service.contains("reacquireReviewTarget"))
         assertTrue(service.contains("cancelKeyboardRestore()"))
-        assertTrue(service.contains("first.node == second.node"))
+        assertTrue(service.contains("expectedTargetId != null && expectedTargetId != targetId"))
+        assertFalse(service.contains("restoreTargetRunnable"))
         assertFalse(service.contains("android.os.Handler(mainLooper).postDelayed"))
     }
 
@@ -110,8 +111,9 @@ class AcrossAppWritingSourceTest {
         assertTrue(service.contains("PRESS_GUARD_MS = 600L"))
         assertTrue(service.contains("triggerPressed = true"))
         assertTrue(service.contains("cancelTargetClear()"))
-        assertTrue(service.contains("if (snapshot.password) clearTarget()"))
-        assertTrue(service.contains("rootInActiveWindow?.packageName?.toString() == packageName"))
+        assertTrue(service.contains("ReviewSurfaceEvent.PasswordFocused"))
+        assertTrue(service.contains("isOverlaySelfEvent(event)"))
+        assertFalse(service.contains("event == null || panelView != null"))
     }
 
     @Test

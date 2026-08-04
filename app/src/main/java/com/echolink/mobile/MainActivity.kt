@@ -116,6 +116,66 @@ class MainActivity : Activity() {
     private var modelRequestEpoch = 0
     private var activeReviewJobId: String? = null
     private var activeReviewChangeId: String? = null
+    private val reviewSurfaceController = ReviewSurfaceController()
+    private val reviewSurfaceExecutor by lazy {
+        ReviewSurfaceEffectExecutor(
+            reviewSurfaceController,
+            object : ReviewSurfaceEffectActions {
+                override fun cancelStaleCorrectionAndCallbackWork() {
+                    grammarEngine.setSessionWarm(false)
+                    modelRequests.cancelAll()
+                    modelRequestEpoch += 1
+                    activeReviewJobId = null
+                }
+
+                override fun detachReviewPanelSafely() {
+                    clearTargetUnderline()
+                    if (::correctionCard.isInitialized) correctionCard.visibility = View.GONE
+                }
+
+                override fun scrubTransientTextHolders() {
+                    reviewSession = null
+                    activeReviewChangeId = null
+                    iconWasClicked = false
+                    if (::reviewSuggestion.isInitialized) reviewSuggestion.text = ""
+                    if (::reviewNote.isInitialized) reviewNote.text = ""
+                    hideReviewProgress()
+                }
+
+                override fun reacquireFocusedTarget(expectedTargetId: ReviewTargetId?): ReviewTarget {
+                    val eligibility = mainEditorEligibility()
+                    return ReviewTarget(
+                        id = MAIN_EDITOR_TARGET_ID.takeIf {
+                            eligibility == ReviewTargetEligibility.ELIGIBLE &&
+                                (expectedTargetId == null || expectedTargetId == it)
+                        },
+                        eligibility = eligibility,
+                    )
+                }
+
+                override fun restoreKeyboard(targetId: ReviewTargetId) {
+                    if (targetId != MAIN_EDITOR_TARGET_ID || mainEditorEligibility() != ReviewTargetEligibility.ELIGIBLE) {
+                        return
+                    }
+                    editor.requestFocus()
+                    editor.post {
+                        if (mainEditorEligibility() == ReviewTargetEligibility.ELIGIBLE) {
+                            showSystemKeyboard(editor)
+                        }
+                    }
+                }
+
+                override fun renderReviewSurfaceState(state: ReviewSurfaceState) {
+                    if (!::assistantTrigger.isInitialized) return
+                    when (state) {
+                        is ReviewSurfaceState.TriggerVisible -> updateAssistantTrigger()
+                        ReviewSurfaceState.Hidden -> updateAssistantTrigger()
+                        else -> assistantTrigger.visibility = View.GONE
+                    }
+                }
+            },
+        )
+    }
     private val statusHandler = Handler(Looper.getMainLooper())
     private val draftSave = Runnable { persistDraftNow() }
     private val triggerRefresh = Runnable {
@@ -224,7 +284,7 @@ class MainActivity : Activity() {
         if (::root.isInitialized && root.viewTreeObserver.isAlive) {
             root.viewTreeObserver.removeOnGlobalFocusChangeListener(focusListener)
         }
-        modelRequests.cancelAll()
+        reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.Destroy)
         statusHandler.removeCallbacks(draftSave)
         statusHandler.removeCallbacks(triggerRefresh)
         statusHandler.removeCallbacks(prefetchCorrections)
@@ -1394,6 +1454,7 @@ class MainActivity : Activity() {
     }
 
     private fun openReview() {
+        if (!beginMainReviewSurface()) return
         iconWasClicked = true
         // Pressing "Correct my writing" IS the intent to review, so take
         // focus back first. The card requires editor focus, and focus is
@@ -1416,6 +1477,7 @@ class MainActivity : Activity() {
         correctionCard.visibility = if (show) View.VISIBLE else View.GONE
         assistantTrigger.visibility = View.GONE
         if (show) {
+            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ReviewAttached)
             correctionCard.isFocusableInTouchMode = true
             correctionCard.requestFocus()
             renderCurrentBlock()
@@ -1430,8 +1492,7 @@ class MainActivity : Activity() {
                 )
             }
         } else {
-            iconWasClicked = false
-            updateAssistantTrigger()
+            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.CloseRequested)
         }
     }
 
@@ -1519,6 +1580,7 @@ class MainActivity : Activity() {
             .filterNot { session.hasModelReplacement(it.index, selectedTone) }
         if (pending.isEmpty()) return
         val epoch = modelRequestEpoch
+        val callbackToken = reviewSurfaceExecutor.currentCallbackToken()
         val toneAtRequest = selectedTone
         val sourceAtRequest = pending.joinToString("\n\n", transform = WritingReviewBlock::original)
         val key =
@@ -1545,6 +1607,7 @@ class MainActivity : Activity() {
             requestedJobId = jobId,
             onParagraphCompleted = { paragraph ->
                 if (
+                    reviewSurfaceExecutor.isCurrentCallback(callbackToken) &&
                     reviewSession === session &&
                     modelRequestEpoch == epoch &&
                     selectedTone == toneAtRequest
@@ -1581,6 +1644,7 @@ class MainActivity : Activity() {
             },
             onProgress = { completed, total ->
                 if (
+                    reviewSurfaceExecutor.isCurrentCallback(callbackToken) &&
                     reviewSession === session &&
                     modelRequestEpoch == epoch &&
                     selectedTone == toneAtRequest
@@ -1596,7 +1660,11 @@ class MainActivity : Activity() {
         ) { terminalResult ->
             modelRequests.complete(key)
             hideReviewProgress()
-            if (reviewSession !== session || modelRequestEpoch != epoch) {
+            if (
+                !reviewSurfaceExecutor.isCurrentCallback(callbackToken) ||
+                reviewSession !== session ||
+                modelRequestEpoch != epoch
+            ) {
                 return@polishDocumentTerminal
             }
             renderCurrentBlock(requestModel = false)
@@ -1818,16 +1886,43 @@ class MainActivity : Activity() {
 
     private fun closeReview() {
         Log.i(REVIEW_LOG, "cancel=closeReview")
-        iconWasClicked = false
-        reviewSession = null
-        grammarEngine.setSessionWarm(false)
-        modelRequests.cancelAll()
-        modelRequestEpoch += 1
-        activeReviewJobId = null
-        activeReviewChangeId = null
-        clearTargetUnderline()
-        if (::correctionCard.isInitialized) correctionCard.visibility = View.GONE
-        updateAssistantTrigger()
+        reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.CloseRequested)
+    }
+
+    private fun mainEditorEligibility(): ReviewTargetEligibility {
+        if (!::editor.isInitialized || currentPage != Page.WRITE || !editor.isAttachedToWindow) {
+            return ReviewTargetEligibility.DETACHED
+        }
+        if (editor.transformationMethod is android.text.method.PasswordTransformationMethod) {
+            return ReviewTargetEligibility.PASSWORD
+        }
+        if (!editor.isEnabled || !editor.isFocusable || editor.text.isNullOrBlank()) {
+            return ReviewTargetEligibility.INELIGIBLE
+        }
+        return ReviewTargetEligibility.ELIGIBLE
+    }
+
+    private fun beginMainReviewSurface(): Boolean {
+        val eligibility = mainEditorEligibility()
+        if (eligibility != ReviewTargetEligibility.ELIGIBLE) {
+            reviewSurfaceExecutor.dispatch(mainEditorInvalidationEvent(eligibility))
+            return false
+        }
+        reviewSurfaceExecutor.dispatch(
+            ReviewSurfaceEvent.FocusedTargetAvailable(
+                ReviewTarget(MAIN_EDITOR_TARGET_ID, eligibility),
+            ),
+        )
+        reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.OpenRequested)
+        return reviewSurfaceController.state is ReviewSurfaceState.Opening
+    }
+
+    private fun mainEditorInvalidationEvent(
+        eligibility: ReviewTargetEligibility,
+    ): ReviewSurfaceEvent = when (eligibility) {
+        ReviewTargetEligibility.PASSWORD -> ReviewSurfaceEvent.PasswordFocused
+        ReviewTargetEligibility.SWITCHED_APPLICATION -> ReviewSurfaceEvent.ApplicationSwitched
+        else -> ReviewSurfaceEvent.TargetLost
     }
 
     private fun restoreEncryptedReview(jobId: String) {
@@ -1850,8 +1945,14 @@ class MainActivity : Activity() {
             selectedTone = job.tone
             reviewSession = session
             iconWasClicked = true
+            if (!beginMainReviewSurface()) {
+                reviewSession = null
+                iconWasClicked = false
+                return@restoreJob
+            }
             correctionCard.visibility = View.VISIBLE
             assistantTrigger.visibility = View.GONE
+            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ReviewAttached)
             renderCurrentBlock()
         }
     }
@@ -2308,6 +2409,7 @@ class MainActivity : Activity() {
         const val PREFERENCES_NAME = "manuscript_preferences_v1"
         const val TONE_KEY = "writing_tone"
         private const val REVIEW_LOG = "ManuscriptReview"
+        private val MAIN_EDITOR_TARGET_ID = ReviewTargetId("main-editor")
         // Sub-steps per section, so the bar can creep while one is running.
         private const val PROGRESS_STEPS = 100
         private const val PROGRESS_TICK_MS = 500L

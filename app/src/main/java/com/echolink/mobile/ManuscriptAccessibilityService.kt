@@ -60,50 +60,73 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     private var maximumPanelHeightPx = 0
     private var replacementInFlight = false
     private var retainedInputConnection: Any? = null
-    private var pendingRestoreTarget: Target? = null
     private var lastVisibleKeyboardFrame: KeyboardPanelSnapshot? = null
     private val grammarEngine by lazy { OnDeviceGrammarEngine.get(this) }
     private val modelRequests = RewriteRequestBatch()
     private var modelRequestEpoch = 0
     private val mainHandler by lazy { Handler(mainLooper) }
+    private val reviewSurfaceController = ReviewSurfaceController()
+    private val reviewSurfaceExecutor by lazy {
+        ReviewSurfaceEffectExecutor(
+            reviewSurfaceController,
+            object : ReviewSurfaceEffectActions {
+                override fun cancelStaleCorrectionAndCallbackWork() {
+                    OnDeviceGrammarEngine.get(this@ManuscriptAccessibilityService).setSessionWarm(false)
+                    mainHandler.removeCallbacks(keyboardHideRunnable)
+                    modelRequests.cancelAll()
+                    modelRequestEpoch += 1
+                    replacementInFlight = false
+                }
+
+                override fun detachReviewPanelSafely() {
+                    panelView?.let { runCatching { windowManager.removeView(it) } }
+                    panelView = null
+                }
+
+                override fun scrubTransientTextHolders() {
+                    reviewSession = null
+                    suggestionListView = null
+                    suggestionScrollView = null
+                    counterView = null
+                    statusView = null
+                    replaceButton = null
+                    dismissButton = null
+                    acceptChangeButton = null
+                    rejectChangeButton = null
+                    reviewToneButtons.clear()
+                    activeReviewChangeId = null
+                    retainedInputConnection = null
+                    workingText = ""
+                    target?.let { current ->
+                        setTarget(
+                            current.copy(
+                                snapshot = ExternalWritingPolicy.scrubbedSnapshot(current.snapshot),
+                            ),
+                        )
+                    }
+                }
+
+                override fun reacquireFocusedTarget(expectedTargetId: ReviewTargetId?): ReviewTarget =
+                    reacquireReviewTarget(expectedTargetId)
+
+                override fun restoreKeyboard(targetId: ReviewTargetId) {
+                    restoreKeyboardToReacquiredTarget(targetId)
+                }
+
+                override fun renderReviewSurfaceState(state: ReviewSurfaceState) {
+                    when (state) {
+                        is ReviewSurfaceState.TriggerVisible -> showTriggerForReacquiredTarget(state.targetId)
+                        ReviewSurfaceState.Hidden -> clearTarget()
+                        else -> removeTrigger()
+                    }
+                }
+            },
+        )
+    }
     private val keyboardHideRunnable = Runnable {
         if (panelView != null && systemKeyboardVisible()) {
             performGlobalAction(GLOBAL_ACTION_BACK)
         }
-    }
-    private val restoreTargetRunnable = Runnable {
-        val captured = pendingRestoreTarget ?: return@Runnable
-        pendingRestoreTarget = null
-        if (panelView != null || target !== captured) return@Runnable
-        val node = reacquireTarget(captured)
-        if (node == null) {
-            if (target === captured) clearTarget()
-            return@Runnable
-        }
-        if (panelView != null || target !== captured) {
-            recycleIfDetached(node, captured.node)
-            return@Runnable
-        }
-        node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        if (panelView != null || target !== captured) {
-            recycleIfDetached(node, captured.node)
-            return@Runnable
-        }
-        val bounds = Rect().also(node::getBoundsInScreen)
-        setTarget(captured.copy(
-            bounds = bounds,
-            snapshot = ExternalWritingPolicy.metadataSnapshot(
-                packageName = captured.packageName,
-                text = node.text,
-                editable = node.isEditable,
-                password = node.isPassword,
-                selectionStart = node.textSelectionStart,
-                selectionEnd = node.textSelectionEnd,
-            ),
-            node = node,
-        ))
-        if (!node.isPassword && (node.text?.length ?: 0) > 0) showTrigger(bounds)
     }
     private val deferredTargetClear = Runnable {
         // A finger resting on the trigger steals input focus from the target
@@ -132,24 +155,25 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
                 .getString(TONE_KEY, WritingTone.PROOFREAD.label).orEmpty(),
         )
+        reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ServiceReconnected)
     }
 
     @TargetApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreateInputMethod(): InputMethod = InputMethod(this)
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || panelView != null) return
+        if (event == null || isOverlaySelfEvent(event)) return
         val eventPackage = event.packageName?.toString().orEmpty()
         if (eventPackage == packageName) {
-            // Events from our accessibility overlay must not tear down and recreate
-            // the trigger. Only clear when the Manuscript activity is truly active.
-            if (rootInActiveWindow?.packageName?.toString() == packageName) {
-                scheduleTargetClear()
-            }
+            if (panelView != null) {
+                reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ApplicationSwitched)
+            } else scheduleTargetClear()
             return
         }
         val node = focusedEditableNode() ?: run {
-            scheduleTargetClear()
+            if (panelView != null) {
+                reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
+            } else scheduleTargetClear()
             return
         }
         val snapshot = ExternalWritingPolicy.metadataSnapshot(
@@ -162,13 +186,24 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         )
         if (!ExternalWritingPolicy.canOffer(snapshot, packageName)) {
             recycleIfDetached(node, target?.node)
-            if (snapshot.password) clearTarget() else scheduleTargetClear()
+            if (panelView != null) {
+                reviewSurfaceExecutor.dispatch(
+                    if (snapshot.password) ReviewSurfaceEvent.PasswordFocused
+                    else if (target?.packageName != snapshot.packageName) ReviewSurfaceEvent.ApplicationSwitched
+                    else ReviewSurfaceEvent.TargetLost,
+                )
+            } else if (snapshot.password) {
+                reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.PasswordFocused)
+                clearTarget()
+            } else scheduleTargetClear()
             return
         }
         val bounds = Rect().also(node::getBoundsInScreen)
         if (bounds.isEmpty) {
             recycleIfDetached(node, target?.node)
-            scheduleTargetClear()
+            if (panelView != null) {
+                reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
+            } else scheduleTargetClear()
             return
         }
         cancelTargetClear()
@@ -179,20 +214,35 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             snapshot = snapshot,
             node = node,
         )
-        val pending = pendingRestoreTarget
-        if (pending != null && sameEditor(pending, candidate)) {
-            recycleIfDetached(node, pending.node)
+        if (panelView != null) {
+            val current = target
+            if (current == null) {
+                recycleIfDetached(node, null)
+                reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
+            } else if (candidate.packageName != current.packageName) {
+                recycleIfDetached(node, current.node)
+                reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ApplicationSwitched)
+            } else if (reviewTargetId(candidate) != reviewTargetId(current)) {
+                recycleIfDetached(node, current.node)
+                reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
+            } else {
+                setTarget(candidate)
+            }
             return
         }
-        cancelKeyboardRestore()
-        setTarget(candidate)
-        showTrigger(bounds)
+        synchronizeReviewSurfaceTarget(candidate)
     }
 
-    override fun onInterrupt() = clearAll()
+    override fun onInterrupt() {
+        reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
+        clearTarget()
+    }
 
     override fun onDestroy() {
-        clearAll()
+        reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.Destroy)
+        cancelTargetClear()
+        cancelKeyboardRestore()
+        clearTarget()
         super.onDestroy()
     }
 
@@ -212,6 +262,14 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         val found = findEditable(root, budget = AccessibilityTraversalBudget())
         recycleIfDetached(root, found)
         return found
+    }
+
+    private fun isOverlaySelfEvent(event: AccessibilityEvent): Boolean {
+        if (event.packageName?.toString() != packageName) return false
+        return windows.any { window ->
+            window.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY &&
+                window.id == event.windowId
+        }
     }
 
     private fun findEditable(
@@ -348,15 +406,25 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             selectionStart = selection?.first ?: 0,
             selectionEnd = selection?.last?.plus(1) ?: 0,
         ) ?: return
+        synchronizeReviewSurfaceTarget(liveTarget)
         workingText = currentText
-        setTarget(liveTarget)
+        reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.OpenRequested)
+        if (reviewSurfaceController.state !is ReviewSurfaceState.Opening) {
+            reviewSession = null
+            workingText = ""
+            return
+        }
         retainCurrentInputConnection()
         val panelBounds = keyboardPanelBounds()
         val panelAttached = AccessibilityOverlayHandoff.replaceTriggerWithPanel(
             actions = this,
             bounds = panelBounds,
         )
-        if (!panelAttached) return
+        if (!panelAttached) {
+            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.CloseRequested)
+            return
+        }
+        reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ReviewAttached)
     }
 
     override fun addKeyboardAreaPanel(bounds: KeyboardPanelBounds) {
@@ -857,6 +925,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             .filterNot { session.hasModelReplacement(it.index, selectedTone) }
         if (pending.isEmpty()) return
         val epoch = modelRequestEpoch
+        val callbackToken = reviewSurfaceExecutor.currentCallbackToken()
         val toneAtRequest = selectedTone
         val sourceAtRequest = pending.joinToString("\n\n", transform = WritingReviewBlock::original)
         val key =
@@ -870,6 +939,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             sourceApplication = target?.packageName,
             onParagraphCompleted = { paragraph ->
                 if (
+                    reviewSurfaceExecutor.isCurrentCallback(callbackToken) &&
                     reviewSession === session &&
                     panelView != null &&
                     modelRequestEpoch == epoch &&
@@ -888,6 +958,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             },
             onProgress = { completed, total ->
                 if (
+                    reviewSurfaceExecutor.isCurrentCallback(callbackToken) &&
                     reviewSession === session &&
                     panelView != null &&
                     modelRequestEpoch == epoch
@@ -901,7 +972,12 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             },
         ) { terminalResult ->
             modelRequests.complete(key)
-            if (reviewSession !== session || panelView == null || modelRequestEpoch != epoch) {
+            if (
+                !reviewSurfaceExecutor.isCurrentCallback(callbackToken) ||
+                reviewSession !== session ||
+                panelView == null ||
+                modelRequestEpoch != epoch
+            ) {
                 return@polishDocumentTerminal
             }
             renderCurrentBlock(requestModel = false)
@@ -1353,6 +1429,120 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         return findMatchingEditable(root, captured)
     }
 
+    private fun reviewTargetId(candidate: Target): ReviewTargetId = ReviewTargetId(
+        "${candidate.packageName}|${candidate.node.windowId}|" +
+            "${candidate.viewId.orEmpty().ifBlank { "focused-editor" }}|" +
+            candidate.node.hashCode(),
+    )
+
+    private fun currentReviewTargetId(): ReviewTargetId? = when (val state = reviewSurfaceController.state) {
+        is ReviewSurfaceState.TriggerVisible -> state.targetId
+        is ReviewSurfaceState.Opening -> state.targetId
+        is ReviewSurfaceState.ReviewOpen -> state.targetId
+        is ReviewSurfaceState.Closing -> state.retainedTarget.id
+        is ReviewSurfaceState.RestoringFocus -> state.targetId
+        ReviewSurfaceState.Hidden,
+        ReviewSurfaceState.Destroyed,
+        -> null
+    }
+
+    private fun synchronizeReviewSurfaceTarget(candidate: Target) {
+        cancelKeyboardRestore()
+        val candidateId = reviewTargetId(candidate)
+        val currentId = currentReviewTargetId()
+        if (currentId != null && currentId != candidateId) {
+            val switchedApplication = target?.packageName != candidate.packageName
+            clearTargetRetaining(candidate.node)
+            reviewSurfaceExecutor.dispatch(
+                if (switchedApplication) {
+                    ReviewSurfaceEvent.ApplicationSwitched
+                } else {
+                    ReviewSurfaceEvent.TargetLost
+                },
+            )
+        }
+        setTarget(candidate)
+        reviewSurfaceExecutor.dispatch(
+            ReviewSurfaceEvent.FocusedTargetAvailable(
+                ReviewTarget(candidateId, ReviewTargetEligibility.ELIGIBLE),
+            ),
+        )
+        if (reviewSurfaceController.state is ReviewSurfaceState.TriggerVisible) {
+            showTrigger(candidate.bounds)
+        }
+    }
+
+    private fun reacquireReviewTarget(expectedTargetId: ReviewTargetId?): ReviewTarget {
+        val captured = target
+        val node = captured?.let(::reacquireTarget) ?: focusedEditableNode()
+            ?: return ReviewTarget(null, ReviewTargetEligibility.MISSING)
+        val packageName = node.packageName?.toString().orEmpty()
+        val snapshot = ExternalWritingPolicy.metadataSnapshot(
+            packageName = packageName,
+            text = node.text,
+            editable = node.isEditable,
+            password = node.isPassword,
+            selectionStart = node.textSelectionStart,
+            selectionEnd = node.textSelectionEnd,
+        )
+        val eligibility = when {
+            node.isPassword -> ReviewTargetEligibility.PASSWORD
+            captured != null && packageName != captured.packageName ->
+                ReviewTargetEligibility.SWITCHED_APPLICATION
+            !ExternalWritingPolicy.canOffer(snapshot, this.packageName) ->
+                ReviewTargetEligibility.INELIGIBLE
+            else -> ReviewTargetEligibility.ELIGIBLE
+        }
+        val bounds = Rect().also(node::getBoundsInScreen)
+        if (bounds.isEmpty) {
+            recycleIfDetached(node, captured?.node)
+            return ReviewTarget(null, ReviewTargetEligibility.DETACHED)
+        }
+        val candidate = Target(
+            packageName = packageName,
+            viewId = node.viewIdResourceName,
+            bounds = bounds,
+            snapshot = snapshot,
+            node = node,
+        )
+        val targetId = reviewTargetId(candidate)
+        if (eligibility != ReviewTargetEligibility.ELIGIBLE) {
+            recycleIfDetached(node, captured?.node)
+            return ReviewTarget(null, eligibility)
+        }
+        if (expectedTargetId != null && expectedTargetId != targetId) {
+            recycleIfDetached(node, captured?.node)
+            return ReviewTarget(null, ReviewTargetEligibility.DETACHED)
+        }
+        setTarget(candidate)
+        return ReviewTarget(targetId, ReviewTargetEligibility.ELIGIBLE)
+    }
+
+    private fun restoreKeyboardToReacquiredTarget(targetId: ReviewTargetId) {
+        val restored = reacquireReviewTarget(targetId)
+        if (!restored.canRestore) return
+        val node = target?.node ?: return
+        node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+    }
+
+    private fun showTriggerForReacquiredTarget(targetId: ReviewTargetId) {
+        val restored = reacquireReviewTarget(targetId)
+        if (!restored.canRestore) {
+            reviewSurfaceExecutor.dispatch(restorationFailureEvent(restored.eligibility))
+            return
+        }
+        val bounds = target?.bounds ?: return
+        showTrigger(bounds)
+    }
+
+    private fun restorationFailureEvent(eligibility: ReviewTargetEligibility): ReviewSurfaceEvent =
+        when (eligibility) {
+            ReviewTargetEligibility.PASSWORD -> ReviewSurfaceEvent.PasswordFocused
+            ReviewTargetEligibility.SWITCHED_APPLICATION -> ReviewSurfaceEvent.ApplicationSwitched
+            else -> ReviewSurfaceEvent.TargetLost
+        }
+
     private fun rootForPackage(targetPackage: String): AccessibilityNodeInfo? {
         rootInActiveWindow?.let { root ->
             if (root.packageName?.toString() == targetPackage) return root
@@ -1413,36 +1603,11 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     }
 
     private fun closePanel(restoreKeyboard: Boolean) {
-        OnDeviceGrammarEngine.get(this).setSessionWarm(false)
-        mainHandler.removeCallbacks(keyboardHideRunnable)
         cancelKeyboardRestore()
-        panelView?.let { runCatching { windowManager.removeView(it) } }
-        panelView = null
-        reviewSession = null
-        modelRequests.cancelAll()
-        modelRequestEpoch += 1
-        suggestionListView = null
-        suggestionScrollView = null
-        counterView = null
-        statusView = null
-        replaceButton = null
-        dismissButton = null
-        acceptChangeButton = null
-        rejectChangeButton = null
-        reviewToneButtons.clear()
-        activeReviewChangeId = null
-        replacementInFlight = false
-        retainedInputConnection = null
-        workingText = ""
-        val captured = target?.let { current ->
-            current.copy(
-                snapshot = ExternalWritingPolicy.scrubbedSnapshot(current.snapshot),
-            ).also(::setTarget)
-        }
-        if (restoreKeyboard && captured != null) {
-            pendingRestoreTarget = captured
-            mainHandler.postDelayed(restoreTargetRunnable, KEYBOARD_RESTORE_DELAY_MS)
-        }
+        reviewSurfaceExecutor.dispatch(
+            if (restoreKeyboard) ReviewSurfaceEvent.CloseRequested
+            else ReviewSurfaceEvent.TargetLost,
+        )
     }
 
     private fun announceTriggerMiss() {
@@ -1463,6 +1628,16 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         removeTrigger()
     }
 
+    private fun clearTargetRetaining(retainedNode: AccessibilityNodeInfo) {
+        cancelTargetClear()
+        cancelKeyboardRestore()
+        val previous = target
+        target = null
+        workingText = ""
+        previous?.node?.let { recycleIfDetached(it, retainedNode) }
+        removeTrigger()
+    }
+
     private fun scheduleTargetClear() {
         mainHandler.removeCallbacks(deferredTargetClear)
         mainHandler.postDelayed(deferredTargetClear, TARGET_CLEAR_GRACE_MS)
@@ -1473,26 +1648,13 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     }
 
     private fun cancelKeyboardRestore() {
-        mainHandler.removeCallbacks(restoreTargetRunnable)
-        pendingRestoreTarget = null
-    }
-
-    private fun clearAll() {
-        cancelTargetClear()
-        cancelKeyboardRestore()
-        removeTrigger()
-        closePanel(restoreKeyboard = false)
-        clearTarget()
+        retainedInputConnection = null
     }
 
     private fun setTarget(next: Target) {
         val previous = target
         target = next
         if (previous != null) recycleIfDetached(previous.node, next.node)
-    }
-
-    private fun sameEditor(first: Target, second: Target): Boolean {
-        return first.packageName == second.packageName && first.node == second.node
     }
 
     private fun recycleIfDetached(node: AccessibilityNodeInfo, retained: AccessibilityNodeInfo?) {
@@ -1592,7 +1754,6 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         const val PREFERENCES_NAME = "manuscript_preferences_v1"
         const val TONE_KEY = "writing_tone"
         const val KEYBOARD_HIDE_DELAY_MS = 80L
-        const val KEYBOARD_RESTORE_DELAY_MS = 180L
         const val REPLACEMENT_VERIFY_INTERVAL_MS = 350L
         const val REPLACEMENT_VERIFY_ATTEMPTS = 8
         const val REPLACEMENT_LOG_TAG = "ManuscriptReplace"
