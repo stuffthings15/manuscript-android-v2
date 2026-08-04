@@ -33,16 +33,16 @@ class UserVisibleAiTerminologyTest {
     }
 
     @Test
-    fun publicPlayCopyCallsTheWritingEngineAi() {
-        val publicCopy = listOf(
-            "play/STORE_LISTING.md",
-            "play/PRIVACY_POLICY.md",
-            "play/RELEASE_NOTES.md",
-            "play/DATA_SAFETY.md",
-        ).joinToString("\n") { source(it) }
+    fun versionTwoDistributionCopyKeepsPlayDisabled() {
+        val distributionCopy = source("play/README.md")
 
-        assertTrue(publicCopy.contains("AI"))
-        assertFalse("Public Play copy exposed a model name: $publicCopy", forbidden.containsMatchIn(publicCopy))
+        assertTrue(distributionCopy.contains("USB-only"))
+        assertTrue(distributionCopy.contains("Do not"))
+        assertFalse(distributionCopy.contains("internaltest/"))
+        assertFalse(
+            "Version 2 distribution copy exposed a model name: $distributionCopy",
+            forbidden.containsMatchIn(distributionCopy),
+        )
     }
 
     private fun source(relativePath: String): String {

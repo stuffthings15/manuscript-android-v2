@@ -81,7 +81,9 @@ dependencies {
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
 }
 
-def llamaVendorDirectory = file("../vendor/llama.cpp")
+def llamaVendorDirectory = providers.gradleProperty("manuscript.llamaVendorDirectory")
+    .map { configuredPath -> file(configuredPath) }
+    .getOrElse(file("../vendor/llama.cpp"))
 def llamaVendorSentinels = [
     "examples/llama.android/lib/src/main/cpp/CMakeLists.txt": "825DDC929CDA8B0B5B9EA8272275F9A5D63638FE03E0D52B68529FE817E75A6F",
     "examples/llama.android/lib/src/main/cpp/ai_chat.cpp": "832C3A36F4A46DAB781376133B5A107E36C65A2E492B331ED045EDEBF4297DA2",

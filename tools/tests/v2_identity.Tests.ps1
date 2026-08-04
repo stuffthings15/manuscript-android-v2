@@ -28,17 +28,25 @@ Describe 'Manuscript Android Version 2 identity isolation' {
     }
 
     It 'has no active V1 contract, parent path, or Play upload workflow' {
-        $active = @($appBuild, $settings, $rootBuild) + @(
-            Get-ChildItem -Recurse tools, play -File |
+        $active = @($appBuild, $settings, $rootBuild, (Join-Path $root 'README.md')) + @(
+            Get-ChildItem -Recurse `
+                (Join-Path $root 'app\src\main'), `
+                (Join-Path $root 'app\src\test'), `
+                (Join-Path $root 'app\src\androidTest'), `
+                (Join-Path $root 'tools'), `
+                (Join-Path $root 'play') `
+                -File |
                 Where-Object { $_.FullName -ne $PSCommandPath } |
                 Select-Object -ExpandProperty FullName
         )
         $text = ($active | ForEach-Object { Get-Content -Raw -LiteralPath $_ }) -join "`n"
+        $text | Should Not Match 'com\.remote\.Manuscript(?!\.v2)'
         $text | Should Not Match 'manuscript-android-v1'
         $text | Should Not Match 'Manuscript/Android'
         $text | Should Not Match 'build_play_bundle'
         $text | Should Not Match 'internaltest/'
         $text | Should Not Match 'validatePlayBundle'
+        $text | Should Not Match '\[switch\]\$PlayUpload'
     }
 
     It 'has a V2 product contract and copied canonical brand assets' {
@@ -62,5 +70,36 @@ Describe 'Manuscript Android Version 2 identity isolation' {
         $build | Should Not Match 'git apply'
         $build | Should Not Match 'llamaVendorDirectory.*\.git'
         $build | Should Not Match 'outputs\.upToDateWhen'
+    }
+
+    It 'fails closed when a committed llama sentinel is changed' {
+        $sentinels = @(
+            'examples/llama.android/lib/src/main/cpp/CMakeLists.txt',
+            'examples/llama.android/lib/src/main/cpp/ai_chat.cpp',
+            'examples/llama.android/lib/src/main/cpp/logging.h',
+            'examples/llama.android/lib/src/main/java/com/arm/aichat/InferenceEngine.kt',
+            'examples/llama.android/lib/src/main/java/com/arm/aichat/internal/InferenceEngineImpl.kt'
+        )
+        $fixture = Join-Path $TestDrive 'llama.cpp'
+        foreach ($relativePath in $sentinels) {
+            $source = Join-Path (Join-Path $root 'vendor\llama.cpp') $relativePath
+            $target = Join-Path $fixture $relativePath
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+            Copy-Item -LiteralPath $source -Destination $target
+        }
+
+        $gradle = Join-Path $root 'gradlew.bat'
+        $arguments = @(
+            '--no-daemon',
+            '--max-workers=1',
+            ':llama-runtime:verifyManuscriptLlamaRuntime',
+            "-Pmanuscript.llamaVendorDirectory=$fixture"
+        )
+        & $gradle @arguments *> $null
+        $LASTEXITCODE | Should Be 0
+
+        Add-Content -LiteralPath (Join-Path $fixture $sentinels[1]) -Value "`n// tampered"
+        & $gradle @arguments *> $null
+        $LASTEXITCODE | Should Not Be 0
     }
 }

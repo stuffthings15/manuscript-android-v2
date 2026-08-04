@@ -1,0 +1,12 @@
+{
+  "adaptiveForegroundScale": 0.49,
+  "canonicalPngSha256": "7D4E71968686DF861B0BD8D1AC3D1D38AC7CB17BC048D1BE6F7DB1F42C9ED9E7",
+  "canonicalSvgSha256": "C85E54DD5051D33D488DEDE79A1F556235E08211E6C8F576219DD89F6C0FE84E",
+  "contractVersion": 1,
+  "generator": "tools/generate_android_brand_assets.py",
+  "outputs": {
+    "app/src/main/res/drawable/ic_manuscript.xml": "13499D919A3524909FA09EA604C1A4D350FB93BA01789EBD34929E3FEAE8BBF3",
+    "app/src/main/res/drawable/ic_manuscript_assist.xml": "5E93CE1947E4A55A12E96C1A733C3E0D41409E54005FEC7B03C2F7399435FE4F",
+    "app/src/main/res/drawable/ic_manuscript_launcher_foreground.xml": "5C644575AF0C3BE9B411B0B074C98FA670850FEC050F2284792F5B6F31BB9D56"
+  }
+}
