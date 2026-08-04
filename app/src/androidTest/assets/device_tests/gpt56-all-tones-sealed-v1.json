@@ -1,0 +1,192 @@
+{
+  "generator_model": "gpt-5.6-sol",
+  "document_id": "northstar-field-readiness-2027-sealed-v1",
+  "source": "# project northstar: Field Readyness Brief\n\n## Purpose and Current Status\n\nProject Northstar is a six week digital-access pilot at Harborview Community Center, and it were designed to help 240 families set up safe devices. The pilot begins April 14, 2027, the public workshop will happen on May 18, 2027 and final reports is due June 2, 2027. Although the steering committee approved a budget of $18,750. They have not approved overtime, catering, or any paid advertising. This distinction matter because several volunteers has already asked if extra hours will be reimbursed.\n\nMira Chen, who lead operations, said \"We can move quickly, but we cannot skip consent.\" Her reminder was aimed at everybody on the team, especially Jonah Patel and myself. Each coordinator need to confirm their assignment before Friday, and neither the trainers nor the site manager are allowed to assume somebody else completed it. If a worker is unsure, they should email mira.chen@example.org, replies gets archived in the project record.\n\n## Schedule and Ownership\n\nOn April 30, 2027, Jonah Patel will deliver 240 setup kits to Room B-214 by 9:30 a.m. Elena Ruiz inspect the shipment, counts the security seals, and logged any damage in the inventory dashboard. Only Mira Chen, Jonah Patel, and Elena Ruiz may access that dashboard; however, any volunteer can publish screenshots when they think it is helpful. This permission is incorrect according to the privacy plan and need clarified before orientation.\n\nDr. Soren Bell must finish the accessibility review by May 6, 2027. The review covers large text, keyboard navigation, captions and whether the instructions can be understood by a reader with limited technical experience. After reading the draft instructions, the color contrast looked inadequate. Dr. Bell should also check that every diagram have alt text, every video include captions, and testing the QR codes on both Android and iOS.\n\nThe team has three immediate tasks:\n\n- Jonah: deliver the kits, labeling every carton, and he must update the count.\n- Elena: Verify seals; photographs damage; and submit the log by 4:00 p.m.\n- Mira: sends the consent script to ops@northstar.example.org, train 14 volunteers, confirm Room B-214.\n\n## Data, Safety, and Communication Rules\n\nNo student records may leave Harborview Community Center, even if a parent requests it by email. Volunteers may not photograph minors, upload sign-in sheets, or share access codes. The three loaner tablets must use full-device encryption and automatic lock after 5 minutes. Before the tablets are issued, Jonah will configured them and Elena had verified the settings on May 12, 2027. That sequence is mandatory, it cannot be reversed just because the line becomes long.\n\nParticipants can read the current brief at https://northstar.example.org/brief?rev=4 and they may submit attendance at https://northstar.example.org/checkin. The first link is public, the second link requires a six digit access code. Do not copy either address into social media posts, and no one is permitted to create a shorter link. The communications lead asked Mira to post an announcement herself, which she declined because all public posting requires written approval from the steering committee.\n\nDuring orientation, trainers must explain what data is collected, why it is needed, and how long we keeps it. They also need to show participants where to request deletion. Because trust matters. If someone refuses consent, staff must still answer general questions but must not enroll them or saving their details. A parent may withdraw later; their kit remain theirs, yet their account data must be deleted within 10 business days.\n\n## Risks and Decisions Needed\n\nThe main risks are late shipment, confusing consent, device loss, and instructions that assumes everybody owns a smartphone. The backup plan include 12 printed guides and a staffed help desk, neither are ready. Mira asked Jonah whether the shipment was insured? He replied that the carrier confirms coverage last Tuesday, but he did not attach evidence. That answer needs verified before April 30, 2027.\n\nThere is also disagreement about check-in. Elena favors one shared tablet because it is simpler, Jonah prefer paper because the network sometimes fail. A shared tablet creates a queue, paper forms creates another privacy risk. The steering committee must choose one method by May 6, 2027, otherwise Mira will use encrypted offline check-in on the three loaner tablets. This fallback may be used only for attendance; volunteers must not add medical notes, family income, immigration status, or unrelated comments.\n\n## Definition of Done\n\nNorthstar is ready when all kits are counted, every volunteer have completed training, accessibility issues are closed, consent language is approved, and the check-in method works offline. Mira will run a rehearsal on May 12, 2027, record defects, then assigns owners. Owners must correct critical defects by May 18, 2027; minor wording issues is due by June 2, 2027. The team should be careful, transparent, and to document decisions. If these conditions is met, the pilot can begin responsibly without changing its scope or its $18,750 budget.",
+  "proofread_reference": "# Project Northstar: Field Readiness Brief\n\n## Purpose and Current Status\n\nProject Northstar is a six-week digital-access pilot at Harborview Community Center, and it was designed to help 240 families set up safe devices. The pilot begins April 14, 2027, the public workshop will happen on May 18, 2027, and final reports are due June 2, 2027. Although the steering committee approved a budget of $18,750, it has not approved overtime, catering, or any paid advertising. This distinction matters because several volunteers have already asked if extra hours will be reimbursed.\n\nMira Chen, who leads operations, said, \"We can move quickly, but we cannot skip consent.\" Her reminder was aimed at everybody on the team, especially Jonah Patel and me. Each coordinator needs to confirm their assignment before Friday, and neither the trainers nor the site manager is allowed to assume somebody else completed it. If workers are unsure, they should email mira.chen@example.org; replies get archived in the project record.\n\n## Schedule and Ownership\n\nOn April 30, 2027, Jonah Patel will deliver 240 setup kits to Room B-214 by 9:30 a.m. Elena Ruiz will inspect the shipment, count the security seals, and log any damage in the inventory dashboard. Only Mira Chen, Jonah Patel, and Elena Ruiz may access that dashboard; no volunteer may publish screenshots. This restriction follows the privacy plan and needs to be clarified before orientation.\n\nDr. Soren Bell must finish the accessibility review by May 6, 2027. The review covers large text, keyboard navigation, captions, and whether the instructions can be understood by a reader with limited technical experience. After Dr. Bell read the draft instructions, he found the color contrast inadequate. Dr. Bell should also check that every diagram has alt text, every video includes captions, and every QR code works on both Android and iOS.\n\nThe team has three immediate tasks:\n\n- Jonah: deliver the kits, label every carton, and update the count.\n- Elena: verify seals, photograph damage, and submit the log by 4:00 p.m.\n- Mira: send the consent script to ops@northstar.example.org, train 14 volunteers, and confirm Room B-214.\n\n## Data, Safety, and Communication Rules\n\nNo student records may leave Harborview Community Center, even if a parent requests them by email. Volunteers may not photograph minors, upload sign-in sheets, or share access codes. The three loaner tablets must use full-device encryption and lock automatically after 5 minutes. Before the tablets are issued, Jonah will configure them and Elena will verify the settings on May 12, 2027. That sequence is mandatory; it cannot be reversed just because the line becomes long.\n\nParticipants can read the current brief at https://northstar.example.org/brief?rev=4, and they may submit attendance at https://northstar.example.org/checkin. The first link is public; the second link requires a six-digit access code. Do not copy either address into social media posts, and no one is permitted to create a shorter link. The communications lead asked Mira to post an announcement herself, which she declined because all public posting requires written approval from the steering committee.\n\nDuring orientation, trainers must explain what data is collected, why it is needed, and how long we keep it. They also need to show participants where to request deletion because trust matters. If someone refuses consent, staff must still answer general questions but must not enroll them or save their details. A parent may withdraw later; their kit remains theirs, yet their account data must be deleted within 10 business days.\n\n## Risks and Decisions Needed\n\nThe main risks are late shipment, confusing consent, device loss, and instructions that assume everybody owns a smartphone. The backup plan includes 12 printed guides and a staffed help desk; neither is ready. Mira asked Jonah whether the shipment was insured. He replied that the carrier confirmed coverage last Tuesday, but he did not attach evidence. That answer needs to be verified before April 30, 2027.\n\nThere is also disagreement about check-in. Elena favors one shared tablet because it is simpler; Jonah prefers paper because the network sometimes fails. A shared tablet creates a queue; paper forms create another privacy risk. The steering committee must choose one method by May 6, 2027; otherwise, Mira will use encrypted offline check-in on the three loaner tablets. This fallback may be used only for attendance; volunteers must not add medical notes, family income, immigration status, or unrelated comments.\n\n## Definition of Done\n\nNorthstar is ready when all kits are counted, every volunteer has completed training, accessibility issues are closed, consent language is approved, and the check-in method works offline. Mira will run a rehearsal on May 12, 2027, record defects, and then assign owners. Owners must correct critical defects by May 18, 2027; minor wording issues are due by June 2, 2027. The team should be careful, transparent, and diligent in documenting decisions. If these conditions are met, the pilot can begin responsibly without changing its scope or its $18,750 budget.",
+  "protected_facts": [
+    "Project Northstar",
+    "Harborview Community Center",
+    "Mira Chen",
+    "Jonah Patel",
+    "Elena Ruiz",
+    "Dr. Soren Bell",
+    "April 14, 2027",
+    "April 30, 2027",
+    "May 6, 2027",
+    "May 12, 2027",
+    "May 18, 2027",
+    "June 2, 2027",
+    "$18,750",
+    "240 families",
+    "240 setup kits",
+    "Room B-214",
+    "9:30 a.m.",
+    "4:00 p.m.",
+    "14 volunteers",
+    "3 loaner tablets",
+    "5 minutes",
+    "10 business days",
+    "12 printed guides",
+    "https://northstar.example.org/brief?rev=4",
+    "https://northstar.example.org/checkin",
+    "mira.chen@example.org",
+    "ops@northstar.example.org",
+    "\"We can move quickly, but we cannot skip consent.\"",
+    "The steering committee has not approved overtime, catering, or paid advertising.",
+    "Volunteers may not photograph minors, upload sign-in sheets, or share access codes.",
+    "Only Mira Chen, Jonah Patel, and Elena Ruiz may access the inventory dashboard.",
+    "No volunteer may publish inventory-dashboard screenshots.",
+    "All public posting requires written approval from the steering committee.",
+    "Jonah configures the three loaner tablets before Elena verifies them on May 12, 2027.",
+    "The steering committee must choose a check-in method by May 6, 2027.",
+    "Mira runs the rehearsal on May 12, 2027.",
+    "Critical defects are due May 18, 2027; minor wording issues are due June 2, 2027."
+  ],
+  "objective_error_inventory": [
+    {"category": "capitalization", "source_fragment": "# project northstar: Field Readyness Brief", "required_fix": "# Project Northstar: Field Readiness Brief"},
+    {"category": "spelling", "source_fragment": "Readyness", "required_fix": "Readiness"},
+    {"category": "hyphenation", "source_fragment": "six week digital-access pilot", "required_fix": "six-week digital-access pilot"},
+    {"category": "subject_verb_agreement", "source_fragment": "it were designed", "required_fix": "it was designed"},
+    {"category": "comma_in_series", "source_fragment": "May 18, 2027 and final reports", "required_fix": "May 18, 2027, and final reports"},
+    {"category": "subject_verb_agreement", "source_fragment": "final reports is due", "required_fix": "final reports are due"},
+    {"category": "sentence_fragment", "source_fragment": "Although the steering committee approved a budget of $18,750.", "required_fix": "Join the dependent clause to the following independent clause with a comma."},
+    {"category": "subject_verb_agreement", "source_fragment": "This distinction matter", "required_fix": "This distinction matters"},
+    {"category": "subject_verb_agreement", "source_fragment": "several volunteers has", "required_fix": "several volunteers have"},
+    {"category": "subject_verb_agreement", "source_fragment": "Mira Chen, who lead operations", "required_fix": "Mira Chen, who leads operations"},
+    {"category": "punctuation", "source_fragment": "said \"We can move", "required_fix": "said, \"We can move"},
+    {"category": "pronoun_case", "source_fragment": "Jonah Patel and myself", "required_fix": "Jonah Patel and me"},
+    {"category": "subject_verb_agreement", "source_fragment": "Each coordinator need", "required_fix": "Each coordinator needs"},
+    {"category": "agreement", "source_fragment": "neither the trainers nor the site manager are allowed", "required_fix": "neither the trainers nor the site manager is allowed"},
+    {"category": "pronoun_number", "source_fragment": "If a worker is unsure, they should", "required_fix": "If workers are unsure, they should"},
+    {"category": "comma_splice", "source_fragment": "mira.chen@example.org, replies gets archived", "required_fix": "mira.chen@example.org; replies get archived"},
+    {"category": "tense_consistency", "source_fragment": "Elena Ruiz inspect the shipment, counts the security seals, and logged", "required_fix": "Elena Ruiz will inspect the shipment, count the security seals, and log"},
+    {"category": "factual_permission_contradiction", "source_fragment": "any volunteer can publish screenshots", "required_fix": "no volunteer may publish screenshots"},
+    {"category": "subject_verb_agreement", "source_fragment": "This permission is incorrect according to the privacy plan and need clarified", "required_fix": "This restriction follows the privacy plan and needs to be clarified"},
+    {"category": "dangling_modifier", "source_fragment": "After reading the draft instructions, the color contrast looked inadequate.", "required_fix": "After Dr. Bell read the draft instructions, he found the color contrast inadequate."},
+    {"category": "comma_in_series", "source_fragment": "keyboard navigation, captions and whether", "required_fix": "keyboard navigation, captions, and whether"},
+    {"category": "parallelism", "source_fragment": "every diagram have alt text, every video include captions, and testing the QR codes", "required_fix": "every diagram has alt text, every video includes captions, and every QR code works"},
+    {"category": "list_parallelism", "source_fragment": "deliver the kits, labeling every carton, and he must update the count", "required_fix": "deliver the kits, label every carton, and update the count"},
+    {"category": "list_capitalization_parallelism", "source_fragment": "Verify seals; photographs damage; and submit", "required_fix": "verify seals, photograph damage, and submit"},
+    {"category": "list_tense_parallelism", "source_fragment": "sends the consent script to ops@northstar.example.org, train 14 volunteers, confirm Room B-214", "required_fix": "send the consent script to ops@northstar.example.org, train 14 volunteers, and confirm Room B-214"},
+    {"category": "pronoun_agreement", "source_fragment": "a parent requests it by email", "required_fix": "a parent requests them by email"},
+    {"category": "word_order", "source_fragment": "automatic lock after 5 minutes", "required_fix": "lock automatically after 5 minutes"},
+    {"category": "tense_consistency", "source_fragment": "Jonah will configured them and Elena had verified", "required_fix": "Jonah will configure them and Elena will verify"},
+    {"category": "comma_splice", "source_fragment": "That sequence is mandatory, it cannot be reversed", "required_fix": "That sequence is mandatory; it cannot be reversed"},
+    {"category": "punctuation", "source_fragment": "brief at https://northstar.example.org/brief?rev=4 and they may", "required_fix": "brief at https://northstar.example.org/brief?rev=4, and they may"},
+    {"category": "comma_splice", "source_fragment": "The first link is public, the second link", "required_fix": "The first link is public; the second link"},
+    {"category": "hyphenation", "source_fragment": "six digit access code", "required_fix": "six-digit access code"},
+    {"category": "subject_verb_agreement", "source_fragment": "how long we keeps it", "required_fix": "how long we keep it"},
+    {"category": "sentence_fragment", "source_fragment": "Because trust matters.", "required_fix": "Join the reason to the preceding sentence: because trust matters."},
+    {"category": "parallelism", "source_fragment": "must not enroll them or saving their details", "required_fix": "must not enroll them or save their details"},
+    {"category": "subject_verb_agreement", "source_fragment": "their kit remain theirs", "required_fix": "their kit remains theirs"},
+    {"category": "subject_verb_agreement", "source_fragment": "instructions that assumes", "required_fix": "instructions that assume"},
+    {"category": "subject_verb_agreement", "source_fragment": "The backup plan include", "required_fix": "The backup plan includes"},
+    {"category": "agreement", "source_fragment": "12 printed guides and a staffed help desk, neither are ready", "required_fix": "12 printed guides and a staffed help desk; neither is ready"},
+    {"category": "question_punctuation", "source_fragment": "Mira asked Jonah whether the shipment was insured?", "required_fix": "Mira asked Jonah whether the shipment was insured."},
+    {"category": "tense", "source_fragment": "the carrier confirms coverage last Tuesday", "required_fix": "the carrier confirmed coverage last Tuesday"},
+    {"category": "vocabulary_form", "source_fragment": "That answer needs verified", "required_fix": "That answer needs to be verified"},
+    {"category": "comma_splice", "source_fragment": "Elena favors one shared tablet because it is simpler, Jonah prefer paper", "required_fix": "Elena favors one shared tablet because it is simpler; Jonah prefers paper"},
+    {"category": "subject_verb_agreement", "source_fragment": "the network sometimes fail", "required_fix": "the network sometimes fails"},
+    {"category": "subject_verb_agreement", "source_fragment": "paper forms creates", "required_fix": "paper forms create"},
+    {"category": "run_on", "source_fragment": "by May 6, 2027, otherwise Mira", "required_fix": "by May 6, 2027; otherwise, Mira"},
+    {"category": "subject_verb_agreement", "source_fragment": "every volunteer have completed", "required_fix": "every volunteer has completed"},
+    {"category": "tense_parallelism", "source_fragment": "record defects, then assigns owners", "required_fix": "record defects, and then assign owners"},
+    {"category": "subject_verb_agreement", "source_fragment": "minor wording issues is due", "required_fix": "minor wording issues are due"},
+    {"category": "parallelism", "source_fragment": "careful, transparent, and to document decisions", "required_fix": "careful, transparent, and diligent in documenting decisions"},
+    {"category": "subject_verb_agreement", "source_fragment": "If these conditions is met", "required_fix": "If these conditions are met"}
+  ],
+  "tone_rubrics": {
+    "PROOFREAD": {
+      "objective_correctness_gate": "Required first: correct all 51 inventoried objective errors, introduce zero new objective errors, preserve every protected fact exactly, and retain all six headings plus the three-item list.",
+      "acceptance_criteria": ["Meaning and paragraph order remain unchanged.", "Word count stays within 5 percent of the proofread reference.", "No optional tone shift or added claim appears."]
+    },
+    "IMPROVE": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before stylistic improvement.",
+      "acceptance_criteria": ["Replace at least 8 vague or awkward constructions with clearer wording.", "Use transitions in at least 4 section openings.", "Keep output between 700 and 900 words and preserve all protected facts."]
+    },
+    "REPHRASE": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before rephrasing.",
+      "acceptance_criteria": ["Recast at least 70 percent of non-heading sentences without changing meaning.", "No paragraph may copy more than 12 consecutive non-protected words from the reference.", "Retain the six headings and three-item list."]
+    },
+    "SHORTEN": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before shortening.",
+      "acceptance_criteria": ["Reduce corrected-reference word count by 30 to 45 percent.", "Keep every deadline, assignment, permission, obligation, negation, contact, URL, quotation, number, and name.", "Use no sentence longer than 28 words."]
+    },
+    "FRIENDLY": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before changing warmth.",
+      "acceptance_criteria": ["Include at least 4 warm collaborative phrases.", "Use contractions in 3 to 8 suitable places.", "Keep commands and privacy prohibitions unambiguous."]
+    },
+    "FORMAL": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before formalization.",
+      "acceptance_criteria": ["Use no contractions, slang, or sentence fragments.", "Use complete institutional titles and precise modal verbs.", "Keep all six headings and the list in formal register."]
+    },
+    "PROFESSIONAL": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before professional editing.",
+      "acceptance_criteria": ["Open each section with an action-oriented topic sentence.", "Use consistent role and deadline phrasing in every assignment.", "Keep output between 650 and 850 words."]
+    },
+    "ACADEMIC": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before academic styling.",
+      "acceptance_criteria": ["Use at least 5 explicit logical connectors.", "Frame claims analytically without inventing citations, findings, or evidence.", "Use third-person institutional language except inside the protected quotation and addresses."]
+    },
+    "CONVERSATIONAL": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before conversational styling.",
+      "acceptance_criteria": ["Use second person in 3 to 7 sentences.", "Use at least 4 natural contractions.", "Keep every prohibition and deadline explicit rather than implied."]
+    },
+    "CONCISE": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before compression.",
+      "acceptance_criteria": ["Reduce corrected-reference word count by 20 to 35 percent.", "Average sentence length is 18 words or fewer.", "Remove repetition while preserving all protected facts and list structure."]
+    },
+    "DETAILED": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before elaboration.",
+      "acceptance_criteria": ["Add procedural clarification to at least 5 existing actions.", "Output is 900 to 1,100 words.", "Add no new names, dates, quantities, permissions, or unsupported claims."]
+    },
+    "PERSUASIVE": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before persuasion.",
+      "acceptance_criteria": ["State a clear case for completing readiness work in the opening and closing.", "Use at least 3 fact-based benefit or risk links.", "Do not soften any privacy rule, prohibition, or approval requirement."]
+    },
+    "CONFIDENT": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before confident styling.",
+      "acceptance_criteria": ["Use direct active voice in at least 85 percent of finite clauses.", "Use no hedges such as maybe, perhaps, or probably.", "Do not portray unverified insurance coverage as confirmed."]
+    },
+    "DIPLOMATIC": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before diplomatic styling.",
+      "acceptance_criteria": ["Describe the check-in disagreement without blame.", "Include at least 3 respectful consensus phrases.", "Retain firm wording for mandatory privacy, consent, and deadline rules."]
+    },
+    "EMPATHETIC": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before empathetic styling.",
+      "acceptance_criteria": ["Acknowledge participant concerns, volunteer workload, and staff uncertainty at least once each.", "Use supportive language in at least 4 sentences.", "Do not imply consent refusal has penalties."]
+    },
+    "CASUAL": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before casual styling.",
+      "acceptance_criteria": ["Use contractions in 5 to 10 places and plain everyday vocabulary.", "Use no slang that obscures duties or permissions.", "Keep headings, list, protected quotation, URLs, and addresses intact."]
+    },
+    "TECHNICAL": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before technical styling.",
+      "acceptance_criteria": ["Use precise terms for encryption, automatic locking, offline check-in, access control, and accessibility.", "Present at least 5 requirements with explicit actor, action, and verification condition.", "Invent no specification, standard, or implementation detail."]
+    },
+    "SIMPLIFIED": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before simplification.",
+      "acceptance_criteria": ["Average sentence length is 15 words or fewer.", "At least 90 percent of sentences contain 22 words or fewer.", "Keep all protected facts, negations, permissions, and obligations explicit."]
+    },
+    "HIGH_SCHOOL": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before grade-level adaptation.",
+      "acceptance_criteria": ["Use mostly common vocabulary and define any unavoidable technical term at first use.", "Average sentence length is 12 to 20 words.", "Preserve the complete operational meaning and all formatting."]
+    },
+    "COLLEGE": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before college-level adaptation.",
+      "acceptance_criteria": ["Use varied sentence structures and precise transitions in every section.", "Maintain an analytic but readable register without invented citations.", "Average sentence length is 16 to 24 words."]
+    },
+    "COOPERATIVE": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before cooperative styling.",
+      "acceptance_criteria": ["Use we or our in 5 to 10 suitable sentences.", "Pair every assignment with a clear collaboration or handoff cue.", "Do not blur individual ownership, approvals, or deadlines."]
+    },
+    "ASSERTIVE": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before assertive styling.",
+      "acceptance_criteria": ["Express each obligation with must, will, or a direct imperative.", "Use no hedges and no passive construction for assignments.", "Keep all prohibitions exact and all deadlines prominent."]
+    },
+    "CAVEMAN": {
+      "objective_correctness_gate": "Required first: meet the full PROOFREAD gate before extreme simplification.",
+      "acceptance_criteria": ["At least 80 percent of sentences contain 3 to 8 words.", "Use simple subject-verb-object clauses and no sentence over 12 words, excluding protected URLs, addresses, quotation, and headings.", "All protected facts, assignments, permissions, obligations, negations, deadlines, headings, and list items remain present and unambiguous."]
+    }
+  }
+}

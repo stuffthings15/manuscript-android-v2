@@ -1,0 +1,61 @@
+plugins {
+    id "com.android.application" version "9.2.0" apply false
+    id "com.android.library" version "9.2.0" apply false
+    id "com.google.devtools.ksp" version "2.3.8" apply false
+}
+
+allprojects {
+    dependencyLocking {
+        lockAllConfigurations()
+    }
+}
+
+configurations {
+    bundletoolCli
+}
+
+dependencies {
+    bundletoolCli "com.android.tools.build:bundletool:1.18.3"
+    bundletoolCli "com.google.protobuf:protobuf-java:3.25.5"
+    bundletoolCli "com.google.protobuf:protobuf-java-util:3.25.5"
+    bundletoolCli "org.bitbucket.b_c:jose4j:0.9.6"
+    bundletoolCli "org.jetbrains.kotlin:kotlin-stdlib:2.3.21"
+}
+
+tasks.register("validatePlayBundle", JavaExec) {
+    group = "verification"
+    description = "Validates the signed Manuscript release AAB with bundletool."
+    dependsOn ":app:bundleRelease"
+    classpath = configurations.bundletoolCli
+    mainClass = "com.android.tools.build.bundletool.BundleToolMain"
+    args "validate", "--bundle=${project.file('app/build/outputs/bundle/release/app-release.aab')}"
+}
+
+tasks.register("buildConnectedDebugApks", JavaExec) {
+    group = "verification"
+    description = "Builds device-specific debug APK splits for the connected emulator."
+    dependsOn ":app:bundleDebug"
+    classpath = configurations.bundletoolCli
+    mainClass = "com.android.tools.build.bundletool.BundleToolMain"
+    def aapt2 = file("${System.getenv('LOCALAPPDATA')}/Android/Sdk/build-tools/36.0.0/aapt2.exe")
+    def adb = file("${System.getenv('LOCALAPPDATA')}/Android/Sdk/platform-tools/adb.exe")
+    args "build-apks",
+        "--bundle=${project.file('app/build/outputs/bundle/debug/app-debug.aab')}",
+        "--output=${project.file('app/build/outputs/apks/debug/app-debug.apks')}",
+        "--aapt2=${aapt2}",
+        "--adb=${adb}",
+        "--connected-device",
+        "--overwrite"
+}
+
+tasks.register("installConnectedDebugApks", JavaExec) {
+    group = "verification"
+    description = "Installs device-specific debug APK splits on the connected emulator."
+    dependsOn "buildConnectedDebugApks"
+    classpath = configurations.bundletoolCli
+    mainClass = "com.android.tools.build.bundletool.BundleToolMain"
+    def adb = file("${System.getenv('LOCALAPPDATA')}/Android/Sdk/platform-tools/adb.exe")
+    args "install-apks",
+        "--apks=${project.file('app/build/outputs/apks/debug/app-debug.apks')}",
+        "--adb=${adb}"
+}

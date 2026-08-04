@@ -1,0 +1,43 @@
+the quarterly budget meeting were suppose to start at 9am on monday but nobody showed up untill 9:30. Marcus said he dont remember getting the invite, and the conference room calender still showed the old booking from last week
+
+Our new customer portal have three main problem. first the login page take almost 8 seconds to load. second, password resets dont send no email. and third the dashboard show wrong numbers for anyone who signed up before march.
+
+i cant beleive we shiped the update without testing it on tablets. The layout brakes completly on screens smaller then 10 inches and the save button dissapear behind the keyboard
+
+Sarah and me was reviewing the vendor contracts yesterday. the printing vendor charge us twice for invoice 7731, and there quote for next year go up by 15 percent even tho the contract says increases is capped at 5 percent.
+
+The warehouse team recieved 340 boxes on tuesday but the manifest listed 385. we dont no where the missing 45 boxes went, and no body signed the delivery sheet neither.
+
+managment want the report finished by friday. that give us only three days to colect the data, write the summary, and get aproval from legal. it aint gonna be easy.
+
+The new hires orientation go for two weeks. During the first week they learns about company policy, safty rules, and the benifits package. the second week cover job specific training with there team leads.
+
+customer complaints have went up 22 percent since the price change. most of the angry emails mention the removal of the free shiping option, which use to apply on orders over 50 dollars.
+
+Please dont forget to backup the database before you runs the migration script. last time someone skiped this step we lost four hours of transaction data and had to apologize to hundreds of costumers.
+
+the marketing team suggest we launchs the campaign in early october. they beleive the fall season give better engagement, and there data from last year support this theory to.
+
+Him and the contractor walked threw the building on wensday. they found water damage in the basement, two broken windows on the third floor, and a heating system that dont work at all.
+
+Every employee must submits there timesheet by 5pm on friday. late submisions delays payroll for the whole department, and the finance team have complained about this three times allready.
+
+the softwares new version include better search, faster load times and a offline mode. however it also remove the export feature that many of our biggest customer depend on every day.
+
+We was planing to hire two more engineers this quarter but the budget freeze put everything on hold. the recruiting team have already interviewed six candidates and now they has to tell them the position dont exist no more.
+
+teh community garden project need volunteers for saturday. tasks include planting the raised beds weeding the walkways, and painting the new tool shed. lunch are provided for everyone who help.
+
+Their going to announce the office relocation next month. the new building are downtown near the train station, which make commuting easier for most staff but parking cost 200 dollars a month their.
+
+the annual security audit found seven issues. five of them was fixed within a week but the remaining two require a firmware update that the vendor wont release untill december.
+
+Me and Jenna presented the redesign to the board. they liked the new color scheme but asked us to make the font biger and add more contrast for acessibility reasons.
+
+the delivery drivers keeps complaining about the routing app. it send them threw school zones during pickup hours and dont account for the road closure on fifth avenue.
+
+if we dont fix the checkout bug before black friday we is going to lose alot of sales. the cart drop items when customers change the quantity to fast, and support have no workaround to offer.
+
+The break room refridgerator been broken for two weeks. facilities say the replacement part arrive next tuesday, but nobody have confirmed the order number or the delivery date.
+
+everyones excited about the holiday party except the planing comittee. they still needs a venue, a caterer, and a budget aproval, and the date are only five weeks away.

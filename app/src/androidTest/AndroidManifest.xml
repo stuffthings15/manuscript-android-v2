@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="com.echolink.mobile.S23ExternalEditorFixtureActivity"
+            android:exported="true"
+            android:label="Manuscript S23 field fixture" />
+    </application>
+</manifest>

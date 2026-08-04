@@ -1,0 +1,42 @@
+{
+    "schema_version":  2,
+    "document_id":  "northstar-five-page-all-tones-sealed-v2",
+    "corpus_path":  "app/src/androidTest/assets/device_tests/gpt56-five-page-all-tones-v2.json",
+    "source_path":  "app/src/androidTest/assets/device_tests/gpt56-five-page-errors-v2.md",
+    "reference_path":  "app/src/androidTest/assets/device_tests/gpt56-five-page-proofread-reference-v2.md",
+    "rubric_path":  "quality/gpt56/gpt56-five-page-tone-rubrics-v2.json",
+    "required_score_percent":  100,
+    "allowed_introduced_errors":  0,
+    "allowed_em_dashes":  0,
+    "tone_order":  [
+                       "PROOFREAD",
+                       "IMPROVE",
+                       "REPHRASE",
+                       "SHORTEN",
+                       "CONCISE",
+                       "SIMPLIFIED",
+                       "HIGH_SCHOOL",
+                       "CAVEMAN",
+                       "FORMAL",
+                       "PROFESSIONAL",
+                       "ACADEMIC",
+                       "COLLEGE",
+                       "TECHNICAL",
+                       "DETAILED",
+                       "FRIENDLY",
+                       "CONVERSATIONAL",
+                       "CASUAL",
+                       "COOPERATIVE",
+                       "EMPATHETIC",
+                       "DIPLOMATIC",
+                       "PERSUASIVE",
+                       "CONFIDENT",
+                       "ASSERTIVE"
+                   ],
+    "sha256":  {
+                   "corpus":  "a2aca4386415a30df8f97320051529002011a17cc5f1110d168a0191f8756e78",
+                   "source":  "4358a8521631c2d962de3ffb7a55f7ea04afdc1b95c2eedbffb0ea641c656dd9",
+                   "reference":  "7a82fec7bf4637ad80494152c8ec30cc09047d26238f03b768296941b8557fda",
+                   "rubric":  "29167bc4c1ce6e0fcf2e174de5bc2e87240e35b67bc84a0788e07a42954c0d79"
+               }
+}

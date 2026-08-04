@@ -1,0 +1,21 @@
+/.gradle/
+/local.properties
+/**/build/
+/**/.cxx/
+*.jks
+*.keystore
+
+# Raw device captures can contain private text, account names, or device data.
+/evidence/private/
+/evidence/*.xml
+/evidence/*.png
+/evidence/*.jpg
+/evidence/*.jpeg
+/evidence/*.webp
+/test-evidence/**/*.apk
+/test-evidence/**/*.stdout.txt
+/test-evidence/**/*.stderr.txt
+/play/release-contact.properties
+
+# GPT 5.6 device round artifacts are private generated evidence.
+/test-evidence/gpt56-five-page-all-tones-v2/*/

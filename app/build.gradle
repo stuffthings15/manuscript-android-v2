@@ -1,0 +1,132 @@
+plugins {
+    id "com.android.application"
+    id "com.google.devtools.ksp"
+}
+
+def manuscriptStoreFile = System.getenv("MANUSCRIPT_UPLOAD_STORE_FILE")
+def manuscriptStorePassword = System.getenv("MANUSCRIPT_UPLOAD_STORE_PASSWORD")
+def manuscriptKeyAlias = System.getenv("MANUSCRIPT_UPLOAD_KEY_ALIAS")
+def manuscriptKeyPassword = System.getenv("MANUSCRIPT_UPLOAD_KEY_PASSWORD")
+def hasReleaseSigning = manuscriptStoreFile && manuscriptStorePassword &&
+    manuscriptKeyAlias && manuscriptKeyPassword
+def manuscriptGitCommit = providers.exec {
+    commandLine "git", "-C", rootProject.projectDir, "rev-parse", "--short=12", "HEAD"
+}.standardOutput.asText.get().trim()
+
+android {
+    namespace "com.echolink.mobile"
+    compileSdk 36
+    testBuildType providers.gradleProperty("manuscript.testBuildType").getOrElse("release")
+
+    defaultConfig {
+        applicationId "com.remote.Manuscript"
+        minSdk 26
+        targetSdk 36
+        versionCode 33
+        versionName "0.33.0-internal"
+        buildConfigField "String", "MANUSCRIPT_ACCOUNT_SERVICE_URL", "\"https://manuscript-writing.seventhree170.chatgpt.site\""
+        buildConfigField "String", "MANUSCRIPT_GIT_COMMIT", "\"${manuscriptGitCommit}\""
+        buildConfigField "int", "MANUSCRIPT_CONTRACT_VERSION", "1"
+        buildConfigField "boolean", "MANUSCRIPT_VULKAN",
+            providers.gradleProperty("manuscript.vulkan").getOrElse("false")
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(manuscriptStoreFile)
+                storePassword manuscriptStorePassword
+                keyAlias manuscriptKeyAlias
+                keyPassword manuscriptKeyPassword
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            buildConfigField "boolean", "SUBSCRIPTION_ENFORCED", "false"
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+        release {
+            buildConfigField "boolean", "SUBSCRIPTION_ENFORCED", "true"
+            minifyEnabled false
+            shrinkResources false
+            if (hasReleaseSigning) signingConfig signingConfigs.release
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packaging {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        // llama.cpp discovers the fastest compatible CPU backend at runtime.
+        // Extracted libraries give it real filesystem paths on every OEM and Chromebook.
+        jniLibs.useLegacyPackaging = true
+    }
+
+    sourceSets {
+        main.assets.srcDir rootProject.file("../../shared/contract/v1")
+        if (
+            providers.gradleProperty("manuscript.excludeParkedGptTests")
+                .getOrElse("false").toBoolean()
+        ) {
+            androidTest.java.exclude "**/LiveFullPageReviewDeviceTest.kt"
+            androidTest.kotlin.exclude "**/LiveFullPageReviewDeviceTest.kt"
+            androidTest.assets.exclude "device_tests/gpt56-*"
+        }
+    }
+
+    testOptions {
+        execution "ANDROIDX_TEST_ORCHESTRATOR"
+        unitTests.all {
+            systemProperty "echoLinkContractDir", rootProject.file("shared/contract/v1").absolutePath
+            systemProperty "echoLinkAndroidDir", rootProject.projectDir.absolutePath
+        }
+    }
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+tasks.configureEach { task ->
+    if (task.name in ["assembleRelease", "bundleRelease", "packageRelease"]) {
+        task.doFirst {
+            if (!hasReleaseSigning) {
+                throw new GradleException(
+                    "Release packaging requires the Manuscript upload signing credentials."
+                )
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation "androidx.core:core-ktx:1.18.0"
+    implementation "androidx.room:room-runtime:2.8.4"
+    implementation "androidx.room:room-ktx:2.8.4"
+    implementation "androidx.work:work-runtime-ktx:2.11.2"
+    implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0"
+    implementation "com.google.ai.edge.litertlm:litertlm-android:0.14.0"
+    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.27.0"
+    implementation project(":llama-runtime")
+    ksp "androidx.room:room-compiler:2.8.4"
+    testImplementation "junit:junit:4.13.2"
+    androidTestImplementation "androidx.test:runner:1.6.2"
+    androidTestImplementation "androidx.test.ext:junit:1.2.1"
+    androidTestImplementation "androidx.room:room-testing:2.8.4"
+    androidTestUtil "androidx.test:orchestrator:1.5.1"
+}

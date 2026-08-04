@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated from Windows manuscript.svg SHA256 A757E5D17EC31ED502FF249152270269241C4F8E83299E0191D23A1B28EBC30B. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <group
+        android:scaleX="0.49"
+        android:scaleY="0.49"
+        android:translateX="261.12"
+        android:translateY="261.12">
+    <path android:fillColor="#17120D" android:pathData="M220,0H804A220,220 0,0 1,1024,220V804A220,220 0,0 1,804,1024H220A220,220 0,0 1,0,804V220A220,220 0,0 1,220,0Z" />
+    <path android:fillColor="@android:color/transparent" android:strokeColor="#D6A85F" android:strokeWidth="58" android:pathData="M242,54H782A188,188 0,0 1,970,242V782A188,188 0,0 1,782,970H242A188,188 0,0 1,54,782V242A188,188 0,0 1,242,54Z" />
+    <path android:fillColor="#F2D6A2" android:strokeColor="#8B5B2B" android:strokeWidth="34" android:strokeLineJoin="round" android:pathData="M314,194H710C768,194 814,240 814,298C814,340 788,379 748,395V732C748,784 706,826 654,826H314C262,826 220,784 220,732V288C220,236 262,194 314,194Z" />
+    <path android:fillColor="#E2B86F" android:pathData="M314,194H710C660,210 636,249 636,300H270C270,242 284,209 314,194Z" />
+    <path android:fillColor="#E2B86F" android:pathData="M654,826H314C364,810 388,771 388,720H754C754,778 720,811 654,826Z" />
+    <path android:fillColor="@android:color/transparent" android:strokeColor="#3B291C" android:strokeWidth="42" android:strokeLineCap="round" android:pathData="M338,404H624M338,506H586M338,608H526" />
+    <path android:fillColor="#D6A85F" android:strokeColor="#3B291C" android:strokeWidth="26" android:strokeLineJoin="round" android:pathData="M590,710L770,453L828,434L824,495L644,752L552,799Z" />
+    <path android:fillColor="@android:color/transparent" android:strokeColor="#F7E7C6" android:strokeWidth="24" android:strokeLineCap="round" android:pathData="M748,484L797,518" />
+    </group>
+</vector>

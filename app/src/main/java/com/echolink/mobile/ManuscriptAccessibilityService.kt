@@ -1,0 +1,1652 @@
+package com.echolink.mobile
+
+import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.InputMethod
+import android.annotation.TargetApi
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.Rect
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.TextPaint
+import android.text.method.LinkMovementMethod
+import android.text.style.BackgroundColorSpan
+import android.text.style.ClickableSpan
+import android.text.style.ForegroundColorSpan
+import android.text.style.StrikethroughSpan
+import android.text.style.StyleSpan
+import android.util.Log
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowInsets
+import android.view.WindowManager
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.widget.Button
+import android.widget.HorizontalScrollView
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+
+class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOverlayActions {
+    private lateinit var windowManager: WindowManager
+    private var triggerView: View? = null
+    private var panelView: View? = null
+    private var target: Target? = null
+    private var reviewSession: WritingReviewSession? = null
+    private var workingText = ""
+    private var selectedTone = WritingTone.PROOFREAD
+    private var suggestionListView: LinearLayout? = null
+    private var suggestionScrollView: ScrollView? = null
+    private var counterView: TextView? = null
+    private var statusView: TextView? = null
+    private var replaceButton: Button? = null
+    private var dismissButton: Button? = null
+    private var acceptChangeButton: Button? = null
+    private var rejectChangeButton: Button? = null
+    private val reviewToneButtons = linkedMapOf<WritingTone, Button>()
+    private var activeReviewChangeId: String? = null
+    private var collapsedPanelHeightPx = 0
+    private var maximumPanelHeightPx = 0
+    private var replacementInFlight = false
+    private var retainedInputConnection: Any? = null
+    private var pendingRestoreTarget: Target? = null
+    private var lastVisibleKeyboardFrame: KeyboardPanelSnapshot? = null
+    private val grammarEngine by lazy { OnDeviceGrammarEngine.get(this) }
+    private val modelRequests = RewriteRequestBatch()
+    private var modelRequestEpoch = 0
+    private val mainHandler by lazy { Handler(mainLooper) }
+    private val keyboardHideRunnable = Runnable {
+        if (panelView != null && systemKeyboardVisible()) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+        }
+    }
+    private val restoreTargetRunnable = Runnable {
+        val captured = pendingRestoreTarget ?: return@Runnable
+        pendingRestoreTarget = null
+        if (panelView != null || target !== captured) return@Runnable
+        val node = reacquireTarget(captured)
+        if (node == null) {
+            if (target === captured) clearTarget()
+            return@Runnable
+        }
+        if (panelView != null || target !== captured) {
+            recycleIfDetached(node, captured.node)
+            return@Runnable
+        }
+        node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        if (panelView != null || target !== captured) {
+            recycleIfDetached(node, captured.node)
+            return@Runnable
+        }
+        val bounds = Rect().also(node::getBoundsInScreen)
+        setTarget(captured.copy(
+            bounds = bounds,
+            snapshot = ExternalWritingPolicy.metadataSnapshot(
+                packageName = captured.packageName,
+                text = node.text,
+                editable = node.isEditable,
+                password = node.isPassword,
+                selectionStart = node.textSelectionStart,
+                selectionEnd = node.textSelectionEnd,
+            ),
+            node = node,
+        ))
+        if (!node.isPassword && (node.text?.length ?: 0) > 0) showTrigger(bounds)
+    }
+    private val deferredTargetClear = Runnable {
+        // A finger resting on the trigger steals input focus from the target
+        // field, which used to clear the trigger before its click could fire.
+        // While the trigger is pressed the clear is re-armed instead.
+        if (triggerPressed) {
+            scheduleTargetClear()
+            return@Runnable
+        }
+        if (panelView == null) {
+            clearTarget()
+        }
+    }
+    private var triggerPressed = false
+    private val releaseTriggerPress = Runnable { triggerPressed = false }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            serviceInfo = serviceInfo.apply {
+                flags = flags or AccessibilityServiceInfo.FLAG_INPUT_METHOD_EDITOR
+            }
+        }
+        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        selectedTone = WritingTone.fromLabel(
+            getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+                .getString(TONE_KEY, WritingTone.PROOFREAD.label).orEmpty(),
+        )
+    }
+
+    @TargetApi(Build.VERSION_CODES.TIRAMISU)
+    override fun onCreateInputMethod(): InputMethod = InputMethod(this)
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event == null || panelView != null) return
+        val eventPackage = event.packageName?.toString().orEmpty()
+        if (eventPackage == packageName) {
+            // Events from our accessibility overlay must not tear down and recreate
+            // the trigger. Only clear when the Manuscript activity is truly active.
+            if (rootInActiveWindow?.packageName?.toString() == packageName) {
+                scheduleTargetClear()
+            }
+            return
+        }
+        val node = focusedEditableNode() ?: run {
+            scheduleTargetClear()
+            return
+        }
+        val snapshot = ExternalWritingPolicy.metadataSnapshot(
+            packageName = node.packageName?.toString().orEmpty(),
+            text = node.text,
+            editable = node.isEditable,
+            password = node.isPassword,
+            selectionStart = node.textSelectionStart,
+            selectionEnd = node.textSelectionEnd,
+        )
+        if (!ExternalWritingPolicy.canOffer(snapshot, packageName)) {
+            recycleIfDetached(node, target?.node)
+            if (snapshot.password) clearTarget() else scheduleTargetClear()
+            return
+        }
+        val bounds = Rect().also(node::getBoundsInScreen)
+        if (bounds.isEmpty) {
+            recycleIfDetached(node, target?.node)
+            scheduleTargetClear()
+            return
+        }
+        cancelTargetClear()
+        val candidate = Target(
+            packageName = snapshot.packageName,
+            viewId = node.viewIdResourceName,
+            bounds = Rect(bounds),
+            snapshot = snapshot,
+            node = node,
+        )
+        val pending = pendingRestoreTarget
+        if (pending != null && sameEditor(pending, candidate)) {
+            recycleIfDetached(node, pending.node)
+            return
+        }
+        cancelKeyboardRestore()
+        setTarget(candidate)
+        showTrigger(bounds)
+    }
+
+    override fun onInterrupt() = clearAll()
+
+    override fun onDestroy() {
+        clearAll()
+        super.onDestroy()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        OnDeviceGrammarEngine.trimIfCreated(level)
+        super.onTrimMemory(level)
+    }
+
+    private fun focusedEditableNode(): AccessibilityNodeInfo? {
+        val root = rootInActiveWindow ?: return null
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focused?.isEditable == true) {
+            recycleIfDetached(root, focused)
+            return focused
+        }
+        focused?.let(::recycleLegacy)
+        val found = findEditable(root, budget = AccessibilityTraversalBudget())
+        recycleIfDetached(root, found)
+        return found
+    }
+
+    private fun findEditable(
+        node: AccessibilityNodeInfo,
+        depth: Int = 0,
+        budget: AccessibilityTraversalBudget,
+    ): AccessibilityNodeInfo? {
+        if (!budget.tryVisit(depth)) return null
+        if (node.isFocused && node.isEditable) return node
+        if (!budget.canDescendFrom(depth)) return null
+        for (index in 0 until node.childCount) {
+            if (!budget.canDescendFrom(depth)) break
+            val child = node.getChild(index) ?: continue
+            val found = findEditable(child, depth + 1, budget)
+            if (found != null) {
+                recycleIfDetached(child, found)
+                return found
+            }
+            recycleLegacy(child)
+        }
+        return null
+    }
+
+    private fun showTrigger(bounds: Rect) {
+        rememberVisibleKeyboardFrame()
+        val metrics = resources.displayMetrics
+        val size = dp(48)
+        val x = (bounds.right - size).coerceIn(0, maxOf(0, metrics.widthPixels - size))
+        val preferredY = if (bounds.top >= size + dp(8)) {
+            bounds.top - size - dp(4)
+        } else {
+            bounds.bottom + dp(4)
+        }
+        val y = preferredY.coerceIn(0, maxOf(0, metrics.heightPixels - size))
+        val params = WindowManager.LayoutParams(
+            size,
+            size,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            android.graphics.PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            this.x = x
+            this.y = y
+        }
+        val current = triggerView
+        if (current != null) {
+            windowManager.updateViewLayout(current, params)
+            TriggerPulseController.applyState(current, visibleTriggerState())
+            return
+        }
+        val button = ManuscriptTriggerViewFactory.create(
+            context = this,
+            contentDescription = getString(R.string.external_assistant_open),
+            onClick = { openPanel() },
+        )
+        button.setOnTouchListener { _, motionEvent ->
+            when (motionEvent.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    triggerPressed = true
+                    mainHandler.removeCallbacks(releaseTriggerPress)
+                    cancelTargetClear()
+                }
+                android.view.MotionEvent.ACTION_UP,
+                android.view.MotionEvent.ACTION_CANCEL,
+                -> {
+                    // Keep the press guard alive briefly so the click handler
+                    // and its focus fallout cannot race the trigger away.
+                    mainHandler.postDelayed(releaseTriggerPress, PRESS_GUARD_MS)
+                }
+            }
+            false
+        }
+        triggerView = button
+        if (runCatching { windowManager.addView(button, params) }.isFailure) {
+            triggerView = null
+        } else {
+            TriggerPulseController.applyState(button, visibleTriggerState())
+        }
+    }
+
+    private fun visibleTriggerState(): ManuscriptTriggerState =
+        ManuscriptTriggerPolicy.state(
+            focused = true,
+            editable = true,
+            hasText = true,
+            password = false,
+            reviewOpen = panelView != null,
+            animationsEnabled = android.animation.ValueAnimator.areAnimatorsEnabled(),
+        )
+
+    private fun openPanel() {
+        if (
+            !LocalAiCorrectionGate.isReady(
+                AiModelManager.get(this).installedFile(),
+            )
+        ) {
+            openModelSetup()
+            return
+        }
+        cancelKeyboardRestore()
+        val captured = target ?: run {
+            announceTriggerMiss()
+            return
+        }
+        // Event-storm editors (Google Messages) can detach the captured node
+        // between trigger tap-down and click. Fall back to the currently
+        // focused editable field in the same app before giving up, and never
+        // swallow the tap silently.
+        val liveNode = reacquireTarget(captured)
+            ?: focusedEditableNode()?.takeIf { node ->
+                node.packageName?.toString() == captured.packageName &&
+                    node.isEditable &&
+                    !node.isPassword
+            }
+            ?: run {
+                announceTriggerMiss()
+                return
+            }
+        if (liveNode.isPassword) return
+        val liveBounds = Rect().also(liveNode::getBoundsInScreen)
+        val liveSnapshot = ExternalWritingPolicy.capturedSnapshot(
+            snapshot = captured.snapshot,
+            text = liveNode.text,
+            selectionStart = liveNode.textSelectionStart,
+            selectionEnd = liveNode.textSelectionEnd,
+        ) ?: return
+        val currentText = liveSnapshot.text
+        val liveTarget = captured.copy(bounds = liveBounds, snapshot = liveSnapshot, node = liveNode)
+        val selection = ExternalWritingPolicy.safeSelection(liveSnapshot)
+        reviewSession = WritingReviewSession.createParagraphs(
+            source = currentText,
+            selectionStart = selection?.first ?: 0,
+            selectionEnd = selection?.last?.plus(1) ?: 0,
+        ) ?: return
+        workingText = currentText
+        setTarget(liveTarget)
+        retainCurrentInputConnection()
+        val panelBounds = keyboardPanelBounds()
+        val panelAttached = AccessibilityOverlayHandoff.replaceTriggerWithPanel(
+            actions = this,
+            bounds = panelBounds,
+        )
+        if (!panelAttached) return
+    }
+
+    override fun addKeyboardAreaPanel(bounds: KeyboardPanelBounds) {
+        OnDeviceGrammarEngine.get(this).setSessionWarm(true)
+        val panel = buildPanel()
+        val metrics = resources.displayMetrics
+        val protectedBottom = currentSystemBottomInsets().protectedBottomPx
+        collapsedPanelHeightPx = bounds.heightPx
+        maximumPanelHeightPx = ReviewPanelExpansionPolicy.maximumHeight(
+            screenHeightPx = metrics.heightPixels,
+            protectedBottomPx = protectedBottom,
+            collapsedHeightPx = bounds.heightPx,
+        )
+        (panel as? ExpandableReviewPanel)?.configureExpansion(
+            collapsedHeightPx = collapsedPanelHeightPx,
+            maximumHeightPx = maximumPanelHeightPx,
+            onResize = ::resizePanel,
+        )
+        val params = WindowManager.LayoutParams(
+            bounds.widthPx,
+            bounds.heightPx,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_SECURE,
+            android.graphics.PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.START
+            x = bounds.leftOffsetPx
+            y = bounds.bottomOffsetPx
+        }
+        windowManager.addView(panel, params)
+        panelView = panel
+    }
+
+    override fun initializeKeyboardAreaPanel() {
+        renderCurrentBlock()
+    }
+
+    override fun removeKeyboardAreaPanel() {
+        panelView?.let(windowManager::removeView)
+    }
+
+    override fun clearKeyboardAreaPanelReference() {
+        panelView = null
+    }
+
+    override fun removeWritingTrigger() {
+        removeTrigger()
+    }
+
+    override fun onKeyboardAreaPanelReady() {
+        hideSystemKeyboardBehindPanel()
+    }
+
+    @TargetApi(Build.VERSION_CODES.TIRAMISU)
+    private fun retainCurrentInputConnection() {
+        retainedInputConnection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            inputMethod?.currentInputStarted == true
+        ) {
+            inputMethod?.currentInputConnection
+        } else null
+    }
+
+    /**
+     * Android gives the active IME first claim on its touch area, even when an
+     * accessibility overlay is drawn above it. Hide only a confirmed visible
+     * IME after the Manuscript panel is attached, then restore it on close.
+     */
+    private fun hideSystemKeyboardBehindPanel() {
+        mainHandler.removeCallbacks(keyboardHideRunnable)
+        if (!systemKeyboardVisible()) return
+        mainHandler.postDelayed(keyboardHideRunnable, KEYBOARD_HIDE_DELAY_MS)
+    }
+
+    private fun systemKeyboardVisible(): Boolean {
+        val metrics = resources.displayMetrics
+        val insets = currentSystemBottomInsets()
+        return currentKeyboardPanelBounds(
+            screenWidthPx = metrics.widthPixels,
+            screenHeightPx = metrics.heightPixels,
+            protectedBottomPx = insets.protectedBottomPx,
+            imeBottomInsetPx = insets.imeBottomInsetPx,
+        ) != null
+    }
+
+    private fun keyboardPanelBounds(): KeyboardPanelBounds {
+        val metrics = resources.displayMetrics
+        val insets = currentSystemBottomInsets()
+        val current = currentKeyboardPanelBounds(
+            screenWidthPx = metrics.widthPixels,
+            screenHeightPx = metrics.heightPixels,
+            protectedBottomPx = insets.protectedBottomPx,
+            imeBottomInsetPx = insets.imeBottomInsetPx,
+        )
+        if (current != null) {
+            lastVisibleKeyboardFrame = KeyboardPanelSnapshot(
+                panelBounds = current,
+                screenWidthPx = metrics.widthPixels,
+                screenHeightPx = metrics.heightPixels,
+                protectedBottomPx = insets.protectedBottomPx,
+            )
+        }
+        return KeyboardPanelMemoryPolicy.resolve(
+            current = current,
+            lastVisible = lastVisibleKeyboardFrame,
+            currentScreenWidthPx = metrics.widthPixels,
+            currentScreenHeightPx = metrics.heightPixels,
+            currentProtectedBottomPx = insets.protectedBottomPx,
+        ) ?: KeyboardPanelGeometry.calculate(
+            screenWidthPx = metrics.widthPixels,
+            screenHeightPx = metrics.heightPixels,
+            imeBottomInsetPx = 0,
+            navigationBottomInsetPx = insets.navigationBottomPx,
+            gestureBottomInsetPx = insets.gestureBottomPx,
+            fallbackHeightPx = dp(256),
+        )
+    }
+
+    private fun rememberVisibleKeyboardFrame() {
+        val metrics = resources.displayMetrics
+        val insets = currentSystemBottomInsets()
+        val current = currentKeyboardPanelBounds(
+            screenWidthPx = metrics.widthPixels,
+            screenHeightPx = metrics.heightPixels,
+            protectedBottomPx = insets.protectedBottomPx,
+            imeBottomInsetPx = insets.imeBottomInsetPx,
+        ) ?: return
+        lastVisibleKeyboardFrame = KeyboardPanelSnapshot(
+            panelBounds = current,
+            screenWidthPx = metrics.widthPixels,
+            screenHeightPx = metrics.heightPixels,
+            protectedBottomPx = insets.protectedBottomPx,
+        )
+    }
+
+    private fun currentKeyboardPanelBounds(
+        screenWidthPx: Int,
+        screenHeightPx: Int,
+        protectedBottomPx: Int,
+        imeBottomInsetPx: Int,
+    ): KeyboardPanelBounds? = visibleKeyboardWindowPanelBounds(
+        screenWidthPx = screenWidthPx,
+        screenHeightPx = screenHeightPx,
+        protectedBottomPx = protectedBottomPx,
+    ) ?: imeBottomInsetPx.takeIf { it > 0 }?.let { imeBottom ->
+        KeyboardPanelGeometry.calculate(
+            screenWidthPx = screenWidthPx,
+            screenHeightPx = screenHeightPx,
+            imeBottomInsetPx = imeBottom,
+            navigationBottomInsetPx = protectedBottomPx,
+            gestureBottomInsetPx = protectedBottomPx,
+            fallbackHeightPx = 1,
+        )
+    }
+
+    private fun visibleKeyboardWindowPanelBounds(
+        screenWidthPx: Int,
+        screenHeightPx: Int,
+        protectedBottomPx: Int,
+    ): KeyboardPanelBounds? {
+        val candidates = mutableListOf<Pair<KeyboardPanelBounds, Long>>()
+        windows.forEach { window ->
+            if (window.type != AccessibilityWindowInfo.TYPE_INPUT_METHOD) return@forEach
+            val bounds = Rect().also(window::getBoundsInScreen)
+            if (bounds.isEmpty) return@forEach
+            val panel = KeyboardWindowGeometryPolicy.fromWindow(
+                screenWidthPx = screenWidthPx,
+                screenHeightPx = screenHeightPx,
+                windowLeftPx = bounds.left,
+                windowTopPx = bounds.top,
+                windowRightPx = bounds.right,
+                windowBottomPx = bounds.bottom,
+                protectedBottomPx = protectedBottomPx,
+                minimumKeyboardHeightPx = dp(96),
+            ) ?: return@forEach
+            val area = panel.widthPx.toLong() * panel.heightPx.toLong()
+            candidates += panel to area
+        }
+        return candidates.maxByOrNull { it.second }?.first
+    }
+
+    private fun currentSystemBottomInsets(): SystemBottomInsets {
+        var navigationBottom = systemNavigationBarHeight()
+        var gestureBottom = 0
+        var imeBottom = 0
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val insets = triggerView?.rootWindowInsets ?: windowManager.currentWindowMetrics.windowInsets
+            imeBottom = insets.getInsets(WindowInsets.Type.ime()).bottom
+            navigationBottom = maxOf(
+                navigationBottom,
+                insets.getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars()).bottom,
+            )
+            gestureBottom = insets.getInsets(WindowInsets.Type.mandatorySystemGestures()).bottom
+        }
+        return SystemBottomInsets(
+            navigationBottomPx = navigationBottom,
+            gestureBottomPx = gestureBottom,
+            imeBottomInsetPx = imeBottom,
+        )
+    }
+
+    private fun systemNavigationBarHeight(): Int {
+        val navigationHeightId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        val gestureHeightId = resources.getIdentifier("navigation_bar_gesture_height", "dimen", "android")
+        val navigationHeight = if (navigationHeightId > 0) {
+            resources.getDimensionPixelSize(navigationHeightId)
+        } else 0
+        val gestureHeight = if (gestureHeightId > 0) {
+            resources.getDimensionPixelSize(gestureHeightId)
+        } else 0
+        return maxOf(navigationHeight, gestureHeight)
+    }
+
+    private fun buildPanel(): View {
+        val panel = ExpandableReviewPanel(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(4), dp(10), dp(6))
+            background = rounded(COLOR_BACKGROUND, 20f, COLOR_ACCENT)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                accessibilityPaneTitle = getString(R.string.external_panel_title)
+            }
+        }
+        panel.addView(TextView(this).apply {
+            id = R.id.writing_resize_handle
+            text = "━━━"
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setTextColor(COLOR_TEXT_MUTED)
+            contentDescription = getString(R.string.resize_review_panel)
+            setPadding(0, 0, 0, 0)
+            installPanelResizeGesture(this)
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(24),
+        ))
+        val headingRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        headingRow.addView(ImageButton(this).apply {
+            setImageResource(R.drawable.ic_manuscript)
+            contentDescription = getString(R.string.open_manuscript_settings)
+            setPadding(dp(5), dp(5), dp(5), dp(5))
+            background = rounded(COLOR_SURFACE, 10f, COLOR_BORDER)
+            setOnClickListener { openManuscriptSettings() }
+        }, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(6) })
+        headingRow.addView(TextView(this).apply {
+            text = getString(R.string.external_panel_title)
+            textSize = 17f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(COLOR_TEXT)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        counterView = TextView(this).apply {
+            id = R.id.writing_counter
+            textSize = 14f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(COLOR_ACCENT)
+        }
+        headingRow.addView(counterView, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { marginEnd = dp(8) })
+        headingRow.addView(Button(this).apply {
+            id = R.id.writing_close_action
+            text = "×"
+            contentDescription = getString(R.string.close_action)
+            isAllCaps = false
+            textSize = 24f
+            minWidth = dp(48)
+            minimumWidth = dp(48)
+            minHeight = dp(48)
+            minimumHeight = dp(48)
+            setPadding(0, 0, 0, 0)
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(COLOR_TEXT)
+            background = rounded(COLOR_SURFACE, 10f, COLOR_ACCENT)
+            setOnClickListener { closePanel(restoreKeyboard = true) }
+        }, LinearLayout.LayoutParams(dp(40), dp(40)))
+        panel.addView(headingRow)
+        panel.addView(TextView(this).apply {
+            text = getString(R.string.corrections_swipe_help)
+            textSize = 12f
+            setTextColor(COLOR_TEXT_MUTED)
+            setPadding(0, 0, 0, dp(2))
+        })
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        replaceButton = actionButton(R.string.writing_replace_action, true) { replaceCurrent() }.apply {
+            id = R.id.writing_replace_action
+        }
+        actions.addView(replaceButton, weighted(end = 6))
+        dismissButton = actionButton(R.string.writing_dismiss_action, false) { dismissCurrent() }.apply {
+            id = R.id.writing_dismiss_action
+        }
+        actions.addView(dismissButton, weighted(start = 6))
+        panel.addView(actions, rowParams().apply { bottomMargin = dp(3) })
+        val correctionScroll = ScrollView(this).apply {
+            id = R.id.writing_suggestion_scroll
+            isFillViewport = false
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+        }
+        suggestionScrollView = correctionScroll
+        suggestionListView = LinearLayout(this).apply {
+            id = R.id.writing_suggestion
+            orientation = LinearLayout.VERTICAL
+        }
+        correctionScroll.addView(suggestionListView, rowParams())
+        panel.addView(correctionScroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0,
+            1f,
+        ).apply { bottomMargin = dp(3) })
+        val changeActions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        acceptChangeButton = actionButton(R.string.writing_accept_change_action, false) {
+            acceptCurrentChange()
+        }.apply {
+            id = R.id.writing_accept_change_action
+        }
+        rejectChangeButton = actionButton(R.string.writing_reject_change_action, false) {
+            rejectCurrentChange()
+        }.apply {
+            id = R.id.writing_reject_change_action
+        }
+        changeActions.addView(acceptChangeButton, weighted(end = 4))
+        changeActions.addView(rejectChangeButton, weighted(start = 4))
+        panel.addView(changeActions, rowParams().apply { bottomMargin = dp(3) })
+        val tone = buildReviewToneMenu()
+        val toneRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        toneRow.addView(tone, LinearLayout.LayoutParams(
+            0,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            1f,
+        ).apply { marginEnd = dp(4) })
+        toneRow.addView(actionButton(R.string.qwen_model_retry_action, false) {
+            regenerateModelCorrections()
+        }.apply {
+            id = R.id.writing_regenerate_action
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
+        panel.addView(toneRow, rowParams().apply { bottomMargin = dp(2) })
+        statusView = TextView(this).apply {
+            id = R.id.writing_status
+            textSize = 12f
+            setTextColor(COLOR_ERROR)
+            visibility = View.GONE
+        }
+        panel.addView(statusView)
+        return panel
+    }
+
+    private fun buildReviewToneMenu(): HorizontalScrollView {
+        reviewToneButtons.clear()
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        WritingTone.entries.forEach { tone ->
+            val button = Button(this).apply {
+                text = tone.label
+                contentDescription = getString(R.string.select_tone_description, tone.label)
+                isAllCaps = false
+                textSize = 13f
+                minWidth = 0
+                minimumWidth = 0
+                minHeight = dp(44)
+                minimumHeight = dp(44)
+                setPadding(dp(12), 0, dp(12), 0)
+                setOnClickListener {
+                    if (tone == selectedTone) return@setOnClickListener
+                    selectedTone = tone
+                    getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+                        .edit().putString(TONE_KEY, selectedTone.label).apply()
+                    updateReviewToneSelection()
+                    regenerateModelCorrections()
+                }
+            }
+            reviewToneButtons[tone] = button
+            row.addView(
+                button,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dp(44),
+                ).apply { marginEnd = dp(4) },
+            )
+        }
+        return HorizontalScrollView(this).apply {
+            id = R.id.writing_tone
+            isHorizontalScrollBarEnabled = false
+            isFillViewport = false
+            clipToPadding = false
+            addView(
+                row,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            updateReviewToneSelection()
+        }
+    }
+
+    private fun updateReviewToneSelection() {
+        reviewToneButtons.forEach { (tone, button) ->
+            val selected = tone == selectedTone
+            button.isSelected = selected
+            button.setTypeface(
+                button.typeface,
+                if (selected) Typeface.BOLD else Typeface.NORMAL,
+            )
+            button.setTextColor(if (selected) Color.WHITE else COLOR_TEXT)
+            button.background = rounded(
+                if (selected) COLOR_ACCENT_DARK else COLOR_SURFACE,
+                10f,
+                if (selected) COLOR_ACCENT else COLOR_BORDER,
+            )
+        }
+    }
+
+    private fun installPanelResizeGesture(handle: View) {
+        var downRawY = 0f
+        var startingHeight = 0
+        handle.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downRawY = event.rawY
+                    startingHeight = panelView?.height ?: collapsedPanelHeightPx
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    resizePanel(
+                        ReviewPanelExpansionPolicy.resizedHeight(
+                            startingHeightPx = startingHeight,
+                            upwardDragPx = (downRawY - event.rawY).toInt(),
+                            collapsedHeightPx = collapsedPanelHeightPx,
+                            maximumHeightPx = maximumPanelHeightPx,
+                        ),
+                    )
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    handle.performClick()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun resizePanel(heightPx: Int) {
+        val panel = panelView ?: return
+        val params = panel.layoutParams as? WindowManager.LayoutParams ?: return
+        if (params.height == heightPx) return
+        params.height = heightPx
+        params.y = currentSystemBottomInsets().protectedBottomPx
+        windowManager.updateViewLayout(panel, params)
+    }
+
+    private fun openManuscriptSettings() {
+        closePanel(restoreKeyboard = false)
+        startActivity(Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(EXTRA_OPEN_PERSONALIZE, true)
+        })
+    }
+
+    private fun openModelSetup() {
+        closePanel(restoreKeyboard = false)
+        startActivity(Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(EXTRA_OPEN_MODEL_SETUP, true)
+        })
+    }
+
+    private fun renderCurrentBlock(requestModel: Boolean = true) {
+        val session = reviewSession
+        val block = session?.current(selectedTone)
+        if (block == null) {
+            closePanel(restoreKeyboard = true)
+            return
+        }
+        counterView?.text = getString(R.string.review_counter, block.index, block.total)
+        counterView?.contentDescription = counterView?.text
+        val modelReady = session.hasModelReplacement(block.index, selectedTone)
+        val changes = if (modelReady) session.currentChanges(selectedTone) else emptyList()
+        val focusedChange = changes.firstOrNull { it.id == activeReviewChangeId }
+            ?: changes.firstOrNull()
+        activeReviewChangeId = focusedChange?.id
+        renderCorrectionList(session, block)
+        val installedAi = AiModelManager.get(this).installedFile()
+        val modelMissing = !LocalAiCorrectionGate.isReady(installedAi)
+        replaceButton?.apply {
+            text = getString(
+                if (modelMissing) R.string.qwen_model_install_action
+                else R.string.writing_replace_action,
+            )
+            contentDescription = text
+        }
+        replaceButton?.isEnabled = (modelReady || modelMissing) && !replacementInFlight
+        acceptChangeButton?.isEnabled = focusedChange != null && !replacementInFlight
+        rejectChangeButton?.isEnabled = focusedChange != null && !replacementInFlight
+        statusView?.apply {
+            text = when {
+                modelReady -> ""
+                modelMissing -> getString(R.string.local_ai_model_required)
+                else -> getString(R.string.local_ai_checking)
+            }
+            setTextColor(if (modelReady) COLOR_TEXT_MUTED else COLOR_ACCENT)
+            visibility = if (modelReady) View.GONE else View.VISIBLE
+        }
+        Log.i(REVIEW_LOG_TAG, "review_block=${block.index}/${block.total};tone=${selectedTone.name}")
+        if (requestModel && !modelMissing) requestAllModelCorrections(session)
+    }
+
+    private fun regenerateModelCorrections() {
+        val session = reviewSession ?: return
+        modelRequests.cancelAll()
+        session.clearModelReplacements(selectedTone)
+        activeReviewChangeId = null
+        modelRequestEpoch += 1
+        renderCurrentBlock()
+    }
+
+    private fun requestAllModelCorrections(session: WritingReviewSession) {
+        val pending = session.pending(selectedTone)
+            .filterNot { session.hasModelReplacement(it.index, selectedTone) }
+        if (pending.isEmpty()) return
+        val epoch = modelRequestEpoch
+        val toneAtRequest = selectedTone
+        val sourceAtRequest = pending.joinToString("\n\n", transform = WritingReviewBlock::original)
+        val key =
+            "${System.identityHashCode(session)}:document:${toneAtRequest.name}:" +
+                sourceAtRequest.hashCode()
+        if (!modelRequests.begin(key)) return
+        var paragraphCursor = 0
+        val request = grammarEngine.polishDocumentTerminal(
+            source = sourceAtRequest,
+            tone = toneAtRequest,
+            sourceApplication = target?.packageName,
+            onParagraphCompleted = { paragraph ->
+                if (
+                    reviewSession === session &&
+                    panelView != null &&
+                    modelRequestEpoch == epoch &&
+                    selectedTone == toneAtRequest
+                ) {
+                    pending.getOrNull(paragraphCursor)?.let { block ->
+                        session.setModelReplacement(
+                            block.index,
+                            toneAtRequest,
+                            paragraph.text,
+                        )
+                    }
+                    paragraphCursor += 1
+                    renderCurrentBlock(requestModel = false)
+                }
+            },
+            onProgress = { completed, total ->
+                if (
+                    reviewSession === session &&
+                    panelView != null &&
+                    modelRequestEpoch == epoch
+                ) {
+                    statusView?.apply {
+                        text = getString(R.string.local_ai_processing, completed, total)
+                        setTextColor(COLOR_ACCENT)
+                        visibility = View.VISIBLE
+                    }
+                }
+            },
+        ) { terminalResult ->
+            modelRequests.complete(key)
+            if (reviewSession !== session || panelView == null || modelRequestEpoch != epoch) {
+                return@polishDocumentTerminal
+            }
+            renderCurrentBlock(requestModel = false)
+            when (terminalResult) {
+                is CorrectionTerminalResult.Success -> Unit
+                is CorrectionTerminalResult.RetryableFailure -> {
+                    session.clearModelReplacements(toneAtRequest)
+                    renderCurrentBlock(requestModel = false)
+                    statusView?.apply {
+                        text = terminalResult.userMessage
+                        setTextColor(COLOR_ERROR)
+                        visibility = View.VISIBLE
+                    }
+                }
+                CorrectionTerminalResult.ModelRequired -> {
+                    session.clearModelReplacements(toneAtRequest)
+                    renderCurrentBlock(requestModel = false)
+                    replaceButton?.isEnabled = !replacementInFlight
+                    statusView?.apply {
+                        text = getString(R.string.local_ai_model_required)
+                        setTextColor(COLOR_ERROR)
+                        visibility = View.VISIBLE
+                    }
+                }
+            }
+        }
+        modelRequests.attach(key, request)
+    }
+
+    private fun renderCorrectionList(
+        session: WritingReviewSession,
+        focused: WritingReviewBlock,
+    ) {
+        val list = suggestionListView ?: return
+        list.removeAllViews()
+        var focusedCard: View? = null
+        session.pending(selectedTone).forEach { block ->
+            val isFocused = block.index == focused.index
+            val modelReady = session.hasModelReplacement(block.index, selectedTone)
+            val visibleBlock = PendingReviewPolicy.visible(block, modelReady)
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                isClickable = true
+                isFocusable = true
+                contentDescription = getString(
+                    R.string.correction_focus_description,
+                    block.index,
+                    block.total,
+                    InlineEditDiff.note(
+                        visibleBlock.original,
+                        visibleBlock.replacement,
+                        selectedTone,
+                    ),
+                )
+                setPadding(dp(8), dp(6), dp(8), dp(6))
+                background = rounded(
+                    if (isFocused) COLOR_SURFACE_FOCUSED else COLOR_SURFACE,
+                    10f,
+                    if (isFocused) COLOR_ACCENT else COLOR_BORDER,
+                )
+                setOnClickListener {
+                    if (session.select(block.index - 1)) renderCurrentBlock()
+                }
+            }
+            if (isFocused) focusedCard = card
+            card.addView(TextView(this).apply {
+                text = getString(
+                    if (isFocused) R.string.correction_focused_heading else R.string.correction_heading,
+                    block.index,
+                    block.total,
+                )
+                textSize = 12f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(if (isFocused) COLOR_ACCENT else COLOR_TEXT_MUTED)
+            })
+            card.addView(TextView(this).apply {
+                text = if (modelReady) {
+                    inlineCorrectionText(
+                        visibleBlock,
+                        if (isFocused) activeReviewChangeId else null,
+                    )
+                } else {
+                    getString(R.string.local_ai_checking)
+                }
+                textSize = 15f
+                setTextColor(COLOR_TEXT)
+                setLineSpacing(0f, 1.12f)
+                setPadding(0, dp(2), 0, dp(2))
+                movementMethod = LinkMovementMethod.getInstance()
+                highlightColor = Color.TRANSPARENT
+            })
+            card.addView(TextView(this).apply {
+                text = if (modelReady) {
+                    if (isFocused) {
+                        session.currentChanges(selectedTone)
+                            .firstOrNull { it.id == activeReviewChangeId }
+                            ?.note
+                            ?: InlineEditDiff.note(
+                                block.original,
+                                block.replacement,
+                                selectedTone,
+                            )
+                    } else {
+                        InlineEditDiff.note(block.original, block.replacement, selectedTone)
+                    }
+                } else {
+                    getString(R.string.local_ai_on_device)
+                }
+                textSize = 12f
+                setTypeface(typeface, Typeface.ITALIC)
+                setTextColor(COLOR_TEXT_MUTED)
+            })
+            list.addView(card, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { bottomMargin = dp(4) })
+        }
+        focusedCard?.let { card ->
+            list.post { suggestionScrollView?.smoothScrollTo(0, card.top) }
+        }
+    }
+
+    private fun inlineCorrectionText(
+        block: WritingReviewBlock,
+        focusedChangeId: String?,
+    ): CharSequence {
+        val output = SpannableStringBuilder()
+        val changes = InlineEditDiff.changes(block.original, block.replacement, block.tone)
+        if (changes.isEmpty()) return block.original
+        var cursor = 0
+        changes.forEach { change ->
+            output.append(block.original, cursor, change.originalStart)
+            val changeStart = output.length
+            if (change.originalText.isNotEmpty()) {
+                val removedStart = output.length
+                output.append(change.originalText)
+                output.setSpan(
+                    StrikethroughSpan(),
+                    removedStart,
+                    output.length,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+                output.setSpan(
+                    ForegroundColorSpan(COLOR_REMOVED),
+                    removedStart,
+                    output.length,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+            }
+            if (change.originalText.isNotEmpty() && change.replacementText.isNotEmpty()) {
+                output.append(" → ")
+            }
+            if (change.replacementText.isNotEmpty()) {
+                val insertedStart = output.length
+                output.append(change.replacementText)
+                output.setSpan(
+                    BackgroundColorSpan(COLOR_INSERTED_BACKGROUND),
+                    insertedStart,
+                    output.length,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+                output.setSpan(
+                    ForegroundColorSpan(COLOR_INSERTED),
+                    insertedStart,
+                    output.length,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+                output.setSpan(
+                    StyleSpan(Typeface.BOLD),
+                    insertedStart,
+                    output.length,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+            }
+            val changeEnd = output.length
+            if (changeStart < changeEnd) {
+                output.setSpan(
+                    object : ClickableSpan() {
+                        override fun onClick(widget: View) {
+                            reviewSession?.select(block.index - 1)
+                            activeReviewChangeId = change.id
+                            renderCurrentBlock(requestModel = false)
+                        }
+
+                        override fun updateDrawState(ds: TextPaint) {
+                            ds.isUnderlineText = change.id == focusedChangeId
+                        }
+                    },
+                    changeStart,
+                    changeEnd,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+                }
+            cursor = change.originalEnd
+        }
+        output.append(block.original, cursor, block.original.length)
+        return output
+    }
+
+    @TargetApi(Build.VERSION_CODES.TIRAMISU)
+    private fun replaceCurrent(changeId: String? = null) {
+        if (replacementInFlight) return
+        val pendingBlock = reviewSession?.current(selectedTone)
+        if (
+            pendingBlock != null &&
+            reviewSession?.hasModelReplacement(pendingBlock.index, selectedTone) != true &&
+            AiModelManager.get(this).installedModel() == null
+        ) {
+            openModelSetup()
+            return
+        }
+        val initialTarget = target ?: return
+        val node = reacquireTarget(initialTarget) ?: return showFailure(R.string.external_target_lost)
+        var operationTarget = if (node !== initialTarget.node) {
+            val bounds = Rect().also(node::getBoundsInScreen)
+            initialTarget.copy(bounds = bounds, node = node).also(::setTarget)
+        } else initialTarget
+        val session = reviewSession ?: return showFailure(R.string.external_target_lost)
+        val toneAtRequest = selectedTone
+        val block = session.current(toneAtRequest) ?: return closePanel(restoreKeyboard = true)
+        val updated = if (changeId == null) {
+            workingText.replaceRange(block.start, block.end, block.replacement)
+        } else {
+            runCatching {
+                session.previewAcceptChange(workingText, toneAtRequest, changeId)
+            }.getOrElse {
+                return showFailure(R.string.external_text_changed)
+            }
+        }
+        if (ExternalWritingPolicy.materializeReviewText(updated) == null) {
+            return showFailure(R.string.external_replace_failed)
+        }
+        val connection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            (retainedInputConnection as? InputMethod.AccessibilityInputConnection)
+                ?: inputMethod?.currentInputConnection
+        } else null
+        val surrounding = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            connection?.getSurroundingText(workingText.length, workingText.length, 0)
+        } else null
+        val connectionMatches = surrounding?.text?.toString() == workingText
+        val nodeMatches = node.text?.toString().orEmpty() == workingText
+        val initialRoute = ReplacementRequestPolicy.initialRoute(
+            nodeMatchesSource = nodeMatches,
+            connectionMatchesSource = connectionMatches,
+        )
+        if (initialRoute == ReplacementInitialRoute.REJECT) {
+            return showFailure(R.string.external_text_changed)
+        }
+
+        replacementInFlight = true
+        setReplacementControlsEnabled(false)
+        // The accessibility node is the live editor after the system keyboard is hidden.
+        // A retained input connection can become stale when the keyboard closes, so only
+        // use it as a fallback when its own surrounding text still matches this editor.
+        val nodeReplacementRequested = initialRoute == ReplacementInitialRoute.ACCESSIBILITY_NODE &&
+            requestAccessibilityTextReplacement(node, updated)
+        var connectionFallbackAttempted = false
+        var replacementRequested = nodeReplacementRequested
+        if (!nodeReplacementRequested &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            connection != null && connectionMatches
+        ) {
+            connectionFallbackAttempted = true
+            replacementRequested = requestInputConnectionTextReplacement(
+                connection = connection,
+                sourceLength = surrounding?.text?.length ?: workingText.length,
+                selectionStart = surrounding?.selectionStart ?: node.textSelectionStart,
+                selectionEnd = surrounding?.selectionEnd ?: node.textSelectionEnd,
+                updated = updated,
+            )
+        }
+        if (!replacementRequested) {
+            return showFailure(R.string.external_replace_failed)
+        }
+        fun verifyReplacement(attempt: Int) {
+            if (reviewSession !== session || panelView == null) return
+            val verifiedNode = reacquireTarget(operationTarget)
+            verifiedNode?.refresh()
+            if (verifiedNode != null && verifiedNode !== operationTarget.node) {
+                val bounds = Rect().also(verifiedNode::getBoundsInScreen)
+                operationTarget = operationTarget.copy(bounds = bounds, node = verifiedNode)
+                setTarget(operationTarget)
+            }
+            val freshSurrounding = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                connection != null
+            ) {
+                runCatching {
+                    connection.getSurroundingText(
+                        maxOf(workingText.length, updated.length),
+                        maxOf(workingText.length, updated.length),
+                        0,
+                    )
+                }.getOrNull()
+            } else null
+            val freshConnectionText = freshSurrounding?.text?.toString()
+            val connectionVerified = freshConnectionText == updated
+            val nodeVerified = verifiedNode?.text?.toString().orEmpty() == updated
+            when (ReplacementVerificationPolicy.nextAction(
+                nodeVerified = nodeVerified,
+                connectionVerified = connectionVerified,
+                attempt = attempt,
+                maxAttempts = REPLACEMENT_VERIFY_ATTEMPTS,
+                connectionFallbackAttempted = connectionFallbackAttempted,
+                freshConnectionMatchesSource = freshConnectionText == workingText,
+            )) {
+                ReplacementVerificationAction.TRY_FRESH_CONNECTION -> {
+                    connectionFallbackAttempted = true
+                    val fallbackRequested = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        connection != null && freshSurrounding != null
+                    ) {
+                        requestInputConnectionTextReplacement(
+                            connection = connection,
+                            sourceLength = freshSurrounding.text.length,
+                            selectionStart = freshSurrounding.selectionStart,
+                            selectionEnd = freshSurrounding.selectionEnd,
+                            updated = updated,
+                        )
+                    } else false
+                    if (!fallbackRequested) return showFailure(R.string.external_replace_failed)
+                    mainHandler.postDelayed(
+                        { verifyReplacement(attempt + 1) },
+                        REPLACEMENT_VERIFY_INTERVAL_MS,
+                    )
+                    return
+                }
+                ReplacementVerificationAction.RETRY -> {
+                    mainHandler.postDelayed(
+                        { verifyReplacement(attempt + 1) },
+                        REPLACEMENT_VERIFY_INTERVAL_MS,
+                    )
+                    return
+                }
+                ReplacementVerificationAction.FAIL -> {
+                    showFailure(
+                        if (verifiedNode == null) R.string.external_target_lost
+                        else R.string.external_replace_unverified,
+                    )
+                    return
+                }
+                ReplacementVerificationAction.COMPLETE -> Unit
+            }
+            val advanced = try {
+                if (changeId == null) {
+                    session.replaceCurrent(workingText, toneAtRequest)
+                } else {
+                    session.acceptChange(workingText, toneAtRequest, changeId)
+                }
+            } catch (_: IllegalArgumentException) {
+                return showFailure(R.string.external_text_changed)
+            }
+            if (advanced != updated) return showFailure(R.string.external_text_changed)
+            workingText = updated
+            val updatedSnapshot = ExternalWritingPolicy.capturedSnapshot(
+                snapshot = operationTarget.snapshot,
+                text = updated,
+                selectionStart = updated.length,
+                selectionEnd = updated.length,
+            ) ?: return showFailure(R.string.external_replace_failed)
+            setTarget(operationTarget.copy(snapshot = updatedSnapshot))
+            replacementInFlight = false
+            setReplacementControlsEnabled(true)
+            activeReviewChangeId = null
+            renderCurrentBlock()
+        }
+        mainHandler.postDelayed(
+            { verifyReplacement(0) },
+            REPLACEMENT_VERIFY_INTERVAL_MS,
+        )
+    }
+
+    private fun acceptCurrentChange() {
+        if (replacementInFlight) return
+        replaceCurrent(activeReviewChangeId ?: return)
+    }
+
+    private fun requestAccessibilityTextReplacement(
+        node: AccessibilityNodeInfo,
+        updated: String,
+    ): Boolean {
+        val args = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, updated)
+        }
+        return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    }
+
+    @TargetApi(Build.VERSION_CODES.TIRAMISU)
+    private fun requestInputConnectionTextReplacement(
+        connection: InputMethod.AccessibilityInputConnection,
+        sourceLength: Int,
+        selectionStart: Int,
+        selectionEnd: Int,
+        updated: String,
+    ): Boolean = runCatching {
+        val safeLength = sourceLength.coerceAtLeast(0)
+        val safeStart = selectionStart.coerceIn(0, safeLength)
+        val safeEnd = selectionEnd.coerceIn(safeStart, safeLength)
+        connection.deleteSurroundingText(safeStart, safeLength - safeEnd)
+        connection.commitText(updated, 1, null)
+        true
+    }.getOrDefault(false)
+
+    private fun dismissCurrent() {
+        if (replacementInFlight) return
+        reviewSession?.dismissCurrent()
+        activeReviewChangeId = null
+        renderCurrentBlock()
+    }
+
+    private fun rejectCurrentChange() {
+        if (replacementInFlight) return
+        val session = reviewSession ?: return
+        val changeId = activeReviewChangeId ?: return
+        runCatching {
+            session.rejectChange(workingText, selectedTone, changeId)
+        }.onSuccess {
+            activeReviewChangeId = null
+            renderCurrentBlock(requestModel = false)
+        }.onFailure {
+            showFailure(R.string.external_text_changed)
+        }
+    }
+
+    private fun showFailure(message: Int) {
+        Log.w(REPLACEMENT_LOG_TAG, resources.getResourceEntryName(message))
+        replacementInFlight = false
+        setReplacementControlsEnabled(true)
+        statusView?.apply {
+            text = getString(message)
+            visibility = View.VISIBLE
+        }
+    }
+
+    private fun setReplacementControlsEnabled(enabled: Boolean) {
+        replaceButton?.isEnabled = enabled
+        dismissButton?.isEnabled = enabled
+        acceptChangeButton?.isEnabled = enabled
+        rejectChangeButton?.isEnabled = enabled
+    }
+
+    private fun reacquireTarget(captured: Target): AccessibilityNodeInfo? {
+        if (captured.node.refresh() &&
+            captured.node.packageName?.toString() == captured.packageName &&
+            captured.node.isEditable &&
+            !captured.node.isPassword
+        ) {
+            return captured.node
+        }
+        val root = rootForPackage(captured.packageName) ?: return null
+        return findMatchingEditable(root, captured)
+    }
+
+    private fun rootForPackage(targetPackage: String): AccessibilityNodeInfo? {
+        rootInActiveWindow?.let { root ->
+            if (root.packageName?.toString() == targetPackage) return root
+            recycleLegacy(root)
+        }
+        for (window in windows) {
+            if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
+            val root = window.root ?: continue
+            if (root.packageName?.toString() == targetPackage) return root
+            recycleLegacy(root)
+        }
+        return null
+    }
+
+    private fun findMatchingEditable(
+        root: AccessibilityNodeInfo,
+        captured: Target,
+    ): AccessibilityNodeInfo? {
+        val visited = mutableListOf<AccessibilityNodeInfo>()
+        val candidates = mutableListOf<AccessibilityNodeInfo>()
+        val budget = AccessibilityTraversalBudget()
+        fun visit(node: AccessibilityNodeInfo, depth: Int): Boolean {
+            if (!budget.tryVisit(depth)) return false
+            visited += node
+            if (node.isEditable && !node.isPassword && node.packageName?.toString() == captured.packageName) {
+                candidates += node
+            }
+            if (!budget.canDescendFrom(depth)) return true
+            for (index in 0 until node.childCount) {
+                val child = node.getChild(index) ?: continue
+                if (!visit(child, depth + 1)) {
+                    recycleLegacy(child)
+                    break
+                }
+            }
+            return true
+        }
+        visit(root, 0)
+        val idMatches = if (captured.viewId.isNullOrBlank()) emptyList() else {
+            candidates.filter { it.viewIdResourceName == captured.viewId }
+        }
+        val selected = (idMatches.ifEmpty { candidates }).minByOrNull { candidate ->
+            targetCandidateScore(candidate, captured)
+        }
+        visited.forEach { recycleIfDetached(it, selected) }
+        return selected
+    }
+
+    private fun targetCandidateScore(node: AccessibilityNodeInfo, captured: Target): Long {
+        val bounds = Rect().also(node::getBoundsInScreen)
+        return EditorTargetSelectionPolicy.score(
+            textMatches = captured.snapshot.text.isNotEmpty() &&
+                node.text?.toString().orEmpty() == captured.snapshot.text,
+            focused = node.isFocused,
+            horizontalDistancePx = kotlin.math.abs(bounds.centerX() - captured.bounds.centerX()),
+            verticalDistancePx = kotlin.math.abs(bounds.centerY() - captured.bounds.centerY()),
+        )
+    }
+
+    private fun closePanel(restoreKeyboard: Boolean) {
+        OnDeviceGrammarEngine.get(this).setSessionWarm(false)
+        mainHandler.removeCallbacks(keyboardHideRunnable)
+        cancelKeyboardRestore()
+        panelView?.let { runCatching { windowManager.removeView(it) } }
+        panelView = null
+        reviewSession = null
+        modelRequests.cancelAll()
+        modelRequestEpoch += 1
+        suggestionListView = null
+        suggestionScrollView = null
+        counterView = null
+        statusView = null
+        replaceButton = null
+        dismissButton = null
+        acceptChangeButton = null
+        rejectChangeButton = null
+        reviewToneButtons.clear()
+        activeReviewChangeId = null
+        replacementInFlight = false
+        retainedInputConnection = null
+        workingText = ""
+        val captured = target?.let { current ->
+            current.copy(
+                snapshot = ExternalWritingPolicy.scrubbedSnapshot(current.snapshot),
+            ).also(::setTarget)
+        }
+        if (restoreKeyboard && captured != null) {
+            pendingRestoreTarget = captured
+            mainHandler.postDelayed(restoreTargetRunnable, KEYBOARD_RESTORE_DELAY_MS)
+        }
+    }
+
+    private fun announceTriggerMiss() {
+        android.widget.Toast.makeText(
+            this,
+            getString(R.string.external_target_lost),
+            android.widget.Toast.LENGTH_SHORT,
+        ).show()
+    }
+
+    private fun clearTarget() {
+        cancelTargetClear()
+        cancelKeyboardRestore()
+        val previous = target
+        target = null
+        workingText = ""
+        previous?.node?.let(::recycleLegacy)
+        removeTrigger()
+    }
+
+    private fun scheduleTargetClear() {
+        mainHandler.removeCallbacks(deferredTargetClear)
+        mainHandler.postDelayed(deferredTargetClear, TARGET_CLEAR_GRACE_MS)
+    }
+
+    private fun cancelTargetClear() {
+        mainHandler.removeCallbacks(deferredTargetClear)
+    }
+
+    private fun cancelKeyboardRestore() {
+        mainHandler.removeCallbacks(restoreTargetRunnable)
+        pendingRestoreTarget = null
+    }
+
+    private fun clearAll() {
+        cancelTargetClear()
+        cancelKeyboardRestore()
+        removeTrigger()
+        closePanel(restoreKeyboard = false)
+        clearTarget()
+    }
+
+    private fun setTarget(next: Target) {
+        val previous = target
+        target = next
+        if (previous != null) recycleIfDetached(previous.node, next.node)
+    }
+
+    private fun sameEditor(first: Target, second: Target): Boolean {
+        return first.packageName == second.packageName && first.node == second.node
+    }
+
+    private fun recycleIfDetached(node: AccessibilityNodeInfo, retained: AccessibilityNodeInfo?) {
+        if (node !== retained) recycleLegacy(node)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun recycleLegacy(node: AccessibilityNodeInfo) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) node.recycle()
+    }
+
+    private fun removeTrigger() {
+        triggerView?.let {
+            TriggerPulseController.applyState(
+                it,
+                ManuscriptTriggerState.HIDDEN_UNFOCUSED,
+            )
+            runCatching { windowManager.removeView(it) }
+        }
+        triggerView = null
+    }
+
+    private fun label(textRes: Int) = TextView(this).apply {
+        text = getString(textRes)
+        textSize = 12f
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(COLOR_TEXT_MUTED)
+        setPadding(0, dp(6), 0, dp(2))
+    }
+
+    private fun body() = TextView(this).apply {
+        textSize = 15f
+        setTextColor(COLOR_TEXT)
+        maxLines = 4
+        setPadding(dp(10), dp(8), dp(10), dp(8))
+        background = rounded(COLOR_SURFACE, 10f, COLOR_BORDER)
+    }
+
+    private fun actionButton(textRes: Int, primary: Boolean, action: () -> Unit) = Button(this).apply {
+        text = getString(textRes)
+        contentDescription = text
+        isAllCaps = false
+        textSize = 14f
+        minHeight = dp(40)
+        minimumHeight = dp(40)
+        minWidth = 0
+        minimumWidth = 0
+        setPadding(dp(8), 0, dp(8), 0)
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(if (primary) COLOR_BACKGROUND else COLOR_TEXT)
+        background = rounded(if (primary) COLOR_ACCENT else COLOR_SURFACE, 12f, COLOR_ACCENT)
+        setOnClickListener { action() }
+    }
+
+    private fun rowParams() = LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.WRAP_CONTENT,
+    )
+
+    private fun weighted(start: Int = 0, end: Int = 0) = LinearLayout.LayoutParams(
+        0,
+        ViewGroup.LayoutParams.WRAP_CONTENT,
+        1f,
+    ).apply {
+        marginStart = dp(start)
+        marginEnd = dp(end)
+    }
+
+    private fun rounded(fill: Int, radiusDp: Float, stroke: Int) = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        setColor(fill)
+        cornerRadius = dp(radiusDp.toInt()).toFloat()
+        setStroke(dp(1), stroke)
+    }
+
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+
+    private data class Target(
+        val packageName: String,
+        val viewId: String?,
+        val bounds: Rect,
+        val snapshot: ExternalEditorSnapshot,
+        val node: AccessibilityNodeInfo,
+    )
+
+    private data class SystemBottomInsets(
+        val navigationBottomPx: Int,
+        val gestureBottomPx: Int,
+        val imeBottomInsetPx: Int,
+    ) {
+        val protectedBottomPx: Int = maxOf(navigationBottomPx, gestureBottomPx)
+    }
+
+    private companion object {
+        const val EXTRA_OPEN_PERSONALIZE = "com.remote.Manuscript.OPEN_PERSONALIZE"
+        const val EXTRA_OPEN_MODEL_SETUP = "com.remote.Manuscript.OPEN_MODEL_SETUP"
+        const val PREFERENCES_NAME = "manuscript_preferences_v1"
+        const val TONE_KEY = "writing_tone"
+        const val KEYBOARD_HIDE_DELAY_MS = 80L
+        const val KEYBOARD_RESTORE_DELAY_MS = 180L
+        const val REPLACEMENT_VERIFY_INTERVAL_MS = 350L
+        const val REPLACEMENT_VERIFY_ATTEMPTS = 8
+        const val REPLACEMENT_LOG_TAG = "ManuscriptReplace"
+        const val REVIEW_LOG_TAG = "ManuscriptReview"
+        const val TARGET_CLEAR_GRACE_MS = 800L
+        const val PRESS_GUARD_MS = 600L
+        val COLOR_BACKGROUND = Color.rgb(23, 18, 13)
+        val COLOR_SURFACE = Color.rgb(46, 36, 24)
+        val COLOR_SURFACE_FOCUSED = Color.rgb(67, 50, 28)
+        val COLOR_BORDER = Color.rgb(214, 168, 95)
+        val COLOR_ACCENT = Color.rgb(226, 184, 111)
+        val COLOR_ACCENT_DARK = Color.rgb(139, 91, 43)
+        val COLOR_TEXT = Color.rgb(247, 231, 198)
+        val COLOR_TEXT_MUTED = Color.rgb(242, 214, 162)
+        val COLOR_ERROR = Color.rgb(255, 131, 120)
+        val COLOR_REMOVED = Color.rgb(255, 151, 139)
+        val COLOR_INSERTED = Color.rgb(13, 28, 22)
+        val COLOR_INSERTED_BACKGROUND = Color.rgb(119, 226, 172)
+    }
+}

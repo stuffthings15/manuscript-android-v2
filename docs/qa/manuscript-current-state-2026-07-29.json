@@ -1,0 +1,51 @@
+{
+  "capturedAtUtc": "2026-07-29T22:10:00Z",
+  "git": {
+    "branch": "codex/manuscript-gemma-rebuild",
+    "head": "c2de35b5c54526751e253ec880b7efb7b31023c6",
+    "androidTrackedModifiedCountBeforeContract": 52,
+    "androidUntrackedCountBeforeContract": 85,
+    "overlapFiles": [
+      "app/src/main/java/com/echolink/mobile/MainActivity.kt",
+      "app/src/main/java/com/echolink/mobile/ManuscriptAccessibilityService.kt",
+      "app/src/main/java/com/echolink/mobile/AccessibilitySettingsGuide.kt",
+      "app/src/main/java/com/echolink/mobile/OnDeviceGrammarEngine.kt",
+      "app/src/main/java/com/echolink/mobile/ProcessTextActivity.kt"
+    ],
+    "parkedGptFiles": [
+      "app/src/androidTest/assets/device_tests/gpt56-five-page-all-tones-v2.json",
+      "app/src/androidTest/assets/device_tests/gpt56-five-page-errors-v2.md",
+      "app/src/androidTest/assets/device_tests/gpt56-five-page-proofread-reference-v2.md",
+      "app/src/androidTest/assets/device_tests/gpt56-full-page-unseen-v3.txt",
+      "app/src/androidTest/java/com/echolink/mobile/FocusedParagraphQualityDeviceTest.kt",
+      "app/src/androidTest/java/com/echolink/mobile/LiveFullPageReviewDeviceTest.kt"
+    ],
+    "protectedUserFile": "app/src/test/java/com/echolink/mobile/ManuscriptProductSourceTest.kt"
+  },
+  "baselineVerification": {
+    "command": ".\\gradlew.bat --no-daemon :app:testReleaseUnitTest",
+    "result": "BUILD SUCCESSFUL",
+    "durationSeconds": 8
+  },
+  "windowsBrand": {
+    "svgSha256": "A757E5D17EC31ED502FF249152270269241C4F8E83299E0191D23A1B28EBC30B",
+    "pngSha256": "7D4E71968686DF861B0BD8D1AC3D1D38AC7CB17BC048D1BE6F7DB1F42C9ED9E7"
+  },
+  "device": {
+    "serial": "R5CW20R46WD",
+    "model": "SM-S916U1",
+    "androidVersion": "16",
+    "oneUiProperty": "80500",
+    "accessibilityEnabled": true,
+    "manuscriptServiceEnabled": true,
+    "defaultInputMethod": "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME"
+  },
+  "installedDebugArtifact": {
+    "applicationId": "com.remote.Manuscript.debug",
+    "versionCode": 29,
+    "versionName": "0.29.0-internal-debug",
+    "lastUpdateTime": "2026-07-29 14:32:14",
+    "signerSha256": "8bd69027da4681eba4da0c860313708a8b16139d921127b8a4c6650ee89b6edf",
+    "apkSha256": "40A386DF6726FF13E77E5FE8B72BED202AB37B00BF2FE3DFADD45442BA5F9F82"
+  }
+}

@@ -1,0 +1,119 @@
+plugins {
+    id "com.android.library"
+}
+
+android {
+    namespace "com.arm.aichat"
+    compileSdk 36
+    ndkVersion "29.0.13113456"
+
+    defaultConfig {
+        minSdk 26
+
+        ndk {
+            abiFilters "arm64-v8a", "x86_64"
+        }
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DCMAKE_BUILD_TYPE=Release",
+                    "-DBUILD_SHARED_LIBS=ON",
+                    "-DLLAMA_BUILD_APP=OFF",
+                    "-DLLAMA_BUILD_COMMON=ON",
+                    "-DLLAMA_OPENSSL=OFF",
+                    "-DGGML_NATIVE=OFF",
+                    "-DGGML_BACKEND_DL=ON",
+                    "-DGGML_CPU_ALL_VARIANTS=ON",
+                    "-DGGML_LLAMAFILE=OFF",
+                    // Vulkan backend: on GPUs like the S23's Adreno the same
+                    // model decodes several times faster than CPU. Built as a
+                    // dlopen backend, so devices without a usable Vulkan
+                    // driver silently keep the CPU path. glslc ships in the
+                    // NDK; SPIRV-Headers is vendored (header-only).
+                    // Vulkan is opt-in (-Pmanuscript.vulkan=true). It builds
+                    // and links, and the Adreno 740 is detected with 7.3 GiB
+                    // visible, but that driver aborts the whole process inside
+                    // vk::Device::createComputePipeline. A C++ abort cannot be
+                    // caught in-process, so enabling it by default would ship
+                    // a hard crash. Shipping needs an isolated-process probe
+                    // that survives the abort and disables the backend.
+                    "-DGGML_VULKAN=${providers.gradleProperty('manuscript.vulkan').getOrElse('false')}",
+                    "-DVulkan_GLSLC_EXECUTABLE=${System.getenv('LOCALAPPDATA')}/Android/Sdk/ndk/29.0.13113456/shader-tools/windows-x86_64/glslc.exe",
+                    "-DSPIRV-Headers_DIR=${projectDir}/../vendor/spirv-headers/share/cmake/SPIRV-Headers",
+                    "-DGGML_VULKAN_SHADERS_GEN_TOOLCHAIN=${projectDir}/../vendor/spirv-headers/msvc-host-toolchain.cmake",
+                    // NDK ships only the C vulkan.h; the C++ vulkan.hpp comes
+                    // from vendored Khronos Vulkan-Headers pinned to the same
+                    // 1.3.275 API version as the NDK loader.
+                    "-DCMAKE_CXX_FLAGS=-isystem ${projectDir}/../vendor/vulkan-headers/include -isystem ${projectDir}/../vendor/spirv-headers/include"
+                cppFlags "-O3"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file("../vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/CMakeLists.txt")
+            version "3.31.6"
+            // Short staging dir: the Vulkan shader generator's nested
+            // ExternalProject exceeds Windows' 250-character object-path
+            // limit under the default .cxx location.
+            buildStagingDirectory "C:/m/ll"
+        }
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile "../vendor/llama.cpp/examples/llama.android/lib/src/main/AndroidManifest.xml"
+            java.srcDirs = ["../vendor/llama.cpp/examples/llama.android/lib/src/main/java"]
+            kotlin.srcDirs = ["../vendor/llama.cpp/examples/llama.android/lib/src/main/java"]
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+}
+
+dependencies {
+    implementation "androidx.core:core-ktx:1.15.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
+}
+
+def llamaVendorDirectory = file("../vendor/llama.cpp")
+def manuscriptLlamaPatch = file("../patches/llama-android-manuscript.patch")
+
+tasks.register("prepareManuscriptLlamaRuntime") {
+    inputs.file(manuscriptLlamaPatch)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        if (!file("${llamaVendorDirectory}/.git").exists()) {
+            throw new GradleException(
+                "Missing llama.cpp submodule. Run: git submodule update --init Manuscript/Android/vendor/llama.cpp"
+            )
+        }
+
+        def reverseCheck = providers.exec {
+            workingDir llamaVendorDirectory
+            commandLine "git", "apply", "--reverse", "--check", manuscriptLlamaPatch.absolutePath
+            ignoreExitValue = true
+        }.result.get().exitValue
+
+        if (reverseCheck != 0) {
+            providers.exec {
+                workingDir llamaVendorDirectory
+                commandLine "git", "apply", "--check", manuscriptLlamaPatch.absolutePath
+            }.result.get()
+            providers.exec {
+                workingDir llamaVendorDirectory
+                commandLine "git", "apply", manuscriptLlamaPatch.absolutePath
+            }.result.get()
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn("prepareManuscriptLlamaRuntime")
+}

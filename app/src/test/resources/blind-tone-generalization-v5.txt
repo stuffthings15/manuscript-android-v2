@@ -1,0 +1,6 @@
+V5-01	Maya must not realease pallet WH-482 before 2026-08-14 at 07:30, Luis only verify the seal unless QA-9 is offline, and the idiot plan might still fail.
+V5-02	Rina said "dont stack more then 4 crates in Bay-12", Omar inspects lot MX-771 except when the red scanner is broke, so quit being useless because it may be unsafe.
+V5-03	Priya need email dock.alerts@example.com by 16:45, but Chen must not open https://warehouse.example/door-7 until ticket SR-208 is closed, unless the dumb sensor maybe reports a false alarm.
+V5-04	Derek only move 3 drums from Zone-C on 2026-09-02, Ana signs form HAZ-44 after the weigh check except if scale SC-6 isnt calibrated, and this stupid delay could add 20 minutes.
+V5-05	Nora must not load more than 8 cartons on truck TR-55, Eli scan batch PK-903 before 05:20 unless Gate-2 is locked, and "whoever messed this up" might have entered the wrong count.
+V5-06	Samir seals container CN-610 and Jo dont dispatch it before 2026-10-11, only QA may approve a 2 kg variance except when case CAPA-31 is open, because this ridiculous rule could be outdated.

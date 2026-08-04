@@ -1,0 +1,186 @@
+{
+    "PROOFREAD":  {
+                      "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                      "acceptance_criteria":  [
+                                                  "Meaning and paragraph order unchanged",
+                                                  "word count within 5 percent of reference",
+                                                  "no optional tone shift or added claim"
+                                              ]
+                  },
+    "IMPROVE":  {
+                    "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                    "acceptance_criteria":  [
+                                                "At least 12 vague or awkward constructions clarified",
+                                                "transitions in at least 4 page openings",
+                                                "1,500 to 1,850 words"
+                                            ]
+                },
+    "REPHRASE":  {
+                     "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                     "acceptance_criteria":  [
+                                                 "At least 70 percent of non-heading sentences recast",
+                                                 "no paragraph copies more than 12 consecutive non-protected words",
+                                                 "all headings and list items retained"
+                                             ]
+                 },
+    "SHORTEN":  {
+                    "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                    "acceptance_criteria":  [
+                                                "30 to 45 percent shorter than reference",
+                                                "every protected fact retained",
+                                                "no sentence longer than 28 words"
+                                            ]
+                },
+    "FRIENDLY":  {
+                     "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                     "acceptance_criteria":  [
+                                                 "At least 6 warm collaborative phrases",
+                                                 "5 to 12 suitable contractions",
+                                                 "commands and privacy rules remain unambiguous"
+                                             ]
+                 },
+    "FORMAL":  {
+                   "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                   "acceptance_criteria":  [
+                                               "Zero contractions, slang, or fragments",
+                                               "complete institutional titles and precise modal verbs",
+                                               "all headings and list items use formal register"
+                                           ]
+               },
+    "PROFESSIONAL":  {
+                         "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                         "acceptance_criteria":  [
+                                                     "Every page opens with an action-oriented topic sentence",
+                                                     "assignments use consistent role and deadline phrasing",
+                                                     "1,400 to 1,800 words"
+                                                 ]
+                     },
+    "ACADEMIC":  {
+                     "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                     "acceptance_criteria":  [
+                                                 "At least 8 explicit logical connectors",
+                                                 "no invented citations, findings, or evidence",
+                                                 "third-person institutional language except protected text"
+                                             ]
+                 },
+    "CONVERSATIONAL":  {
+                           "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                           "acceptance_criteria":  [
+                                                       "Second person in 5 to 10 sentences",
+                                                       "at least 6 natural contractions",
+                                                       "every prohibition and deadline remains explicit"
+                                                   ]
+                       },
+    "CONCISE":  {
+                    "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                    "acceptance_criteria":  [
+                                                "20 to 35 percent shorter than reference",
+                                                "average sentence length at most 18 words",
+                                                "all protected facts and list structure retained"
+                                            ]
+                },
+    "DETAILED":  {
+                     "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                     "acceptance_criteria":  [
+                                                 "Procedural clarification added to at least 8 existing actions",
+                                                 "1,850 to 2,250 words",
+                                                 "no new names, dates, quantities, permissions, or claims"
+                                             ]
+                 },
+    "PERSUASIVE":  {
+                       "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                       "acceptance_criteria":  [
+                                                   "Clear readiness case in opening and closing",
+                                                   "at least 5 fact-based benefit or risk links",
+                                                   "no privacy or approval rule softened"
+                                               ]
+                   },
+    "CONFIDENT":  {
+                      "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                      "acceptance_criteria":  [
+                                                  "At least 85 percent of finite clauses in active voice",
+                                                  "no `maybe`, `perhaps`, or `probably`",
+                                                  "insurance remains explicitly unverified"
+                                              ]
+                  },
+    "DIPLOMATIC":  {
+                       "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                       "acceptance_criteria":  [
+                                                   "Check-in disagreement described without blame",
+                                                   "at least 5 respectful consensus phrases",
+                                                   "mandatory privacy and deadline language stays firm"
+                                               ]
+                   },
+    "EMPATHETIC":  {
+                       "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                       "acceptance_criteria":  [
+                                                   "Participant concerns, volunteer workload, and staff uncertainty each acknowledged",
+                                                   "at least 6 supportive sentences",
+                                                   "no penalty implied for refusing consent"
+                                               ]
+                   },
+    "CASUAL":  {
+                   "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                   "acceptance_criteria":  [
+                                               "8 to 16 contractions and plain vocabulary",
+                                               "no duty-obscuring slang",
+                                               "headings, list, quotation, URLs, and addresses intact"
+                                           ]
+               },
+    "TECHNICAL":  {
+                      "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                      "acceptance_criteria":  [
+                                                  "Precise encryption, locking, offline check-in, access-control, and accessibility terms",
+                                                  "at least 8 actor-action-verification requirements",
+                                                  "no invented specification"
+                                              ]
+                  },
+    "SIMPLIFIED":  {
+                       "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                       "acceptance_criteria":  [
+                                                   "Average sentence length at most 15 words",
+                                                   "at least 90 percent of sentences at most 22 words",
+                                                   "all protected rules remain explicit"
+                                               ]
+                   },
+    "HIGH_SCHOOL":  {
+                        "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                        "acceptance_criteria":  [
+                                                    "Mostly common vocabulary with unavoidable technical terms defined",
+                                                    "average sentence length 12 to 20 words",
+                                                    "complete meaning and formatting retained"
+                                                ]
+                    },
+    "COLLEGE":  {
+                    "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                    "acceptance_criteria":  [
+                                                "Varied sentence structures and precise transitions on every page",
+                                                "analytic readable register with no invented citations",
+                                                "average sentence length 16 to 24 words"
+                                            ]
+                },
+    "COOPERATIVE":  {
+                        "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                        "acceptance_criteria":  [
+                                                    "`we` or `our` in 8 to 16 suitable sentences",
+                                                    "each assignment includes a collaboration or handoff cue",
+                                                    "ownership and deadlines remain exact"
+                                                ]
+                    },
+    "ASSERTIVE":  {
+                      "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                      "acceptance_criteria":  [
+                                                  "Every obligation uses `must`, `will`, or a direct imperative",
+                                                  "zero hedges and zero passive assignments",
+                                                  "prohibitions and deadlines remain prominent"
+                                              ]
+                  },
+    "CAVEMAN":  {
+                    "objective_correctness_gate":  "Correct every planted objective error, introduce zero objective errors, preserve every protected fact and operational meaning, preserve required formatting, and use zero em dashes before tone is evaluated.",
+                    "acceptance_criteria":  [
+                                                "At least 80 percent of eligible sentences contain 3 to 8 words",
+                                                "no eligible sentence exceeds 12 words",
+                                                "every protected fact and formatting element remains explicit"
+                                            ]
+                }
+}

@@ -1,0 +1,77 @@
+{
+  "contractVersion": 1,
+  "canonicalReleasePackage": "com.remote.Manuscript",
+  "canonicalDebugPackage": "com.remote.Manuscript.debug",
+  "canonicalTestPackage": "com.remote.Manuscript.debug.test",
+  "legacyPackagesForbidden": [
+    "com.echolink.manuscript"
+  ],
+  "surfaces": [
+    "android_launcher",
+    "in_app_writing_trigger",
+    "across_app_overlay_trigger",
+    "accessibility_settings_guidance"
+  ],
+  "brand": {
+    "windowsSvg": "../Windows/resources/manuscript.svg",
+    "windowsPng": "../Windows/resources/manuscript.png",
+    "windowsSvgSha256": "A757E5D17EC31ED502FF249152270269241C4F8E83299E0191D23A1B28EBC30B",
+    "windowsPngSha256": "7D4E71968686DF861B0BD8D1AC3D1D38AC7CB17BC048D1BE6F7DB1F42C9ED9E7",
+    "palette": [
+      "#17120D",
+      "#D6A85F",
+      "#F2D6A2",
+      "#F7E7C6",
+      "#E2B86F",
+      "#8B5B2B",
+      "#3B291C"
+    ],
+    "launcherMustPreserveOuterGoldFrame": true,
+    "themedMonochromeIconAllowed": false,
+    "adaptiveForegroundScale": 0.49
+  },
+  "trigger": {
+    "touchTargetDp": 48,
+    "visualSizeDp": 32,
+    "paddingDp": 8,
+    "requiresFocusedEditableText": true,
+    "passwordFieldsAllowed": false,
+    "emptyFieldsAllowed": false,
+    "attentionAnimation": {
+      "kind": "alpha_scale_pulse",
+      "alphaFrom": 1.0,
+      "alphaTo": 0.62,
+      "scaleFrom": 1.0,
+      "scaleTo": 1.08,
+      "halfCycleMs": 700,
+      "repeat": true,
+      "respectRemoveAnimationsSetting": true
+    }
+  },
+  "accessibilitySettings": {
+    "samsungHomeRowKey": "accessibility_installed_services",
+    "aospHomeRowKey": "user_installed_services_category",
+    "serviceComponentClass": "com.echolink.mobile.ManuscriptAccessibilityService",
+    "selectedKeyboardMustRemainActive": true
+  },
+  "correction": {
+    "blankSuggestionAllowed": false,
+    "infiniteLoadingAllowed": false,
+    "originalTextChangesOnFailure": false,
+    "terminalStates": [
+      "success",
+      "retryable_failure",
+      "model_required"
+    ]
+  },
+  "usbInstall": {
+    "replacementOnly": true,
+    "uninstallAllowed": false,
+    "clearDataAllowed": false,
+    "requiredAdbArguments": [
+      "install",
+      "-r",
+      "-t"
+    ]
+  }
+}

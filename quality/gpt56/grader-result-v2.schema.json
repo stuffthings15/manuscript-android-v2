@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "grader-result-v2.schema.json",
+  "title": "GPT-5.6 Sol isolated grader result v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "document_id",
+    "tone",
+    "output_sha256",
+    "grader_input_sha256",
+    "pass",
+    "score_percent",
+    "submission_complete",
+    "objective_results",
+    "introduced_errors",
+    "protected_fact_results",
+    "meaning_integrity",
+    "formatting",
+    "tone_criteria",
+    "em_dash_count",
+    "failure_summary"
+  ],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "document_id": { "type": "string", "minLength": 1 },
+    "tone": { "type": "string", "minLength": 1 },
+    "output_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "grader_input_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "pass": { "type": "boolean" },
+    "score_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+    "submission_complete": { "type": "boolean" },
+    "objective_results": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/measured_result" }
+    },
+    "introduced_errors": { "$ref": "#/$defs/string_array" },
+    "protected_fact_results": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/measured_result" }
+    },
+    "meaning_integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "findings"],
+      "properties": {
+        "pass": { "type": "boolean" },
+        "findings": { "$ref": "#/$defs/string_array" }
+      }
+    },
+    "formatting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "heading_count", "page_heading_count", "list_item_count", "findings"],
+      "properties": {
+        "pass": { "type": "boolean" },
+        "heading_count": { "type": "integer", "minimum": 0 },
+        "page_heading_count": { "type": "integer", "minimum": 0 },
+        "list_item_count": { "type": "integer", "minimum": 0 },
+        "findings": { "$ref": "#/$defs/string_array" }
+      }
+    },
+    "tone_criteria": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/measured_result" }
+    },
+    "em_dash_count": { "type": "integer", "minimum": 0 },
+    "failure_summary": { "$ref": "#/$defs/string_array" }
+  },
+  "$defs": {
+    "string_array": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "measured_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "pass", "evidence", "reason"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "pass": { "type": "boolean" },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
