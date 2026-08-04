@@ -16,6 +16,14 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 class S23ExternalEditorFixtureActivity : Activity() {
+    @Volatile
+    var resumeCount = 0
+        private set
+
+    @Volatile
+    var stopCount = 0
+        private set
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val mode = intent.getStringExtra(EXTRA_MODE).orEmpty()
@@ -89,6 +97,16 @@ class S23ExternalEditorFixtureActivity : Activity() {
         if (mode == MODE_TRANSIENT) {
             editor.postDelayed({ editor.text.clear() }, TRANSIENT_CLEAR_DELAY_MS)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resumeCount += 1
+    }
+
+    override fun onStop() {
+        stopCount += 1
+        super.onStop()
     }
 
     private fun dp(value: Int): Int =

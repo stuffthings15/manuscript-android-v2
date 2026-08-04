@@ -215,7 +215,7 @@ class MainActivity : Activity() {
             ::mainToneMenu.isInitialized &&
             isDescendant(newFocus, mainToneMenu)
         if (newFocus !== editor && newFocus !== assistantTrigger && !insideCard && !insideToneMenu) {
-            closeReview()
+            invalidateMainReviewSurface(ReviewSurfaceEvent.TargetLost)
         }
         updateAssistantTrigger()
     }
@@ -527,7 +527,7 @@ class MainActivity : Activity() {
         // Load the model in the background now so the first Correct my
         // writing tap does not pay model-load latency.
         grammarEngine.preloadAsync()
-        closeReview()
+        invalidateMainReviewSurface(ReviewSurfaceEvent.TargetLost)
         updateTabs()
         val restoredDraft = restoreEncryptedDraft()
         val scroll = ScrollView(this).apply {
@@ -662,11 +662,10 @@ class MainActivity : Activity() {
 
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         actions.addView(secondaryButton(R.string.new_document_action) {
-            closeReview()
+            invalidateMainReviewSurface(ReviewSurfaceEvent.TargetLost)
             statusHandler.removeCallbacks(draftSave)
             editor.text.clear()
             draftStore.clear()
-            editor.requestFocus()
         }, weightedParams(endMargin = 6))
         actions.addView(secondaryButton(R.string.share_document_action) { shareDocument() }, weightedParams(startMargin = 6))
         content.addView(actions, matchWidth(bottomMargin = 10))
@@ -1219,11 +1218,7 @@ class MainActivity : Activity() {
         val top = OfficialCorrectionHeader(
             context = this,
             title = getString(R.string.correction_card_title),
-            onClose = {
-                closeReview()
-                editor.requestFocus()
-                editor.post { showSystemKeyboard(editor) }
-            },
+            onClose = { closeReview() },
             onSettings = null,
         ).apply { showCounter() }
         reviewCounter = top.counterView
@@ -1698,7 +1693,6 @@ class MainActivity : Activity() {
         } catch (_: IllegalArgumentException) {
             internalTextChange = false
             closeReview()
-            editor.requestFocus()
         }
     }
 
@@ -1706,8 +1700,6 @@ class MainActivity : Activity() {
         val session = reviewSession
         if (session == null || session.complete) {
             closeReview()
-            editor.requestFocus()
-            editor.post { showSystemKeyboard(editor) }
             return
         }
         session.dismissCurrent()
@@ -1887,6 +1879,10 @@ class MainActivity : Activity() {
     private fun closeReview() {
         Log.i(REVIEW_LOG, "cancel=closeReview")
         reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.CloseRequested)
+    }
+
+    private fun invalidateMainReviewSurface(event: ReviewSurfaceEvent) {
+        reviewSurfaceExecutor.dispatch(event)
     }
 
     private fun mainEditorEligibility(): ReviewTargetEligibility {
@@ -2071,7 +2067,7 @@ class MainActivity : Activity() {
     private fun showPersonalizePage() {
         persistDraftNow()
         currentPage = Page.PERSONALIZE
-        closeReview()
+        invalidateMainReviewSurface(ReviewSurfaceEvent.TargetLost)
         updateTabs()
         val scroll = ScrollView(this).apply {
             clipToPadding = false

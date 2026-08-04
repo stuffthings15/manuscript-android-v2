@@ -73,13 +73,29 @@ class ReviewSurfaceEffectExecutorTest {
     }
 
     @Test
-    fun reconnectReacquiresOneEligibleFieldAndShowsOneTrigger() {
+    fun sequentialReconnectsRevalidateTheOneEligibleFieldAndKeepOneTrigger() {
         val fixture = hiddenFixture()
 
         fixture.executor.dispatch(ReviewSurfaceEvent.ServiceReconnected)
         fixture.executor.dispatch(ReviewSurfaceEvent.ServiceReconnected)
 
-        assertEquals(listOf("reacquire:any"), fixture.actions.calls)
+        assertEquals(listOf("reacquire:any", "reacquire:editor"), fixture.actions.calls)
+        assertEquals(ReviewSurfaceState.TriggerVisible(TARGET_ID), fixture.controller.state)
+    }
+
+    @Test
+    fun reconnectWhileTriggerVisibleRevalidatesInsteadOfStrandingControllerState() {
+        val fixture = hiddenFixture()
+        fixture.executor.dispatch(
+            ReviewSurfaceEvent.FocusedTargetAvailable(
+                ReviewTarget(TARGET_ID, ReviewTargetEligibility.ELIGIBLE),
+            ),
+        )
+        fixture.actions.calls.clear()
+
+        fixture.executor.dispatch(ReviewSurfaceEvent.ServiceReconnected)
+
+        assertEquals(listOf("reacquire:editor"), fixture.actions.calls)
         assertEquals(ReviewSurfaceState.TriggerVisible(TARGET_ID), fixture.controller.state)
     }
 

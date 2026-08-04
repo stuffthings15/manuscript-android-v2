@@ -23,12 +23,6 @@ class ReviewSurfaceEffectExecutor(
     private val pendingEvents = ArrayDeque<ReviewSurfaceEvent>()
 
     fun dispatch(event: ReviewSurfaceEvent) {
-        if (
-            event == ReviewSurfaceEvent.ServiceReconnected &&
-            controller.state is ReviewSurfaceState.TriggerVisible
-        ) {
-            return
-        }
         pendingEvents.addLast(event)
         drainEvents()
     }

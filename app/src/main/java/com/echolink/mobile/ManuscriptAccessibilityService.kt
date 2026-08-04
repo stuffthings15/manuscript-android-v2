@@ -65,6 +65,19 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     private val modelRequests = RewriteRequestBatch()
     private var modelRequestEpoch = 0
     private val mainHandler by lazy { Handler(mainLooper) }
+    private val replacementVerificationWork by lazy {
+        TrackedDelayedWork(
+            object : DelayedWorkScheduler {
+                override fun postDelayed(runnable: Runnable, delayMillis: Long) {
+                    mainHandler.postDelayed(runnable, delayMillis)
+                }
+
+                override fun remove(runnable: Runnable) {
+                    mainHandler.removeCallbacks(runnable)
+                }
+            },
+        )
+    }
     private val reviewSurfaceController = ReviewSurfaceController()
     private val reviewSurfaceExecutor by lazy {
         ReviewSurfaceEffectExecutor(
@@ -73,6 +86,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
                 override fun cancelStaleCorrectionAndCallbackWork() {
                     OnDeviceGrammarEngine.get(this@ManuscriptAccessibilityService).setSessionWarm(false)
                     mainHandler.removeCallbacks(keyboardHideRunnable)
+                    replacementVerificationWork.cancelAll()
                     modelRequests.cancelAll()
                     modelRequestEpoch += 1
                     replacementInFlight = false
@@ -137,6 +151,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             return@Runnable
         }
         if (panelView == null) {
+            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
             clearTarget()
         }
     }
@@ -239,6 +254,9 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     }
 
     override fun onDestroy() {
+        replacementVerificationWork.cancelAll()
+        mainHandler.removeCallbacks(keyboardHideRunnable)
+        mainHandler.removeCallbacks(releaseTriggerPress)
         reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.Destroy)
         cancelTargetClear()
         cancelKeyboardRestore()
@@ -1180,6 +1198,8 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     @TargetApi(Build.VERSION_CODES.TIRAMISU)
     private fun replaceCurrent(changeId: String? = null) {
         if (replacementInFlight) return
+        val verificationToken = replacementVerificationWork.beginGeneration()
+        val surfaceCallbackToken = reviewSurfaceExecutor.currentCallbackToken()
         val pendingBlock = reviewSession?.current(selectedTone)
         if (
             pendingBlock != null &&
@@ -1253,7 +1273,12 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             return showFailure(R.string.external_replace_failed)
         }
         fun verifyReplacement(attempt: Int) {
-            if (reviewSession !== session || panelView == null) return
+            if (
+                !replacementVerificationWork.isCurrent(verificationToken) ||
+                !reviewSurfaceExecutor.isCurrentCallback(surfaceCallbackToken) ||
+                reviewSession !== session ||
+                panelView == null
+            ) return
             val verifiedNode = reacquireTarget(operationTarget)
             verifiedNode?.refresh()
             if (verifiedNode != null && verifiedNode !== operationTarget.node) {
@@ -1297,17 +1322,17 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
                         )
                     } else false
                     if (!fallbackRequested) return showFailure(R.string.external_replace_failed)
-                    mainHandler.postDelayed(
-                        { verifyReplacement(attempt + 1) },
+                    replacementVerificationWork.schedule(
+                        verificationToken,
                         REPLACEMENT_VERIFY_INTERVAL_MS,
-                    )
+                    ) { verifyReplacement(attempt + 1) }
                     return
                 }
                 ReplacementVerificationAction.RETRY -> {
-                    mainHandler.postDelayed(
-                        { verifyReplacement(attempt + 1) },
+                    replacementVerificationWork.schedule(
+                        verificationToken,
                         REPLACEMENT_VERIFY_INTERVAL_MS,
-                    )
+                    ) { verifyReplacement(attempt + 1) }
                     return
                 }
                 ReplacementVerificationAction.FAIL -> {
@@ -1338,14 +1363,15 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             ) ?: return showFailure(R.string.external_replace_failed)
             setTarget(operationTarget.copy(snapshot = updatedSnapshot))
             replacementInFlight = false
+            replacementVerificationWork.cancelAll()
             setReplacementControlsEnabled(true)
             activeReviewChangeId = null
             renderCurrentBlock()
         }
-        mainHandler.postDelayed(
-            { verifyReplacement(0) },
+        replacementVerificationWork.schedule(
+            verificationToken,
             REPLACEMENT_VERIFY_INTERVAL_MS,
-        )
+        ) { verifyReplacement(0) }
     }
 
     private fun acceptCurrentChange() {
@@ -1402,6 +1428,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
 
     private fun showFailure(message: Int) {
         Log.w(REPLACEMENT_LOG_TAG, resources.getResourceEntryName(message))
+        replacementVerificationWork.cancelAll()
         replacementInFlight = false
         setReplacementControlsEnabled(true)
         statusView?.apply {
@@ -1429,11 +1456,19 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         return findMatchingEditable(root, captured)
     }
 
-    private fun reviewTargetId(candidate: Target): ReviewTargetId = ReviewTargetId(
-        "${candidate.packageName}|${candidate.node.windowId}|" +
-            "${candidate.viewId.orEmpty().ifBlank { "focused-editor" }}|" +
-            candidate.node.hashCode(),
-    )
+    private fun reviewTargetId(candidate: Target): ReviewTargetId =
+        ExternalFieldIdentity.from(
+            packageName = candidate.packageName,
+            windowId = candidate.node.windowId,
+            viewId = candidate.viewId,
+            className = candidate.node.className?.toString().orEmpty().ifBlank { "editable" },
+            bounds = FieldBounds(
+                left = candidate.bounds.left,
+                top = candidate.bounds.top,
+                right = candidate.bounds.right,
+                bottom = candidate.bounds.bottom,
+            ),
+        ).asReviewTargetId()
 
     private fun currentReviewTargetId(): ReviewTargetId? = when (val state = reviewSurfaceController.state) {
         is ReviewSurfaceState.TriggerVisible -> state.targetId
@@ -1519,29 +1554,26 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     }
 
     private fun restoreKeyboardToReacquiredTarget(targetId: ReviewTargetId) {
-        val restored = reacquireReviewTarget(targetId)
-        if (!restored.canRestore) return
-        val node = target?.node ?: return
+        val current = target ?: return
+        if (reviewTargetId(current) != targetId) return
+        val node = current.node
+        if (!node.isEditable || node.isPassword) return
         node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
         node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 
     private fun showTriggerForReacquiredTarget(targetId: ReviewTargetId) {
-        val restored = reacquireReviewTarget(targetId)
-        if (!restored.canRestore) {
-            reviewSurfaceExecutor.dispatch(restorationFailureEvent(restored.eligibility))
+        val current = target
+        if (
+            current == null ||
+            reviewTargetId(current) != targetId ||
+            !ExternalWritingPolicy.canOffer(current.snapshot, packageName)
+        ) {
+            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
             return
         }
-        val bounds = target?.bounds ?: return
-        showTrigger(bounds)
+        showTrigger(current.bounds)
     }
-
-    private fun restorationFailureEvent(eligibility: ReviewTargetEligibility): ReviewSurfaceEvent =
-        when (eligibility) {
-            ReviewTargetEligibility.PASSWORD -> ReviewSurfaceEvent.PasswordFocused
-            ReviewTargetEligibility.SWITCHED_APPLICATION -> ReviewSurfaceEvent.ApplicationSwitched
-            else -> ReviewSurfaceEvent.TargetLost
-        }
 
     private fun rootForPackage(targetPackage: String): AccessibilityNodeInfo? {
         rootInActiveWindow?.let { root ->

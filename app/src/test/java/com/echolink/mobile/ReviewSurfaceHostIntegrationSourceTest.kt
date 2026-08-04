@@ -18,6 +18,10 @@ class ReviewSurfaceHostIntegrationSourceTest {
         assertTrue(source.contains("mainEditorInvalidationEvent"))
         assertTrue(source.contains("eligibility != ReviewTargetEligibility.ELIGIBLE"))
         assertEquals(3, Regex("beginMainReviewSurface\\(\\)").findAll(source).count())
+        assertTrue(source.contains("onClose = { closeReview() }"))
+        assertTrue(source.contains("invalidateMainReviewSurface(ReviewSurfaceEvent.TargetLost)"))
+        assertFalse(Regex("closeReview\\(\\)\\s*editor\\.requestFocus").containsMatchIn(source))
+        assertFalse(Regex("closeReview\\(\\)\\s*editor\\.post\\s*\\{\\s*showSystemKeyboard").containsMatchIn(source))
     }
 
     @Test
@@ -32,7 +36,11 @@ class ReviewSurfaceHostIntegrationSourceTest {
         assertTrue(source.contains("ReviewSurfaceEvent.ServiceReconnected"))
         assertTrue(source.contains("synchronizeReviewSurfaceTarget(candidate)"))
         assertTrue(source.contains("currentReviewTargetId()"))
-        assertTrue(source.contains("candidate.node.hashCode()"))
+        assertTrue(source.contains("reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)"))
+        assertTrue(source.contains("replacementVerificationWork.cancelAll()"))
+        assertFalse(source.contains("candidate.node.hashCode()"))
+        assertTrue(source.contains("ExternalFieldIdentity.from("))
+        assertEquals(2, Regex("reacquireReviewTarget\\(").findAll(source).count())
     }
 
     @Test
