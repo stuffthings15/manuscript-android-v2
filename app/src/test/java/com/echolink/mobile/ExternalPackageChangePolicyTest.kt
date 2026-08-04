@@ -6,49 +6,37 @@ import org.junit.Test
 
 class ExternalPackageChangePolicyTest {
     @Test
-    fun verifiedApplicationWindowChangeIsImmediateEvenWhenFocusIsMissing() {
+    fun verifiedSettingsWindowWinsOverStaleRetainedRoot() {
         assertTrue(
             ExternalPackageChangePolicy.confirmed(
                 retainedPackage = "fixture.editor",
-                activeWindowPackage = "com.android.settings",
-                eventPackage = "com.android.settings",
-                verifiedApplicationWindowTransition = true,
+                verifiedApplicationWindowPackage = "com.android.settings",
             ),
         )
     }
 
     @Test
-    fun confirmedWindowTransitionUsesEventPackageWhenActiveRootIsMissing() {
-        assertTrue(
-            ExternalPackageChangePolicy.confirmed(
-                retainedPackage = "fixture.editor",
-                activeWindowPackage = "",
-                eventPackage = "com.android.settings",
-                verifiedApplicationWindowTransition = true,
-            ),
-        )
-    }
-
-    @Test
-    fun keyboardEventsDoNotPretendTheApplicationChanged() {
+    fun verifiedSamePackageWindowKeepsCurrentSurface() {
         assertFalse(
             ExternalPackageChangePolicy.confirmed(
                 retainedPackage = "fixture.editor",
-                activeWindowPackage = "fixture.editor",
-                eventPackage = "keyboard.package",
-                verifiedApplicationWindowTransition = false,
+                verifiedApplicationWindowPackage = "fixture.editor",
             ),
         )
     }
 
     @Test
-    fun unverifiedActiveWindowDifferenceCannotClearForImeOrOverlayNoise() {
+    fun unverifiedImeOrSelfOverlayCannotConfirmPackageChange() {
         assertFalse(
             ExternalPackageChangePolicy.confirmed(
                 retainedPackage = "fixture.editor",
-                activeWindowPackage = "keyboard.package",
-                eventPackage = "keyboard.package",
-                verifiedApplicationWindowTransition = false,
+                verifiedApplicationWindowPackage = null,
+            ),
+        )
+        assertFalse(
+            ExternalPackageChangePolicy.confirmed(
+                retainedPackage = "",
+                verifiedApplicationWindowPackage = "com.android.settings",
             ),
         )
     }

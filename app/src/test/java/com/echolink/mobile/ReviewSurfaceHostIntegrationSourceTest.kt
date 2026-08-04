@@ -41,10 +41,12 @@ class ReviewSurfaceHostIntegrationSourceTest {
         assertFalse(source.contains("candidate.node.hashCode()"))
         assertTrue(source.contains("ExternalFieldIdentity.from("))
         assertEquals(2, Regex("reacquireReviewTarget\\(").findAll(source).count())
-        assertTrue(source.contains("AccessibilityNodeStructuralLocator.from(candidate.node)"))
+        assertTrue(source.contains("AccessibilityNodeStructuralLocator.from(applicationRoot, node)"))
+        assertTrue(source.contains("val reviewTargetId: ReviewTargetId"))
+        assertFalse(source.contains("private fun reviewTargetId(candidate"))
         assertTrue(source.contains("FocusedReviewTargetPolicy.resolveEligibility("))
-        assertTrue(source.contains("isVerifiedApplicationWindowTransition(event)"))
-        val packageGuard = source.indexOf("ExternalPackageChangePolicy.confirmed(")
+        assertTrue(source.contains("verifiedApplicationWindowPackage(event)"))
+        val packageGuard = source.indexOf("verifiedApplicationWindowPackage(event)")
         val focusedLookup = source.indexOf("val node = focusedEditableNode()")
         assertTrue(packageGuard >= 0)
         assertTrue(packageGuard < focusedLookup)
@@ -58,6 +60,21 @@ class ReviewSurfaceHostIntegrationSourceTest {
         assertTrue(source.contains("ReviewSurfaceEffectExecutor"))
         assertTrue(source.contains("ReviewSurfaceEvent.CloseRequested"))
         assertTrue(source.contains("ReviewSurfaceEvent.Destroy"))
+    }
+
+    @Test
+    fun onlyTheAccessibilityResolverConstructsProvenStructuralLocatorsInProduction() {
+        val sourceRoot = File(
+            System.getProperty("user.dir"),
+            "src/main/java/com/echolink/mobile",
+        )
+        val callers = sourceRoot.walkTopDown()
+            .filter { file -> file.isFile && file.extension == "kt" }
+            .filter { file -> file.readText().contains("FieldStructuralLocator.proven(") }
+            .map(File::getName)
+            .toList()
+
+        assertEquals(listOf("AccessibilityNodeStructuralLocator.kt"), callers)
     }
 
     private fun source(name: String): String = File(

@@ -67,7 +67,9 @@ class S23ExternalEditorFixtureActivity : Activity() {
             null
         }
         if (mode == MODE_STRUCTURAL_FIELDS) {
+            editor.id = R.id.review_editor
             editor.contentDescription = STRUCTURAL_FIELD_ONE_DESCRIPTION
+            structuralSecondEditor?.id = R.id.review_editor
         }
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

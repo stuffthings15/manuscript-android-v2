@@ -7,6 +7,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -68,44 +69,125 @@ class ExternalEditorLifecycleFixtureDeviceTest {
     }
 
     @Test
-    fun packageSwitchUsesSettingsAndFixtureStopsThenResumesWithOneTrigger() {
+    fun triggerVisibleSettingsSwitchMeetsLifecycleTimings() {
+        assertSettingsSwitch(panelOpen = false)
+    }
+
+    @Test
+    fun panelOpenSettingsSwitchMeetsLifecycleTimings() {
+        assertSettingsSwitch(panelOpen = true)
+    }
+
+    @Test
+    fun duplicateViewIdRowsHaveDistinctStableStructuralLocators() {
+        withFixture(S23ExternalEditorFixtureActivity.MODE_STRUCTURAL_FIELDS) {
+            val firstDescription = S23ExternalEditorFixtureActivity.STRUCTURAL_FIELD_ONE_DESCRIPTION
+            val secondDescription = S23ExternalEditorFixtureActivity.STRUCTURAL_FIELD_TWO_DESCRIPTION
+
+            tapDescription(firstDescription)
+            val first = waitForFocusedFieldProof(firstDescription)
+            tapDescription(secondDescription)
+            val second = waitForFocusedFieldProof(secondDescription)
+            tapDescription(firstDescription)
+            val firstAgain = waitForFocusedFieldProof(firstDescription)
+
+            assertEquals(first.viewId, second.viewId)
+            assertTrue(first.viewId.isNotBlank())
+            assertNotEquals(first.locator, second.locator)
+            assertEquals(first, firstAgain)
+        }
+    }
+
+    private fun waitForFocusedFieldProof(expectedDescription: String): FocusedFieldProof {
+        var proof: FocusedFieldProof? = null
+        assertTrue(
+            waitUntil {
+                proof = focusedFieldProof(expectedDescription)
+                proof != null
+            },
+        )
+        return requireNotNull(proof)
+    }
+
+    private fun focusedFieldProof(expectedDescription: String): FocusedFieldProof? {
+        val candidates = instrumentation.uiAutomation.windows.mapNotNull { window ->
+            if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION) return@mapNotNull null
+            val root = window.root ?: return@mapNotNull null
+            val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            if (
+                focused == null ||
+                !focused.isFocused ||
+                !focused.isEditable ||
+                focused.contentDescription?.toString() != expectedDescription ||
+                focused.packageName?.toString() != root.packageName?.toString()
+            ) {
+                focused?.recycle()
+                root.recycle()
+                return@mapNotNull null
+            }
+            root to focused
+        }
+        if (candidates.size != 1) {
+            candidates.forEach { (root, focused) ->
+                focused.recycle()
+                root.recycle()
+            }
+            return null
+        }
+        val (applicationRoot, focusedNode) = candidates.single()
+        return try {
+            val viewId = focusedNode.viewIdResourceName?.takeIf(String::isNotBlank) ?: return null
+            val locator = AccessibilityNodeStructuralLocator.from(applicationRoot, focusedNode)
+                ?: return null
+            FocusedFieldProof(viewId, locator)
+        } finally {
+            focusedNode.recycle()
+            applicationRoot.recycle()
+        }
+    }
+
+    private fun assertSettingsSwitch(panelOpen: Boolean) {
         requireEnabledManuscriptService()
         withFixture(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH) { activity ->
             assertTrue(waitForDescription(triggerDescription, expected = true))
+            if (panelOpen) {
+                tapDescription(triggerDescription)
+                assertTrue(waitForDescription(panelCloseDescription, expected = true))
+                assertEquals(0, countDescription(triggerDescription))
+            }
             val resumesBeforeSwitch = activity.resumeCount
+            val disappearStartedAt = SystemClock.elapsedRealtime()
+            val disappearDeadline = disappearStartedAt + SURFACE_DISAPPEAR_MS
 
             tap(activity.window.decorView.findViewWithTag(
                 S23ExternalEditorFixtureActivity.LIFECYCLE_ACTION_TAG,
             ))
 
-            assertTrue(waitUntil { activePackage() == SETTINGS_PACKAGE })
+            assertTrue(waitUntilDeadline(disappearDeadline) { activePackage() == SETTINGS_PACKAGE })
             assertEquals(SETTINGS_PACKAGE, activePackage())
+            assertTrue(
+                waitUntilDeadline(disappearDeadline) {
+                    countDescription(triggerDescription) == 0 &&
+                        countDescription(panelCloseDescription) == 0
+                },
+            )
+            assertTrue(SystemClock.elapsedRealtime() - disappearStartedAt <= SURFACE_DISAPPEAR_MS)
             assertTrue(waitUntil { activity.stopCount >= 1 })
-            assertDescriptionCountStable(triggerDescription, expectedCount = 0, observationMs = 2_000L)
-            assertDescriptionCountStable(panelCloseDescription, expectedCount = 0, observationMs = 2_000L)
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-            assertTrue(waitUntil { activity.resumeCount > resumesBeforeSwitch })
-            assertTrue(waitUntil { countDescription(triggerDescription) == 1 })
-            assertDescriptionCountStable(triggerDescription, expectedCount = 1)
-        }
-    }
+            assertDescriptionCountStable(triggerDescription, expectedCount = 0)
+            assertDescriptionCountStable(panelCloseDescription, expectedCount = 0)
 
-    @Test
-    fun nullViewIdFieldsUnderDifferentParentsHaveDifferentStructuralLocators() {
-        withFixture(S23ExternalEditorFixtureActivity.MODE_STRUCTURAL_FIELDS) {
-            val first = findDescription(S23ExternalEditorFixtureActivity.STRUCTURAL_FIELD_ONE_DESCRIPTION)
-                ?: error("First structural field missing")
-            val second = findDescription(S23ExternalEditorFixtureActivity.STRUCTURAL_FIELD_TWO_DESCRIPTION)
-                ?: error("Second structural field missing")
-            try {
-                assertNotEquals(
-                    AccessibilityNodeStructuralLocator.from(first),
-                    AccessibilityNodeStructuralLocator.from(second),
-                )
-            } finally {
-                first.recycle()
-                second.recycle()
-            }
+            val returnStartedAt = SystemClock.elapsedRealtime()
+            val returnDeadline = returnStartedAt + TRIGGER_RETURN_MS
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            assertTrue(waitUntilDeadline(returnDeadline) { activity.resumeCount > resumesBeforeSwitch })
+            assertTrue(
+                waitUntilDeadline(returnDeadline) {
+                    countDescription(triggerDescription) == 1
+                },
+            )
+            assertTrue(SystemClock.elapsedRealtime() - returnStartedAt <= TRIGGER_RETURN_MS)
+            assertEquals(0, countDescription(panelCloseDescription))
+            assertDescriptionCountStable(triggerDescription, expectedCount = 1)
         }
     }
 
@@ -270,7 +352,10 @@ class ExternalEditorLifecycleFixtureDeviceTest {
         }
 
     private fun waitUntil(timeoutMs: Long = 5_000L, condition: () -> Boolean): Boolean {
-        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        return waitUntilDeadline(SystemClock.elapsedRealtime() + timeoutMs, condition)
+    }
+
+    private fun waitUntilDeadline(deadline: Long, condition: () -> Boolean): Boolean {
         do {
             if (condition()) return true
             SystemClock.sleep(50L)
@@ -280,5 +365,12 @@ class ExternalEditorLifecycleFixtureDeviceTest {
 
     companion object {
         private const val SETTINGS_PACKAGE = "com.android.settings"
+        private const val SURFACE_DISAPPEAR_MS = 300L
+        private const val TRIGGER_RETURN_MS = 500L
     }
+
+    private data class FocusedFieldProof(
+        val viewId: String,
+        val locator: FieldStructuralLocator,
+    )
 }

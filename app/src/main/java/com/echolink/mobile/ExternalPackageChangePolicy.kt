@@ -3,12 +3,11 @@ package com.echolink.mobile
 object ExternalPackageChangePolicy {
     fun confirmed(
         retainedPackage: String,
-        activeWindowPackage: String,
-        eventPackage: String,
-        verifiedApplicationWindowTransition: Boolean,
+        verifiedApplicationWindowPackage: String?,
     ): Boolean {
-        if (retainedPackage.isBlank() || !verifiedApplicationWindowTransition) return false
-        val confirmedPackage = activeWindowPackage.ifBlank { eventPackage }
-        return confirmedPackage.isNotBlank() && confirmedPackage != retainedPackage
+        if (retainedPackage.isBlank()) return false
+        val confirmedPackage = verifiedApplicationWindowPackage?.takeIf(String::isNotBlank)
+            ?: return false
+        return confirmedPackage != retainedPackage
     }
 }

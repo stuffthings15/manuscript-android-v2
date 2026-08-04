@@ -2,6 +2,7 @@ package com.echolink.mobile
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -84,20 +85,75 @@ class ExternalFieldIdentityTest {
         windowId: Int,
         path: List<Int>,
         viewId: String? = null,
-    ): ExternalFieldIdentity = ExternalFieldIdentity.from(
+    ): ExternalFieldIdentity = requireNotNull(ExternalFieldIdentity.from(
         packageName = "example.editor",
         platformUniqueId = uniqueId,
         viewId = viewId,
-        structuralLocator = FieldStructuralLocator(
+        structuralLocator = FieldStructuralLocator.proven(
             windowId = windowId,
+            focusedWindowId = windowId,
             ancestry = path.mapIndexed { depth, childIndex ->
                 StructuralNodeStep(
                     parentClassName = "fixture.Parent$depth",
                     childIndex = childIndex,
-                    childDrawingOrder = depth + 1,
                 )
             },
             leafClassName = "android.widget.EditText",
+            completePath = true,
+            traversalTruncated = false,
         ),
-    )
+    ))
+
+    @Test
+    fun incompleteTruncatedAndStalePathsFailClosed() {
+        val ancestry = listOf(
+            StructuralNodeStep("fixture.Parent", childIndex = 0),
+        )
+        assertNull(
+            FieldStructuralLocator.proven(
+                windowId = 7,
+                focusedWindowId = 7,
+                ancestry = ancestry,
+                leafClassName = "android.widget.EditText",
+                completePath = false,
+                traversalTruncated = false,
+            ),
+        )
+        assertNull(
+            FieldStructuralLocator.proven(
+                windowId = 7,
+                focusedWindowId = 7,
+                ancestry = ancestry,
+                leafClassName = "android.widget.EditText",
+                completePath = true,
+                traversalTruncated = true,
+            ),
+        )
+        assertNull(
+            FieldStructuralLocator.proven(
+                windowId = 7,
+                focusedWindowId = 8,
+                ancestry = ancestry,
+                leafClassName = "android.widget.EditText",
+                completePath = true,
+                traversalTruncated = false,
+            ),
+        )
+        assertNull(
+            ExternalFieldIdentity.from(
+                packageName = "example.editor",
+                platformUniqueId = null,
+                viewId = "example.editor:id/body",
+                structuralLocator = null,
+            ),
+        )
+        assertNull(
+            ExternalFieldIdentity.from(
+                packageName = "example.editor",
+                platformUniqueId = "platform-field-41",
+                viewId = "example.editor:id/body",
+                structuralLocator = null,
+            ),
+        )
+    }
 }
