@@ -1624,8 +1624,8 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     }
 
     private companion object {
-        const val EXTRA_OPEN_PERSONALIZE = "com.remote.Manuscript.OPEN_PERSONALIZE"
-        const val EXTRA_OPEN_MODEL_SETUP = "com.remote.Manuscript.OPEN_MODEL_SETUP"
+        const val EXTRA_OPEN_PERSONALIZE = "com.remote.Manuscript.v2.OPEN_PERSONALIZE"
+        const val EXTRA_OPEN_MODEL_SETUP = "com.remote.Manuscript.v2.OPEN_MODEL_SETUP"
         const val PREFERENCES_NAME = "manuscript_preferences_v1"
         const val TONE_KEY = "writing_tone"
         const val KEYBOARD_HIDE_DELAY_MS = 80L

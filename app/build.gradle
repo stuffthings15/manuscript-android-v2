@@ -19,11 +19,11 @@ android {
     testBuildType providers.gradleProperty("manuscript.testBuildType").getOrElse("release")
 
     defaultConfig {
-        applicationId "com.remote.Manuscript"
+        applicationId "com.remote.Manuscript.v2"
         minSdk 26
         targetSdk 36
-        versionCode 33
-        versionName "0.33.0-internal"
+        versionCode 1
+        versionName "2.0.0-internal"
         buildConfigField "String", "MANUSCRIPT_ACCOUNT_SERVICE_URL", "\"https://manuscript-writing.seventhree170.chatgpt.site\""
         buildConfigField "String", "MANUSCRIPT_GIT_COMMIT", "\"${manuscriptGitCommit}\""
         buildConfigField "int", "MANUSCRIPT_CONTRACT_VERSION", "1"
@@ -53,7 +53,7 @@ android {
             versionNameSuffix "-debug"
         }
         release {
-            buildConfigField "boolean", "SUBSCRIPTION_ENFORCED", "true"
+            buildConfigField "boolean", "SUBSCRIPTION_ENFORCED", "false"
             minifyEnabled false
             shrinkResources false
             if (hasReleaseSigning) signingConfig signingConfigs.release
@@ -77,7 +77,7 @@ android {
     }
 
     sourceSets {
-        main.assets.srcDir rootProject.file("../../shared/contract/v1")
+        main.assets.srcDir rootProject.file("shared/contract/v1")
         if (
             providers.gradleProperty("manuscript.excludeParkedGptTests")
                 .getOrElse("false").toBoolean()

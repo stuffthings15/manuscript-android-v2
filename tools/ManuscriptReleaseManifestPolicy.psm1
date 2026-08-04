@@ -30,8 +30,8 @@ function Test-ManuscriptReleaseManifestData {
             throw "Release manifest field is missing: $name"
         }
     }
-    if ($Manifest.applicationId -ne 'com.remote.Manuscript') {
-        throw 'The frozen Play application ID must be com.remote.Manuscript.'
+    if ($Manifest.applicationId -ne 'com.remote.Manuscript.v2') {
+        throw 'The frozen local Version 2 application ID must be com.remote.Manuscript.v2.'
     }
     if ([int]$Manifest.contractVersion -ne 1) {
         throw 'The frozen product contract version must be 1.'

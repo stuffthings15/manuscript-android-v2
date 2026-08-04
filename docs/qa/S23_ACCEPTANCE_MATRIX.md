@@ -2,8 +2,8 @@
 
 Target: `SM-S916U1`
 Serial: `R5CW20R46WD`
-Release package: `com.remote.Manuscript`
-USB package: `com.remote.Manuscript.debug`
+Release package: `com.remote.Manuscript.v2`
+USB package: `com.remote.Manuscript.v2.debug`
 
 ## Frozen gates
 

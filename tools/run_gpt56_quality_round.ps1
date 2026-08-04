@@ -366,7 +366,7 @@ try {
             $Serial,
             "exec-out",
             "run-as",
-            "com.remote.Manuscript.debug",
+            "com.remote.Manuscript.v2.debug",
             "sh",
             "-c",
             $reportPreflightScript
@@ -397,7 +397,7 @@ try {
         "-e",
         "roundId",
         $RoundId,
-        "com.remote.Manuscript.debug.test/androidx.test.runner.AndroidJUnitRunner"
+        "com.remote.Manuscript.v2.debug.test/androidx.test.runner.AndroidJUnitRunner"
     )
     $instrumentationStartedAt = [DateTime]::UtcNow
     $instrumentationResult = Invoke-CapturedProcess `
@@ -420,7 +420,7 @@ try {
             $Serial,
             "exec-out",
             "run-as",
-            "com.remote.Manuscript.debug",
+            "com.remote.Manuscript.v2.debug",
             "cat",
             $reportDevicePath
         ) `

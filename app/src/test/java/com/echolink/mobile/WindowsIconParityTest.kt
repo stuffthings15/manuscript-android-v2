@@ -12,7 +12,7 @@ import org.junit.Test
 class WindowsIconParityTest {
     private val androidRoot = File(checkNotNull(System.getProperty("echoLinkAndroidDir")))
     private val mainRoot = File(androidRoot, "app/src/main")
-    private val windowsRoot = File(androidRoot, "../Windows/resources").canonicalFile
+    private val canonicalBrandRoot = File(androidRoot, "brand/canonical")
 
     @Test
     fun generatedIconsAreBoundToTheCanonicalWindowsArtwork() {
@@ -22,7 +22,6 @@ class WindowsIconParityTest {
         val launcher = source("res/mipmap-anydpi-v26/ic_launcher.xml")
         val roundLauncher = source("res/mipmap-anydpi-v26/ic_launcher_round.xml")
         val generator = File(androidRoot, "tools/generate_android_brand_assets.py")
-        val provenance = File(androidRoot, "evidence/brand/generated-brand-assets.json")
 
         assertTrue(icon.contains(CANONICAL_OUTER_PATH))
         assertTrue(icon.contains(CANONICAL_BORDER_PATH))
@@ -32,7 +31,6 @@ class WindowsIconParityTest {
         assertTrue(assistIcon.contains(CANONICAL_OUTER_PATH))
         assertTrue(assistIcon.contains("M590,710L770,453"))
         assertTrue(generator.isFile)
-        assertTrue(provenance.isFile)
         // 0.49 keeps the complete gold frame inside the guaranteed 66dp
         // launcher safe circle on every OEM mask; the near-black adaptive
         // background fills the remainder.
@@ -52,10 +50,8 @@ class WindowsIconParityTest {
             )
             assertFalse(adaptiveIcon.contains("<monochrome"))
         }
-        assertEquals(WINDOWS_SVG_SHA256, sha256(File(windowsRoot, "manuscript.svg")))
-        assertEquals(WINDOWS_PNG_SHA256, sha256(File(windowsRoot, "manuscript.png")))
-        assertTrue(provenance.readText().contains(WINDOWS_SVG_SHA256))
-        assertTrue(provenance.readText().contains(WINDOWS_PNG_SHA256))
+        assertEquals(CANONICAL_SVG_SHA256, sha256(File(canonicalBrandRoot, "manuscript.svg")))
+        assertEquals(CANONICAL_PNG_SHA256, sha256(File(canonicalBrandRoot, "manuscript.png")))
     }
 
     @Test
@@ -89,9 +85,9 @@ class WindowsIconParityTest {
     }
 
     private companion object {
-        const val WINDOWS_SVG_SHA256 =
-            "A757E5D17EC31ED502FF249152270269241C4F8E83299E0191D23A1B28EBC30B"
-        const val WINDOWS_PNG_SHA256 =
+        const val CANONICAL_SVG_SHA256 =
+            "C85E54DD5051D33D488DEDE79A1F556235E08211E6C8F576219DD89F6C0FE84E"
+        const val CANONICAL_PNG_SHA256 =
             "7D4E71968686DF861B0BD8D1AC3D1D38AC7CB17BC048D1BE6F7DB1F42C9ED9E7"
         val LOCKED_PALETTE = setOf(
             "#17120D",

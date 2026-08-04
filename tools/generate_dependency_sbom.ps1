@@ -62,9 +62,9 @@ $bom = [ordered]@{
         component = [ordered]@{
             type = 'application'
             group = 'com.remote'
-            name = 'Manuscript'
+            name = 'Manuscript Android Version 2'
             version = $appVersion
-            purl = "pkg:apk/com.remote.Manuscript@$appVersion"
+            purl = "pkg:apk/com.remote.Manuscript.v2@$appVersion"
         }
         tools = @(
             [ordered]@{

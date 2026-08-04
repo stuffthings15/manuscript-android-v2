@@ -16,13 +16,13 @@ class ManuscriptProductSourceTest {
         val strings = File(mainRoot, "res/values/strings.xml").readText()
         val activity = source("MainActivity.kt")
 
-        assertTrue(strings.contains("<string name=\"app_name\">Manuscript</string>"))
+        assertTrue(strings.contains("<string name=\"app_name\">Manuscript Android Version 2</string>"))
         assertTrue(
             strings.contains(
                 "<string name=\"app_slogan\">Flawless writing powered locally</string>",
             ),
         )
-        assertTrue(manifest.contains("android:label=\"@string/app_name\""))
+        assertTrue(manifest.contains("android:label=\"@string/launcher_name\""))
         assertTrue(activity.contains("R.string.app_slogan"))
         assertFalse(Regex(">[^<]*Echo-Link[^<]*<").containsMatchIn(strings))
     }

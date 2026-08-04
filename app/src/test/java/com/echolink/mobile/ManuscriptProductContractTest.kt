@@ -16,7 +16,7 @@ class ManuscriptProductContractTest {
     private val androidRoot = File(checkNotNull(System.getProperty("echoLinkAndroidDir")))
     private val contractFile = File(
         androidRoot,
-        "docs/product-contract/manuscript-android-v1.json",
+        "docs/product-contract/manuscript-android-v2.json",
     )
 
     @Test
@@ -28,11 +28,11 @@ class ManuscriptProductContractTest {
         val contract = Json.parseToJsonElement(contractFile.readText()).jsonObject
 
         assertEquals(
-            "com.remote.Manuscript",
+            "com.remote.Manuscript.v2",
             contract.getValue("canonicalReleasePackage").jsonPrimitive.content,
         )
         assertEquals(
-            "com.remote.Manuscript.debug",
+            "com.remote.Manuscript.v2.debug",
             contract.getValue("canonicalDebugPackage").jsonPrimitive.content,
         )
         assertEquals(
@@ -109,7 +109,7 @@ class ManuscriptProductContractTest {
             File(androidRoot, "tools/security_release_gate.ps1"),
         ).filter(File::isFile)
 
-        assertTrue(build.contains("applicationId \"com.remote.Manuscript\""))
+        assertTrue(build.contains("applicationId \"com.remote.Manuscript.v2\""))
         assertFalse(build.contains("com.echolink.manuscript"))
         assertFalse(manifest.contains("com.echolink.manuscript"))
         releaseScripts.forEach { script ->

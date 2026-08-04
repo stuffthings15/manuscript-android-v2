@@ -44,7 +44,7 @@ android {
                     // NDK ships only the C vulkan.h; the C++ vulkan.hpp comes
                     // from vendored Khronos Vulkan-Headers pinned to the same
                     // 1.3.275 API version as the NDK loader.
-                    "-DCMAKE_CXX_FLAGS=-isystem ${projectDir}/../vendor/vulkan-headers/include -isystem ${projectDir}/../vendor/spirv-headers/include"
+                    "-DCMAKE_CXX_FLAGS=-isystem \\\"${projectDir}/../vendor/vulkan-headers/include\\\" -isystem \\\"${projectDir}/../vendor/spirv-headers/include\\\""
                 cppFlags "-O3"
             }
         }
@@ -82,38 +82,42 @@ dependencies {
 }
 
 def llamaVendorDirectory = file("../vendor/llama.cpp")
-def manuscriptLlamaPatch = file("../patches/llama-android-manuscript.patch")
+def llamaVendorSentinels = [
+    "examples/llama.android/lib/src/main/cpp/CMakeLists.txt": "825DDC929CDA8B0B5B9EA8272275F9A5D63638FE03E0D52B68529FE817E75A6F",
+    "examples/llama.android/lib/src/main/cpp/ai_chat.cpp": "832C3A36F4A46DAB781376133B5A107E36C65A2E492B331ED045EDEBF4297DA2",
+    "examples/llama.android/lib/src/main/cpp/logging.h": "B69C2B2DF513A041EA1EBEDE5A4DBEA81E52C8B021BBA0C2ED165DEB1B02F9FD",
+    "examples/llama.android/lib/src/main/java/com/arm/aichat/InferenceEngine.kt": "B0280CEFE6C2195CCDB2612F81B8E5164275F7BC0C5FA9875C32A69B06F11C47",
+    "examples/llama.android/lib/src/main/java/com/arm/aichat/internal/InferenceEngineImpl.kt": "A72D6AE6F8EF2ACAC3B3AFE69DA5434FA64417A3F8163565D19D5D64444D2370",
+]
 
-tasks.register("prepareManuscriptLlamaRuntime") {
-    inputs.file(manuscriptLlamaPatch)
-    outputs.upToDateWhen { false }
+tasks.register("verifyManuscriptLlamaRuntime") {
+    inputs.files(llamaVendorSentinels.keySet().collect { relativePath ->
+        file("${llamaVendorDirectory}/${relativePath}")
+    })
 
     doLast {
-        if (!file("${llamaVendorDirectory}/.git").exists()) {
-            throw new GradleException(
-                "Missing llama.cpp submodule. Run: git submodule update --init Manuscript/Android/vendor/llama.cpp"
-            )
+        if (!llamaVendorDirectory.isDirectory()) {
+            throw new GradleException("Committed llama.cpp vendor source is missing.")
         }
-
-        def reverseCheck = providers.exec {
-            workingDir llamaVendorDirectory
-            commandLine "git", "apply", "--reverse", "--check", manuscriptLlamaPatch.absolutePath
-            ignoreExitValue = true
-        }.result.get().exitValue
-
-        if (reverseCheck != 0) {
-            providers.exec {
-                workingDir llamaVendorDirectory
-                commandLine "git", "apply", "--check", manuscriptLlamaPatch.absolutePath
-            }.result.get()
-            providers.exec {
-                workingDir llamaVendorDirectory
-                commandLine "git", "apply", manuscriptLlamaPatch.absolutePath
-            }.result.get()
+        llamaVendorSentinels.each { relativePath, expectedHash ->
+            def sourceFile = file("${llamaVendorDirectory}/${relativePath}")
+            if (!sourceFile.isFile()) {
+                throw new GradleException("Required llama.cpp source is missing: ${relativePath}")
+            }
+            def actualHash = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(sourceFile.bytes)
+                .encodeHex()
+                .toString()
+                .toUpperCase(java.util.Locale.ROOT)
+            if (actualHash != expectedHash) {
+                throw new GradleException(
+                    "Unexpected llama.cpp source hash for ${relativePath}. Expected ${expectedHash}, got ${actualHash}."
+                )
+            }
         }
     }
 }
 
 tasks.named("preBuild").configure {
-    dependsOn("prepareManuscriptLlamaRuntime")
+    dependsOn("verifyManuscriptLlamaRuntime")
 }

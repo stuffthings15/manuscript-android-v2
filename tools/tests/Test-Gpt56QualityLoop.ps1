@@ -52,7 +52,7 @@ function New-TestReport(
         source_sha256 = "4358a8521631c2d962de3ffb7a55f7ea04afdc1b95c2eedbffb0ea641c656dd9"
         proofread_reference_sha256 = "7a82fec7bf4637ad80494152c8ec30cc09047d26238f03b768296941b8557fda"
         source_word_count = 1000
-        application_id = "com.remote.Manuscript.debug"
+        application_id = "com.remote.Manuscript.v2.debug"
         version_name = "1.0-test"
         version_code = 1
         device_manufacturer = "Samsung"
@@ -1132,7 +1132,7 @@ try {
         "-e"
         "roundId"
         $successRoundId
-        "com.remote.Manuscript.debug.test/androidx.test.runner.AndroidJUnitRunner"
+        "com.remote.Manuscript.v2.debug.test/androidx.test.runner.AndroidJUnitRunner"
     )
     $actualInstrumentTail = @($instrumentCall | Select-Object -Last $expectedInstrumentTail.Count)
     Assert-True (($actualInstrumentTail -join "|") -ceq ($expectedInstrumentTail -join "|")) "Instrumentation must receive the exact class, tone, roundId, and runner arguments."
@@ -1141,7 +1141,7 @@ try {
     $expectedPullTail = @(
         "exec-out"
         "run-as"
-        "com.remote.Manuscript.debug"
+        "com.remote.Manuscript.v2.debug"
         "cat"
         "files/test-evidence/gpt56-proofread-$successRoundId.json"
     )

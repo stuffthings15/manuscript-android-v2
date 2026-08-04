@@ -380,7 +380,7 @@ class ProcessTextActivity : Activity() {
     }
 
     private companion object {
-        const val EXTRA_OPEN_MODEL_SETUP = "com.remote.Manuscript.OPEN_MODEL_SETUP"
+        const val EXTRA_OPEN_MODEL_SETUP = "com.remote.Manuscript.v2.OPEN_MODEL_SETUP"
         const val PREFERENCES_NAME = "manuscript_preferences_v1"
         const val TONE_KEY = "writing_tone"
         const val MIN_TOUCH_TARGET_DP = 48

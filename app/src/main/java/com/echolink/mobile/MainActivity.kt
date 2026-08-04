@@ -2321,8 +2321,8 @@ class MainActivity : Activity() {
     private enum class Page { WRITE, PERSONALIZE }
 
     internal companion object {
-        const val EXTRA_OPEN_PERSONALIZE = "com.remote.Manuscript.OPEN_PERSONALIZE"
-        const val EXTRA_OPEN_MODEL_SETUP = "com.remote.Manuscript.OPEN_MODEL_SETUP"
+        const val EXTRA_OPEN_PERSONALIZE = "com.remote.Manuscript.v2.OPEN_PERSONALIZE"
+        const val EXTRA_OPEN_MODEL_SETUP = "com.remote.Manuscript.v2.OPEN_MODEL_SETUP"
         const val SETTINGS_HIGHLIGHT_KEY = ":settings:fragment_args_key"
         const val SETTINGS_SHOW_FRAGMENT_ARGUMENTS = ":settings:show_fragment_args"
         const val AOSP_INSTALLED_SERVICES_KEY = "user_installed_services_category"

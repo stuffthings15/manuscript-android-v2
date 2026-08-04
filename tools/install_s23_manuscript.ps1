@@ -57,14 +57,14 @@ foreach ($requiredTool in @($adb, $apkSignerTool, $apkanalyzer)) {
 }
 
 $expectedPackage = if ($Variant -eq 'debug') {
-    'com.remote.Manuscript.debug'
+    'com.remote.Manuscript.v2.debug'
 } else {
-    'com.remote.Manuscript'
+    'com.remote.Manuscript.v2'
 }
 $oppositePackage = if ($Variant -eq 'debug') {
-    'com.remote.Manuscript'
+    'com.remote.Manuscript.v2'
 } else {
-    'com.remote.Manuscript.debug'
+    'com.remote.Manuscript.v2.debug'
 }
 $expectedService = "$expectedPackage/com.echolink.mobile.ManuscriptAccessibilityService"
 $defaultApk = if ($Variant -eq 'debug') {
@@ -278,9 +278,9 @@ $localAiStateBefore = if ($installedBefore.Exists) {
 }
 
 $packagesToStop = @(
-    'com.remote.Manuscript',
-    'com.remote.Manuscript.debug',
-    'com.remote.Manuscript.debug.test'
+    'com.remote.Manuscript.v2',
+    'com.remote.Manuscript.v2.debug',
+    'com.remote.Manuscript.v2.debug.test'
 )
 foreach ($package in $packagesToStop) {
     Invoke-Adb -Arguments @('-s', $Serial, 'shell', 'am', 'force-stop', $package) | Out-Null

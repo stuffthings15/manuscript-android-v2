@@ -11,14 +11,14 @@ class ExternalWritingPolicyTest {
     fun offersOnlyForNonPasswordEditableTextOutsideManuscript() {
         val normal = snapshot(packageName = "com.google.android.apps.messaging")
 
-        assertTrue(ExternalWritingPolicy.canOffer(normal, "com.remote.Manuscript"))
-        assertFalse(ExternalWritingPolicy.canOffer(normal.copy(password = true), "com.remote.Manuscript"))
-        assertFalse(ExternalWritingPolicy.canOffer(normal.copy(editable = false), "com.remote.Manuscript"))
-        assertFalse(ExternalWritingPolicy.canOffer(normal.copy(text = ""), "com.remote.Manuscript"))
+        assertTrue(ExternalWritingPolicy.canOffer(normal, "com.remote.Manuscript.v2"))
+        assertFalse(ExternalWritingPolicy.canOffer(normal.copy(password = true), "com.remote.Manuscript.v2"))
+        assertFalse(ExternalWritingPolicy.canOffer(normal.copy(editable = false), "com.remote.Manuscript.v2"))
+        assertFalse(ExternalWritingPolicy.canOffer(normal.copy(text = ""), "com.remote.Manuscript.v2"))
         assertFalse(
             ExternalWritingPolicy.canOffer(
-                normal.copy(packageName = "com.remote.Manuscript"),
-                "com.remote.Manuscript",
+                normal.copy(packageName = "com.remote.Manuscript.v2"),
+                "com.remote.Manuscript.v2",
             ),
         )
     }
@@ -39,7 +39,7 @@ class ExternalWritingPolicyTest {
         assertEquals("", captured.text)
         assertEquals(27, captured.textLength)
         assertTrue(captured.hasText)
-        assertTrue(ExternalWritingPolicy.canOffer(captured, "com.remote.Manuscript"))
+        assertTrue(ExternalWritingPolicy.canOffer(captured, "com.remote.Manuscript.v2"))
     }
 
     @Test
@@ -76,7 +76,7 @@ class ExternalWritingPolicyTest {
             text = "x".repeat(ExternalWritingPolicy.MAX_EXTERNAL_INPUT_LENGTH + 1),
         )
 
-        assertFalse(ExternalWritingPolicy.canOffer(oversized, "com.remote.Manuscript"))
+        assertFalse(ExternalWritingPolicy.canOffer(oversized, "com.remote.Manuscript.v2"))
     }
 
     @Test

@@ -10,9 +10,9 @@ Describe 'Manuscript frozen release manifest' {
             gitTreeCleanForReleaseFiles = $true
             contractVersion = 1
             contractSha256 = 'A' * 64
-            applicationId = 'com.remote.Manuscript'
-            versionCode = 29
-            versionName = '0.29.0-internal'
+            applicationId = 'com.remote.Manuscript.v2'
+            versionCode = 1
+            versionName = '2.0.0-internal'
             signerSha256 = 'B' * 64
             apkSha256 = 'C' * 64
             aabSha256 = 'D' * 64
@@ -31,7 +31,7 @@ Describe 'Manuscript frozen release manifest' {
     }
 
     It 'rejects a legacy or debug package' {
-        foreach ($package in @('com.echolink.manuscript', 'com.remote.Manuscript.debug')) {
+        foreach ($package in @('com.echolink.manuscript', 'com.remote.Manuscript.v2.debug')) {
             $candidate = $good.PSObject.Copy()
             $candidate.applicationId = $package
             { Test-ManuscriptReleaseManifestData -Manifest $candidate } | Should Throw

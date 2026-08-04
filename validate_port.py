@@ -71,7 +71,7 @@ def main() -> int:
     assert 'android:mimeType="text/plain"' in manifest
     assert 'android:allowBackup="false"' in manifest
     assert 'android:usesCleartextTraffic="false"' in manifest
-    assert 'applicationId "com.remote.Manuscript"' in app_gradle
+    assert 'applicationId "com.remote.Manuscript.v2"' in app_gradle
     assert 'android:name=".ManuscriptAccessibilityService"' in manifest
     assert 'android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"' in manifest
     assert "android.accessibilityservice.AccessibilityService" in manifest

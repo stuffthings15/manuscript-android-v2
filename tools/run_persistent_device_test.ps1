@@ -52,7 +52,7 @@ if (-not [string]::IsNullOrWhiteSpace($Tone)) {
 if ($ParagraphIndex -gt 0) {
     $arguments += @("-e", "paragraphIndex", $ParagraphIndex.ToString())
 }
-$arguments += "com.remote.Manuscript.debug.test/androidx.test.runner.AndroidJUnitRunner"
+$arguments += "com.remote.Manuscript.v2.debug.test/androidx.test.runner.AndroidJUnitRunner"
 
 & $adb @arguments
 if ($LASTEXITCODE -ne 0) {

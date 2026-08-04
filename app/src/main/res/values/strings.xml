@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Manuscript</string>
+    <string name="app_name">Manuscript Android Version 2</string>
+    <string name="launcher_name">Manuscript V2</string>
     <string name="app_slogan">Flawless writing powered locally</string>
     <string name="privacy_summary">Local writing stays on this device. The account service receives only identity and subscription data. No ads or analytics.</string>
     <string name="qwen_model_ready">AI ready. %1$s stored. Mode: %2$s. Tap for settings.</string>

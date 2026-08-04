@@ -190,8 +190,8 @@ class AccountActivity : Activity() {
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     companion object {
-        const val EXTRA_VERIFY_ONLY = "com.remote.Manuscript.VERIFY_ACCOUNT_ONLY"
-        const val EXTRA_ACCOUNT_ID = "com.remote.Manuscript.ACCOUNT_ID"
+        const val EXTRA_VERIFY_ONLY = "com.remote.Manuscript.v2.VERIFY_ACCOUNT_ONLY"
+        const val EXTRA_ACCOUNT_ID = "com.remote.Manuscript.v2.ACCOUNT_ID"
         const val REQUEST_VERIFY_ACCOUNT = 9031
         private val COLOR_BACKGROUND = Color.rgb(23, 18, 13)
         private val COLOR_TEXT = Color.rgb(247, 231, 198)

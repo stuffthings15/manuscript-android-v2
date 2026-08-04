@@ -1,4 +1,4 @@
-# Manuscript Android
+# Manuscript Android Version 2
 
 **Flawless writing powered locally**
 
@@ -71,16 +71,7 @@ selected keyboard, signer, version, and launched process. A package or signer
 conflict stops the update. The script never removes an installed app or clears
 its data.
 
-## Signed Play bundle
+## Distribution boundary
 
-The upload key and its DPAPI-protected credential stay outside Git under
-`%LOCALAPPDATA%\Manuscript`. Build with:
-
-```powershell
-.\tools\build_play_bundle.ps1
-```
-
-Output: `app/build/outputs/bundle/release/app-release.aab`
-
-The permanent Play package ID is `com.remote.Manuscript`. Do not upload a
-different package under the same Play listing.
+Version 2 is local and USB-only. Do not reuse Version 1 package IDs, signing
+credentials, artifacts, URLs, or tester links.

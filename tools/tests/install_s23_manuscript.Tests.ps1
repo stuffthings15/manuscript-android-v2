@@ -11,14 +11,14 @@ Describe 'Manuscript S23 safe installer' {
             ExpectedModel = 'SM-S916U1'
             ActualModel = 'SM-S916U1'
             ApkExists = $true
-            ApkPackage = 'com.remote.Manuscript.debug'
-            ExpectedPackage = 'com.remote.Manuscript.debug'
+            ApkPackage = 'com.remote.Manuscript.v2.debug'
+            ExpectedPackage = 'com.remote.Manuscript.v2.debug'
             ApkSigner = 'ABC123'
             InstalledTargetExists = $true
             InstalledSigner = 'ABC123'
             OppositePackageInstalled = $false
-            AccessibilityServices = 'com.remote.Manuscript.debug/com.echolink.mobile.ManuscriptAccessibilityService'
-            ExpectedAccessibilityService = 'com.remote.Manuscript.debug/com.echolink.mobile.ManuscriptAccessibilityService'
+            AccessibilityServices = 'com.remote.Manuscript.v2.debug/com.echolink.mobile.ManuscriptAccessibilityService'
+            ExpectedAccessibilityService = 'com.remote.Manuscript.v2.debug/com.echolink.mobile.ManuscriptAccessibilityService'
         }
     }
 
@@ -92,9 +92,9 @@ Describe 'Manuscript S23 safe installer' {
     It 'rejects a process still alive after force-stop' {
         {
             Test-ManuscriptStoppedProcesses -ProcessIds @{
-                'com.remote.Manuscript' = ''
-                'com.remote.Manuscript.debug' = '4812'
-                'com.remote.Manuscript.debug.test' = ''
+                'com.remote.Manuscript.v2' = ''
+                'com.remote.Manuscript.v2.debug' = '4812'
+                'com.remote.Manuscript.v2.debug.test' = ''
             }
         } | Should Throw
     }
@@ -106,8 +106,8 @@ Describe 'Manuscript S23 safe installer' {
                 -PostAccessibility '' `
                 -PreKeyboard 'gboard' `
                 -PostKeyboard 'gboard' `
-                -ExpectedPackage 'com.remote.Manuscript.debug' `
-                -InstalledPackage 'com.remote.Manuscript.debug' `
+                -ExpectedPackage 'com.remote.Manuscript.v2.debug' `
+                -InstalledPackage 'com.remote.Manuscript.v2.debug' `
                 -ExpectedSigner 'ABC123' `
                 -InstalledSigner 'ABC123' `
                 -ProcessId '5500'
@@ -121,8 +121,8 @@ Describe 'Manuscript S23 safe installer' {
                 -PostAccessibility 'service' `
                 -PreKeyboard 'gboard' `
                 -PostKeyboard 'gboard' `
-                -ExpectedPackage 'com.remote.Manuscript.debug' `
-                -InstalledPackage 'com.remote.Manuscript.debug' `
+                -ExpectedPackage 'com.remote.Manuscript.v2.debug' `
+                -InstalledPackage 'com.remote.Manuscript.v2.debug' `
                 -ExpectedSigner 'ABC123' `
                 -InstalledSigner 'ABC123' `
                 -ProcessId '5500'

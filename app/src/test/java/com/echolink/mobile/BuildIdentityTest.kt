@@ -8,9 +8,9 @@ class BuildIdentityTest {
     @Test
     fun diagnosticsShowReleaseIdentityWithoutPersonalInformation() {
         val summary = BuildIdentity(
-            versionName = "0.29.0-internal-debug",
-            versionCode = 29,
-            packageName = "com.remote.Manuscript.debug",
+            versionName = "2.0.0-internal-debug",
+            versionCode = 1,
+            packageName = "com.remote.Manuscript.v2.debug",
             gitCommit = "123456789abc",
             contractVersion = 1,
             signerSha256 = "ABCDEF0123456789",
@@ -18,8 +18,8 @@ class BuildIdentityTest {
             accessibilityEnabled = false,
         ).summary()
 
-        assertTrue(summary.contains("0.29.0-internal-debug (29)"))
-        assertTrue(summary.contains("com.remote.Manuscript.debug"))
+        assertTrue(summary.contains("2.0.0-internal-debug (1)"))
+        assertTrue(summary.contains("com.remote.Manuscript.v2.debug"))
         assertTrue(summary.contains("123456789abc"))
         assertTrue(summary.contains("Contract: 1"))
         assertTrue(summary.contains("Signer: 456789"))

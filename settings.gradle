@@ -14,6 +14,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ManuscriptAndroid"
+rootProject.name = "ManuscriptAndroidVersion2"
 include(":app")
 include(":llama-runtime")

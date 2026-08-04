@@ -1,4 +1,4 @@
-"""Generate and verify Android Manuscript vectors from the locked Windows master."""
+"""Generate and verify Android Manuscript vectors from V2 canonical assets."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from pathlib import Path
 
 
 ANDROID_ROOT = Path(__file__).resolve().parents[1]
-WINDOWS_ROOT = ANDROID_ROOT.parent / "Windows" / "resources"
-CONTRACT_PATH = ANDROID_ROOT / "docs" / "product-contract" / "manuscript-android-v1.json"
+CANONICAL_ROOT = ANDROID_ROOT / "brand" / "canonical"
+CONTRACT_PATH = ANDROID_ROOT / "docs" / "product-contract" / "manuscript-android-v2.json"
 DRAWABLE_ROOT = ANDROID_ROOT / "app" / "src" / "main" / "res" / "drawable"
 PROVENANCE_PATH = ANDROID_ROOT / "evidence" / "brand" / "generated-brand-assets.json"
 
@@ -33,16 +33,16 @@ def contract() -> dict:
     return json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
 
-def validate_windows_master(data: dict) -> tuple[str, str]:
-    svg = WINDOWS_ROOT / "manuscript.svg"
-    png = WINDOWS_ROOT / "manuscript.png"
+def validate_canonical_assets(data: dict) -> tuple[str, str]:
+    svg = CANONICAL_ROOT / "manuscript.svg"
+    png = CANONICAL_ROOT / "manuscript.png"
     svg_hash = sha256(svg)
     png_hash = sha256(png)
     brand = data["brand"]
-    if svg_hash != brand["windowsSvgSha256"]:
-        raise SystemExit(f"Windows SVG hash changed: {svg_hash}")
-    if png_hash != brand["windowsPngSha256"]:
-        raise SystemExit(f"Windows PNG hash changed: {png_hash}")
+    if svg_hash != brand["canonicalSvgSha256"]:
+        raise SystemExit(f"Canonical SVG hash changed: {svg_hash}")
+    if png_hash != brand["canonicalPngSha256"]:
+        raise SystemExit(f"Canonical PNG hash changed: {png_hash}")
     svg_colors = {
         color.upper()
         for color in re.findall(r"#[0-9A-Fa-f]{6}", svg.read_text(encoding="utf-8"))
@@ -50,9 +50,9 @@ def validate_windows_master(data: dict) -> tuple[str, str]:
     allowed = {color.upper() for color in brand["palette"]}
     unexpected = svg_colors - allowed
     if unexpected:
-        raise SystemExit(f"Windows SVG contains unlocked colors: {sorted(unexpected)}")
+        raise SystemExit(f"Canonical SVG contains unlocked colors: {sorted(unexpected)}")
     if 'viewBox="0 0 1024 1024"' not in svg.read_text(encoding="utf-8"):
-        raise SystemExit("Windows SVG must keep its 1024 by 1024 view box")
+        raise SystemExit("Canonical SVG must keep its 1024 by 1024 view box")
     return svg_hash, png_hash
 
 
@@ -129,7 +129,7 @@ def main() -> int:
         parser.error("Choose exactly one of --write or --check")
 
     data = contract()
-    svg_hash, png_hash = validate_windows_master(data)
+    svg_hash, png_hash = validate_canonical_assets(data)
     outputs = expected_outputs(data, svg_hash)
     outputs[PROVENANCE_PATH] = provenance(data, svg_hash, png_hash, outputs)
 
