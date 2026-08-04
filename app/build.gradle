@@ -59,6 +59,7 @@ android {
 
     sourceSets {
         main.assets.srcDir rootProject.file("shared/contract/v1")
+        androidTest.assets.srcDir rootProject.file("brand/canonical")
         if (
             providers.gradleProperty("manuscript.excludeParkedGptTests")
                 .getOrElse("false").toBoolean()

@@ -1156,46 +1156,17 @@ class MainActivity : Activity() {
                 accessibilityPaneTitle = getString(R.string.correction_card_title)
             }
         }
-        val top = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        top.addView(TextView(this).apply {
-            text = getString(R.string.correction_card_title)
-            textSize = 17f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(COLOR_TEXT)
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        reviewCounter = TextView(this).apply {
-            id = R.id.writing_counter
-            textSize = 14f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(COLOR_ACCENT)
-        }
-        top.addView(reviewCounter, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).apply { marginEnd = dp(8) })
-        top.addView(Button(this).apply {
-            id = R.id.writing_close_action
-            text = "×"
-            contentDescription = getString(R.string.close_action)
-            isAllCaps = false
-            textSize = 24f
-            minWidth = dp(MIN_TOUCH_TARGET_DP)
-            minimumWidth = dp(MIN_TOUCH_TARGET_DP)
-            minHeight = dp(MIN_TOUCH_TARGET_DP)
-            minimumHeight = dp(MIN_TOUCH_TARGET_DP)
-            setPadding(0, 0, 0, 0)
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(COLOR_TEXT)
-            background = rounded(COLOR_SURFACE_RAISED, 10f, COLOR_ACCENT)
-            setOnClickListener {
+        val top = OfficialCorrectionHeader(
+            context = this,
+            title = getString(R.string.correction_card_title),
+            onClose = {
                 closeReview()
                 editor.requestFocus()
                 editor.post { showSystemKeyboard(editor) }
-            }
-        }, LinearLayout.LayoutParams(dp(MIN_TOUCH_TARGET_DP), dp(MIN_TOUCH_TARGET_DP)))
+            },
+            onSettings = null,
+        ).apply { showCounter() }
+        reviewCounter = top.counterView
         card.addView(top, matchWidth(bottomMargin = 8))
 
         val actionRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -2353,19 +2324,19 @@ class MainActivity : Activity() {
         private const val PREFETCH_IDLE_DELAY_MS = 2_500L
         private const val PREFETCH_MIN_CHARS = 60
         const val SUMMARY_ENTRY_LIMIT = 8
-        val COLOR_BACKGROUND = Color.rgb(23, 18, 13)
-        val COLOR_SURFACE = Color.rgb(33, 26, 18)
-        val COLOR_SURFACE_RAISED = Color.rgb(46, 36, 24)
-        val COLOR_CARD = Color.rgb(33, 26, 18)
-        val COLOR_BORDER = Color.rgb(214, 168, 95)
-        val COLOR_ACCENT = Color.rgb(226, 184, 111)
-        val COLOR_ACCENT_DARK = Color.rgb(139, 91, 43)
-        val COLOR_TEXT = Color.rgb(247, 231, 198)
-        val COLOR_TEXT_MUTED = Color.rgb(242, 214, 162)
-        val COLOR_TEXT_FAINT = Color.rgb(214, 168, 95)
-        val COLOR_ERROR = Color.rgb(255, 131, 120)
-        val COLOR_REMOVED = Color.rgb(255, 151, 139)
-        val COLOR_INSERTED = Color.rgb(13, 28, 22)
-        val COLOR_INSERTED_BACKGROUND = Color.rgb(119, 226, 172)
+        const val COLOR_BACKGROUND = ManuscriptPalette.BACKGROUND
+        const val COLOR_SURFACE = ManuscriptPalette.SURFACE
+        const val COLOR_SURFACE_RAISED = ManuscriptPalette.SURFACE_RAISED
+        const val COLOR_CARD = ManuscriptPalette.SURFACE
+        const val COLOR_BORDER = ManuscriptPalette.BORDER
+        const val COLOR_ACCENT = ManuscriptPalette.ACCENT
+        const val COLOR_ACCENT_DARK = ManuscriptPalette.ACCENT_DARK
+        const val COLOR_TEXT = ManuscriptPalette.TEXT
+        const val COLOR_TEXT_MUTED = ManuscriptPalette.MUTED_TEXT
+        const val COLOR_TEXT_FAINT = ManuscriptPalette.BORDER
+        const val COLOR_ERROR = ManuscriptPalette.ERROR
+        const val COLOR_REMOVED = ManuscriptPalette.REMOVED
+        const val COLOR_INSERTED = ManuscriptPalette.INSERTED
+        const val COLOR_INSERTED_BACKGROUND = ManuscriptPalette.INSERTED_BACKGROUND
     }
 }

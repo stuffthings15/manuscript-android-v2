@@ -113,8 +113,8 @@ class AndroidUsabilitySourceTest {
         assertTrue(source.contains("View.ACCESSIBILITY_LIVE_REGION_POLITE"))
         assertTrue(source.contains("contentDescription = text"))
         assertTrue(source.contains("WritingAssistUiPolicy.ICON_TOUCH_TARGET_DP"))
-        assertTrue(source.contains("text = \"×\""))
-        assertTrue(source.contains("contentDescription = getString(R.string.close_action)"))
+        assertTrue(source.contains("OfficialCorrectionHeader("))
+        assertTrue(source.contains("closeReview()"))
         assertTrue(source.contains("getBooleanExtra(EXTRA_OPEN_PERSONALIZE, false)"))
         assertTrue(source.contains("showPersonalizePage()"))
     }

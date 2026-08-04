@@ -34,7 +34,6 @@ import android.view.accessibility.AccessibilityWindowInfo
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.widget.Button
 import android.widget.HorizontalScrollView
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -584,7 +583,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         }
         panel.addView(TextView(this).apply {
             id = R.id.writing_resize_handle
-            text = "━━━"
+            text = "\u2501\u2501\u2501"
             textSize = 18f
             gravity = Gravity.CENTER
             setTextColor(COLOR_TEXT_MUTED)
@@ -595,49 +594,13 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             ViewGroup.LayoutParams.MATCH_PARENT,
             dp(24),
         ))
-        val headingRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        headingRow.addView(ImageButton(this).apply {
-            setImageResource(R.drawable.ic_manuscript)
-            contentDescription = getString(R.string.open_manuscript_settings)
-            setPadding(dp(5), dp(5), dp(5), dp(5))
-            background = rounded(COLOR_SURFACE, 10f, COLOR_BORDER)
-            setOnClickListener { openManuscriptSettings() }
-        }, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(6) })
-        headingRow.addView(TextView(this).apply {
-            text = getString(R.string.external_panel_title)
-            textSize = 17f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(COLOR_TEXT)
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        counterView = TextView(this).apply {
-            id = R.id.writing_counter
-            textSize = 14f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(COLOR_ACCENT)
-        }
-        headingRow.addView(counterView, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).apply { marginEnd = dp(8) })
-        headingRow.addView(Button(this).apply {
-            id = R.id.writing_close_action
-            text = "×"
-            contentDescription = getString(R.string.close_action)
-            isAllCaps = false
-            textSize = 24f
-            minWidth = dp(48)
-            minimumWidth = dp(48)
-            minHeight = dp(48)
-            minimumHeight = dp(48)
-            setPadding(0, 0, 0, 0)
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(COLOR_TEXT)
-            background = rounded(COLOR_SURFACE, 10f, COLOR_ACCENT)
-            setOnClickListener { closePanel(restoreKeyboard = true) }
-        }, LinearLayout.LayoutParams(dp(40), dp(40)))
+        val headingRow = OfficialCorrectionHeader(
+            context = this,
+            title = getString(R.string.external_panel_title),
+            onClose = { closePanel(restoreKeyboard = true) },
+            onSettings = { openManuscriptSettings() },
+        ).apply { showCounter() }
+        counterView = headingRow.counterView
         panel.addView(headingRow)
         panel.addView(TextView(this).apply {
             text = getString(R.string.corrections_swipe_help)
@@ -1636,17 +1599,17 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         const val REVIEW_LOG_TAG = "ManuscriptReview"
         const val TARGET_CLEAR_GRACE_MS = 800L
         const val PRESS_GUARD_MS = 600L
-        val COLOR_BACKGROUND = Color.rgb(23, 18, 13)
-        val COLOR_SURFACE = Color.rgb(46, 36, 24)
-        val COLOR_SURFACE_FOCUSED = Color.rgb(67, 50, 28)
-        val COLOR_BORDER = Color.rgb(214, 168, 95)
-        val COLOR_ACCENT = Color.rgb(226, 184, 111)
-        val COLOR_ACCENT_DARK = Color.rgb(139, 91, 43)
-        val COLOR_TEXT = Color.rgb(247, 231, 198)
-        val COLOR_TEXT_MUTED = Color.rgb(242, 214, 162)
-        val COLOR_ERROR = Color.rgb(255, 131, 120)
-        val COLOR_REMOVED = Color.rgb(255, 151, 139)
-        val COLOR_INSERTED = Color.rgb(13, 28, 22)
-        val COLOR_INSERTED_BACKGROUND = Color.rgb(119, 226, 172)
+        const val COLOR_BACKGROUND = ManuscriptPalette.BACKGROUND
+        const val COLOR_SURFACE = ManuscriptPalette.SURFACE_RAISED
+        const val COLOR_SURFACE_FOCUSED = ManuscriptPalette.SURFACE_FOCUSED
+        const val COLOR_BORDER = ManuscriptPalette.BORDER
+        const val COLOR_ACCENT = ManuscriptPalette.ACCENT
+        const val COLOR_ACCENT_DARK = ManuscriptPalette.ACCENT_DARK
+        const val COLOR_TEXT = ManuscriptPalette.TEXT
+        const val COLOR_TEXT_MUTED = ManuscriptPalette.MUTED_TEXT
+        const val COLOR_ERROR = ManuscriptPalette.ERROR
+        const val COLOR_REMOVED = ManuscriptPalette.REMOVED
+        const val COLOR_INSERTED = ManuscriptPalette.INSERTED
+        const val COLOR_INSERTED_BACKGROUND = ManuscriptPalette.INSERTED_BACKGROUND
     }
 }

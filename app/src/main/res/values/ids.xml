@@ -13,6 +13,12 @@
     <item name="writing_assist_icon" type="id" />
     <item name="main_tone_menu" type="id" />
     <item name="writing_suggestion_card" type="id" />
+    <item name="official_correction_header" type="id" />
+    <item name="official_correction_header_icon" type="id" />
+    <item name="official_correction_header_title" type="id" />
+    <item name="official_correction_header_counter" type="id" />
+    <item name="official_correction_header_settings" type="id" />
+    <item name="official_correction_header_close" type="id" />
     <item name="writing_counter" type="id" />
     <item name="writing_close_action" type="id" />
     <item name="writing_resize_handle" type="id" />

@@ -2,7 +2,6 @@ package com.echolink.mobile
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -20,7 +19,6 @@ import android.view.WindowManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
@@ -82,21 +80,12 @@ class ProcessTextActivity : Activity() {
                 accessibilityPaneTitle = getString(R.string.correction_card_title)
             }
         }
-        val heading = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        heading.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_manuscript_assist)
-            contentDescription = null
-        }, LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(10) })
-        heading.addView(TextView(this).apply {
-            text = getString(R.string.process_text_heading)
-            textSize = 21f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(COLOR_TEXT)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) isAccessibilityHeading = true
-        })
+        val heading = OfficialCorrectionHeader(
+            context = this,
+            title = getString(R.string.process_text_heading),
+            onClose = null,
+            onSettings = null,
+        )
         card.addView(heading, matchWidth(10))
         card.addView(caption(R.string.original_label))
         card.addView(TextView(this).apply {
@@ -384,16 +373,16 @@ class ProcessTextActivity : Activity() {
         const val PREFERENCES_NAME = "manuscript_preferences_v1"
         const val TONE_KEY = "writing_tone"
         const val MIN_TOUCH_TARGET_DP = 48
-        val COLOR_BACKGROUND = Color.rgb(10, 13, 18)
-        val COLOR_SURFACE = Color.rgb(26, 33, 43)
-        val COLOR_CARD = Color.rgb(20, 26, 35)
-        val COLOR_BORDER = Color.rgb(59, 69, 84)
-        val COLOR_ACCENT = Color.rgb(32, 227, 138)
-        val COLOR_ACCENT_DARK = Color.rgb(14, 94, 62)
-        val COLOR_TEXT = Color.rgb(247, 249, 252)
-        val COLOR_TEXT_MUTED = Color.rgb(179, 189, 204)
-        val COLOR_REMOVED = Color.rgb(255, 151, 139)
-        val COLOR_INSERTED = Color.rgb(13, 28, 22)
-        val COLOR_INSERTED_BACKGROUND = Color.rgb(119, 226, 172)
+        const val COLOR_BACKGROUND = ManuscriptPalette.BACKGROUND
+        const val COLOR_SURFACE = ManuscriptPalette.SURFACE_RAISED
+        const val COLOR_CARD = ManuscriptPalette.SURFACE
+        const val COLOR_BORDER = ManuscriptPalette.BORDER
+        const val COLOR_ACCENT = ManuscriptPalette.ACCENT
+        const val COLOR_ACCENT_DARK = ManuscriptPalette.ACCENT_DARK
+        const val COLOR_TEXT = ManuscriptPalette.TEXT
+        const val COLOR_TEXT_MUTED = ManuscriptPalette.MUTED_TEXT
+        const val COLOR_REMOVED = ManuscriptPalette.REMOVED
+        const val COLOR_INSERTED = ManuscriptPalette.INSERTED
+        const val COLOR_INSERTED_BACKGROUND = ManuscriptPalette.INSERTED_BACKGROUND
     }
 }
