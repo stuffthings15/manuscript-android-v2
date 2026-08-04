@@ -16,6 +16,7 @@ class ExpandableReviewPanel(context: Context) : LinearLayout(context) {
     private var collapsedHeightPx = 0
     private var maximumHeightPx = 0
     private var dragging = false
+    private var lastResizeHeightPx: Int? = null
     private var onResize: ((Int) -> Unit)? = null
 
     fun configureExpansion(
@@ -34,6 +35,7 @@ class ExpandableReviewPanel(context: Context) : LinearLayout(context) {
                 downRawY = event.rawY
                 startingHeightPx = height.takeIf { it > 0 } ?: collapsedHeightPx
                 dragging = false
+                lastResizeHeightPx = null
             }
             MotionEvent.ACTION_MOVE -> {
                 val upwardDrag = (downRawY - event.rawY).toInt()
@@ -46,10 +48,11 @@ class ExpandableReviewPanel(context: Context) : LinearLayout(context) {
                 ) {
                     dragging = true
                     parent?.requestDisallowInterceptTouchEvent(true)
+                    emitResize(event)
                     return true
                 }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragging = false
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> finishDrag()
         }
         return super.onInterceptTouchEvent(event)
     }
@@ -57,18 +60,28 @@ class ExpandableReviewPanel(context: Context) : LinearLayout(context) {
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!dragging) return super.onTouchEvent(event)
         when (event.actionMasked) {
-            MotionEvent.ACTION_MOVE -> {
-                onResize?.invoke(
-                    ReviewPanelExpansionPolicy.resizedHeight(
-                        startingHeightPx = startingHeightPx,
-                        upwardDragPx = (downRawY - event.rawY).toInt(),
-                        collapsedHeightPx = collapsedHeightPx,
-                        maximumHeightPx = maximumHeightPx,
-                    ),
-                )
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragging = false
+            MotionEvent.ACTION_MOVE -> emitResize(event)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> finishDrag()
         }
         return true
+    }
+
+    private fun emitResize(event: MotionEvent) {
+        val resizedHeight = ReviewPanelExpansionPolicy.resizedHeight(
+            startingHeightPx = startingHeightPx,
+            upwardDragPx = (downRawY - event.rawY).toInt(),
+            collapsedHeightPx = collapsedHeightPx,
+            maximumHeightPx = maximumHeightPx,
+        )
+        if (resizedHeight != lastResizeHeightPx) {
+            lastResizeHeightPx = resizedHeight
+            onResize?.invoke(resizedHeight)
+        }
+    }
+
+    private fun finishDrag() {
+        dragging = false
+        lastResizeHeightPx = null
+        parent?.requestDisallowInterceptTouchEvent(false)
     }
 }
