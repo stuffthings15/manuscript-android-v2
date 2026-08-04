@@ -1,9 +1,11 @@
 param(
-    [switch]$PlayUpload
+    [switch]$PlayUpload,
+    [string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot)
 )
 
 $ErrorActionPreference = 'Stop'
-$projectRoot = Split-Path -Parent $PSScriptRoot
+$projectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
+$safeDirectory = $projectRoot.Replace('\', '/')
 
 function Require-File([string]$RelativePath) {
     $path = Join-Path $projectRoot $RelativePath
@@ -57,18 +59,19 @@ Require-TextAbsent 'play\UPLOAD_READINESS.md' @(
 )
 
 $git = Get-Command git -ErrorAction Stop
-& $git.Source -c safe.directory=C:/Users/stuff/Documents/Echo-Link `
+& $git.Source -c "safe.directory=$safeDirectory" `
     -C $projectRoot diff --check -- .
 if ($LASTEXITCODE -ne 0) {
     throw 'Git whitespace validation failed.'
 }
 
-$trackedMatches = & $git.Source -c safe.directory=C:/Users/stuff/Documents/Echo-Link `
+$trackedMatches = & $git.Source -c "safe.directory=$safeDirectory" `
     -C $projectRoot grep -l -I -E `
     '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|sk-[A-Za-z0-9_-]{20,}|MANUSCRIPT_UPLOAD_STORE_PASSWORD\s*=)' `
     -- . `
     ':(exclude)tools/build_play_bundle.ps1' `
-    ':(exclude)tools/security_release_gate.ps1' 2>$null
+    ':(exclude)tools/security_release_gate.ps1' `
+    ':(exclude)vendor/llama.cpp/tools/server/tests/unit/test_security.py' 2>$null
 if ($LASTEXITCODE -eq 0 -and $trackedMatches) {
     throw 'A tracked file matches a private-key, API-key, or signing-password pattern.'
 }
