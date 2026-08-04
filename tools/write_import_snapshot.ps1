@@ -51,20 +51,22 @@ function Get-GitOutputSha256([string]$Directory, [string[]]$Arguments) {
     $bytes = [System.IO.MemoryStream]::new()
     $copyTask = $process.StandardOutput.BaseStream.CopyToAsync($bytes)
     $errorText = $process.StandardError.ReadToEnd()
-    $copyTask.GetAwaiter().GetResult()
-    $process.WaitForExit()
+    [void]$copyTask.GetAwaiter().GetResult()
+    [void]$process.WaitForExit()
     if ($process.ExitCode -ne 0) {
         throw "git $($Arguments -join ' ') failed in ${Directory}: $errorText"
     }
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $hash = $null
     try {
-        return ([System.BitConverter]::ToString($sha256.ComputeHash($bytes.ToArray())) -replace '-', '')
+        $hash = [System.BitConverter]::ToString($sha256.ComputeHash($bytes.ToArray())) -replace '-', ''
     }
     finally {
-        $sha256.Dispose()
-        $bytes.Dispose()
-        $process.Dispose()
+        [void]$sha256.Dispose()
+        [void]$bytes.Dispose()
+        [void]$process.Dispose()
     }
+    return $hash
 }
 
 function Get-RelativePath([string]$Root, [string]$Path) {

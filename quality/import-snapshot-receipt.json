@@ -2,18 +2,8 @@
     "formatVersion":  1,
     "sourceCommit":  "b2baa9442858a8f20218d50d0f9d1d235ec17e55",
     "vendorCommit":  "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
-    "sourceDirtyDiffSha256":  [
-                                  {
-
-                                  },
-                                  "AADA354A20F689CAB461B0B06BA02CE2F765B65D8C2E701869AE3702424AE44A"
-                              ],
-    "vendorDirtyDiffSha256":  [
-                                  {
-
-                                  },
-                                  "1759D426008158C90E1369C7613280463FEF6FBE2FC833105C74CFD7C1DDC39C"
-                              ],
+    "sourceDirtyDiffSha256":  "AADA354A20F689CAB461B0B06BA02CE2F765B65D8C2E701869AE3702424AE44A",
+    "vendorDirtyDiffSha256":  "1759D426008158C90E1369C7613280463FEF6FBE2FC833105C74CFD7C1DDC39C",
     "copiedUntrackedFiles":  [
                                  {
                                      "path":  ".gitattributes",

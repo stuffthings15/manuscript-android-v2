@@ -12,6 +12,8 @@ Describe 'Version 2 import snapshot' {
         $receipt.vendorCommit | Should Be 'c0bc8591e8815c63cb01dd3f051a8b0df02501c9'
         $receipt.importCommit | Should Be 'a055eba7fcdb4ea4ad8e7a5ea9a585eaf89416b1'
         $receipt.canonicalZipSha256 | Should Be 'C80A6FBA0978596A464E1E9FF3C17D17D6A928FA56445A97C8E045A0EB9FF771'
+        ([string]$receipt.sourceDirtyDiffSha256) | Should Match '^[A-F0-9]{64}$'
+        ([string]$receipt.vendorDirtyDiffSha256) | Should Match '^[A-F0-9]{64}$'
         $receipt.copiedFiles.Count | Should BeGreaterThan 3000
         $receipt.copiedFileManifestSha256 | Should Match '^[A-F0-9]{64}$'
         $receipt.copiedUntrackedFiles | Should Not BeNullOrEmpty
