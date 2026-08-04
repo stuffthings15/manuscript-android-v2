@@ -139,6 +139,23 @@ class ExternalFieldIdentityTest {
                 traversalTruncated = false,
             ),
         )
+        val negativeWindowProof = FieldStructuralLocator.proven(
+            windowId = -1,
+            focusedWindowId = -1,
+            ancestry = ancestry,
+            leafClassName = "android.widget.EditText",
+            completePath = true,
+            traversalTruncated = false,
+        )
+        assertNull(negativeWindowProof)
+        assertNull(
+            ExternalFieldIdentity.from(
+                packageName = "example.editor",
+                platformUniqueId = "platform-field-41",
+                viewId = "example.editor:id/body",
+                structuralLocator = negativeWindowProof,
+            ),
+        )
         assertNull(
             ExternalFieldIdentity.from(
                 packageName = "example.editor",

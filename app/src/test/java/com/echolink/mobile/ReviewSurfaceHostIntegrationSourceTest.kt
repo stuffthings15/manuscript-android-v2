@@ -41,13 +41,14 @@ class ReviewSurfaceHostIntegrationSourceTest {
         assertFalse(source.contains("candidate.node.hashCode()"))
         assertTrue(source.contains("ExternalFieldIdentity.from("))
         assertEquals(2, Regex("reacquireReviewTarget\\(").findAll(source).count())
-        assertTrue(source.contains("AccessibilityNodeStructuralLocator.from(applicationRoot, node)"))
+        assertTrue(source.contains("structuralLocator = AccessibilityNodeStructuralLocator.from("))
+        assertTrue(source.contains("resolvedApplicationRoot"))
         assertTrue(source.contains("val reviewTargetId: ReviewTargetId"))
         assertFalse(source.contains("private fun reviewTargetId(candidate"))
         assertTrue(source.contains("FocusedReviewTargetPolicy.resolveEligibility("))
-        assertTrue(source.contains("verifiedApplicationWindowPackage(event)"))
-        val packageGuard = source.indexOf("verifiedApplicationWindowPackage(event)")
-        val focusedLookup = source.indexOf("val node = focusedEditableNode()")
+        assertTrue(source.contains("verifiedApplicationEventContext(event)"))
+        val packageGuard = source.indexOf("verifiedApplicationEventContext(event)")
+        val focusedLookup = source.indexOf("val node = focusedNodeProvider()")
         assertTrue(packageGuard >= 0)
         assertTrue(packageGuard < focusedLookup)
         assertTrue(source.contains("cancelTargetClear()"))
@@ -77,8 +78,51 @@ class ReviewSurfaceHostIntegrationSourceTest {
         assertEquals(listOf("AccessibilityNodeStructuralLocator.kt"), callers)
     }
 
+    @Test
+    fun verifiedApplicationEventsUseOnlyTheirScopedRoot() {
+        val source = source("ManuscriptAccessibilityService.kt")
+
+        assertTrue(source.contains("verifiedApplicationEventContext(event)?.use { context ->"))
+        assertTrue(source.contains("focusedEditableNode(context.applicationRoot, context.metadata)"))
+        assertTrue(source.contains("VerifiedApplicationEventPolicy.acceptsFocus("))
+        assertTrue(source.contains("applicationRoot = verifiedApplicationRoot"))
+        assertTrue(source.contains("if (matchingWindows.size != 1) return null"))
+        assertTrue(source.contains("processFocusedEvent(eventPackage) { focusedEditableNode() }"))
+        assertTrue(source.contains("if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return"))
+        val verifiedStart = source.indexOf("verifiedApplicationEventContext(event)?.use { context ->")
+        val legacyStart = source.indexOf("processFocusedEvent(eventPackage) { focusedEditableNode() }")
+        assertTrue(verifiedStart >= 0)
+        assertTrue(legacyStart > verifiedStart)
+        val verifiedBranch = source.substring(verifiedStart, legacyStart)
+        assertFalse(verifiedBranch.contains("rootInActiveWindow"))
+        assertFalse(verifiedBranch.contains("focusedEditableNode()"))
+        val eventSlice = source.substring(
+            source.indexOf("override fun onAccessibilityEvent"),
+            source.indexOf("override fun onInterrupt"),
+        )
+        assertFalse(eventSlice.contains("rootInActiveWindow"))
+        assertFalse(eventSlice.contains("focusedEditableNode()"))
+    }
+
+    @Test
+    fun deviceActivePackageRecyclesTheBorrowedActiveRoot() {
+        val source = androidTestSource("ExternalEditorLifecycleFixtureDeviceTest.kt")
+        val activePackage = Regex(
+            "private fun activePackage\\(\\): String \\{[\\s\\S]*?\\n    \\}",
+        ).find(source)?.value.orEmpty()
+
+        assertTrue(activePackage.contains("try"))
+        assertTrue(activePackage.contains("finally"))
+        assertTrue(activePackage.contains("recycleDeviceNode(root)"))
+    }
+
     private fun source(name: String): String = File(
         System.getProperty("user.dir"),
         "src/main/java/com/echolink/mobile/$name",
+    ).readText()
+
+    private fun androidTestSource(name: String): String = File(
+        System.getProperty("user.dir"),
+        "src/androidTest/java/com/echolink/mobile/$name",
     ).readText()
 }

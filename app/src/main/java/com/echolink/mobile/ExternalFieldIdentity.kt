@@ -31,7 +31,13 @@ data class FieldStructuralLocator private constructor(
             completePath: Boolean,
             traversalTruncated: Boolean,
         ): FieldStructuralLocator? {
-            if (!completePath || traversalTruncated || windowId != focusedWindowId) return null
+            if (
+                !completePath ||
+                traversalTruncated ||
+                windowId < 0 ||
+                focusedWindowId < 0 ||
+                windowId != focusedWindowId
+            ) return null
             if (leafClassName.isBlank()) return null
             if (ancestry.any { step ->
                     step.parentClassName.isBlank() || step.childIndex < 0

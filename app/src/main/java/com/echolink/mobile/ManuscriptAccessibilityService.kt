@@ -179,25 +179,39 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || isOverlaySelfEvent(event)) return
         val eventPackage = event.packageName?.toString().orEmpty()
-        val verifiedApplicationWindowPackage = verifiedApplicationWindowPackage(event)
-        if (
-            ExternalPackageChangePolicy.confirmed(
-                retainedPackage = target?.packageName.orEmpty(),
-                verifiedApplicationWindowPackage = verifiedApplicationWindowPackage,
-            )
-        ) {
-            cancelTargetClear()
-            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ApplicationSwitched)
-            clearTarget()
+        verifiedApplicationEventContext(event)?.use { context ->
+            if (
+                ExternalPackageChangePolicy.confirmed(
+                    retainedPackage = target?.packageName.orEmpty(),
+                    verifiedApplicationWindowPackage = context.metadata.eventPackage,
+                )
+            ) {
+                cancelTargetClear()
+                reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ApplicationSwitched)
+                clearTarget()
+                return
+            }
+            processFocusedEvent(eventPackage, context.applicationRoot) {
+                focusedEditableNode(context.applicationRoot, context.metadata)
+            }
             return
         }
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        processUnverifiedFocusedEvent(eventPackage)
+    }
+
+    private fun processFocusedEvent(
+        eventPackage: String,
+        verifiedApplicationRoot: AccessibilityNodeInfo? = null,
+        focusedNodeProvider: () -> AccessibilityNodeInfo?,
+    ) {
         if (eventPackage == packageName) {
             if (panelView != null) {
                 reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ApplicationSwitched)
             } else scheduleTargetClear()
             return
         }
-        val node = focusedEditableNode() ?: run {
+        val node = focusedNodeProvider() ?: run {
             if (panelView != null) {
                 reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
             } else scheduleTargetClear()
@@ -240,6 +254,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             bounds = Rect(bounds),
             snapshot = snapshot,
             node = node,
+            applicationRoot = verifiedApplicationRoot,
         ) ?: run {
             recycleIfDetached(node, target?.node)
             reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
@@ -267,6 +282,10 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     override fun onInterrupt() {
         reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
         clearTarget()
+    }
+
+    private fun processUnverifiedFocusedEvent(eventPackage: String) {
+        processFocusedEvent(eventPackage) { focusedEditableNode() }
     }
 
     override fun onDestroy() {
@@ -298,20 +317,75 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         return found
     }
 
-    private fun verifiedApplicationWindowPackage(event: AccessibilityEvent): String? {
+    private fun focusedEditableNode(
+        applicationRoot: AccessibilityNodeInfo,
+        metadata: VerifiedApplicationEventMetadata,
+    ): AccessibilityNodeInfo? {
+        val focused = applicationRoot.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focused != null) {
+            if (
+                focused === applicationRoot ||
+                !VerifiedApplicationEventPolicy.acceptsFocus(
+                    metadata,
+                    verifiedFocusMetadata(focused),
+                )
+            ) {
+                recycleIfDetached(focused, applicationRoot)
+                return null
+            }
+            return focused
+        }
+        val found = findEditable(
+            applicationRoot,
+            budget = AccessibilityTraversalBudget(),
+        ) ?: return null
+        if (
+            found === applicationRoot ||
+            !VerifiedApplicationEventPolicy.acceptsFocus(
+                metadata,
+                verifiedFocusMetadata(found),
+            )
+        ) {
+            recycleIfDetached(found, applicationRoot)
+            return null
+        }
+        return found
+    }
+
+    private fun verifiedFocusMetadata(node: AccessibilityNodeInfo) =
+        VerifiedApplicationFocusMetadata(
+            packageName = node.packageName?.toString().orEmpty(),
+            windowId = node.windowId,
+            focused = node.isFocused,
+            editable = node.isEditable,
+            password = node.isPassword,
+        )
+
+    private fun verifiedApplicationEventContext(
+        event: AccessibilityEvent,
+    ): VerifiedApplicationEventContext? {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return null
         val eventPackage = event.packageName?.toString().orEmpty()
         if (eventPackage.isBlank()) return null
-        val applicationWindow = windows.singleOrNull { window ->
+        val matchingWindows = windows.filter { window ->
             window.id == event.windowId && window.type == AccessibilityWindowInfo.TYPE_APPLICATION
-        } ?: return null
-        val applicationRoot = applicationWindow.root ?: return null
-        return try {
-            applicationRoot.packageName?.toString()
-                ?.takeIf { rootPackage -> rootPackage == eventPackage }
-        } finally {
-            recycleLegacy(applicationRoot)
         }
+        if (matchingWindows.size != 1) return null
+        val applicationWindow = matchingWindows.single()
+        val applicationRoot = applicationWindow.root ?: return null
+        val metadata = VerifiedApplicationEventMetadata(
+            eventPackage = eventPackage,
+            eventWindowId = event.windowId,
+            rootPackage = applicationRoot.packageName?.toString().orEmpty(),
+            rootWindowId = applicationRoot.windowId,
+            applicationWindow = applicationWindow.type == AccessibilityWindowInfo.TYPE_APPLICATION,
+            matchingApplicationWindowCount = matchingWindows.size,
+        )
+        if (!VerifiedApplicationEventPolicy.acceptsEvent(metadata)) {
+            recycleLegacy(applicationRoot)
+            return null
+        }
+        return VerifiedApplicationEventContext(metadata, applicationRoot)
     }
 
     private fun isOverlaySelfEvent(event: AccessibilityEvent): Boolean {
@@ -1531,8 +1605,12 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         bounds: Rect,
         snapshot: ExternalEditorSnapshot,
         node: AccessibilityNodeInfo,
+        applicationRoot: AccessibilityNodeInfo? = null,
     ): Target? {
-        val applicationRoot = verifiedApplicationRoot(packageName, node) ?: return null
+        val ownsApplicationRoot = applicationRoot == null
+        val resolvedApplicationRoot = applicationRoot
+            ?: verifiedApplicationRoot(packageName, node)
+            ?: return null
         return try {
             val reviewTargetId = ExternalFieldIdentity.from(
                 packageName = packageName,
@@ -1542,7 +1620,10 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
                     null
                 },
                 viewId = viewId,
-                structuralLocator = AccessibilityNodeStructuralLocator.from(applicationRoot, node),
+                structuralLocator = AccessibilityNodeStructuralLocator.from(
+                    resolvedApplicationRoot,
+                    node,
+                ),
             )?.asReviewTargetId() ?: return null
             Target(
                 reviewTargetId = reviewTargetId,
@@ -1553,7 +1634,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
                 node = node,
             )
         } finally {
-            recycleLegacy(applicationRoot)
+            if (ownsApplicationRoot) recycleLegacy(resolvedApplicationRoot)
         }
     }
 
@@ -1908,6 +1989,19 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         val snapshot: ExternalEditorSnapshot,
         val node: AccessibilityNodeInfo,
     )
+
+    private inner class VerifiedApplicationEventContext(
+        val metadata: VerifiedApplicationEventMetadata,
+        val applicationRoot: AccessibilityNodeInfo,
+    ) : AutoCloseable {
+        private var closed = false
+
+        override fun close() {
+            if (closed) return
+            closed = true
+            recycleLegacy(applicationRoot)
+        }
+    }
 
     private data class SystemBottomInsets(
         val navigationBottomPx: Int,

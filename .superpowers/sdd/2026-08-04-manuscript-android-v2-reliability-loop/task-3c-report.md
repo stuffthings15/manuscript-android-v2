@@ -9,7 +9,7 @@ content-free field identity, revalidates reconnects, tracks every replacement
 verification callback, and reacquires the focused editor once per restoration
 flow.
 
-This report covers four independent fix rounds after source commit
+This report covers five independent fix rounds after source commit
 `2709cd8f00668b30410110cf454ab101a62866ef`. The latest fix-round commit is
 this commit.
 
@@ -49,6 +49,13 @@ this commit.
   accepted one node instead of a verified application root plus focused leaf.
 - Audit found that the first duplicate-ID fixture passed two unfocused nodes at
   once. The corrected compiled test now taps and proves each field separately.
+- Fix round 5 first failed compilation because verified application-event and
+  focus metadata, their validation policy, and the scoped root API did not
+  exist.
+- The first round 5 GREEN attempt ran 52 focused tests and failed two source
+  assertions. One failure exposed a real defect: the shared event handler
+  ignored its supplied verified-root focus provider and called the active-root
+  lookup. The other assertion described the older resolver call shape.
 
 ## Implemented
 
@@ -92,8 +99,13 @@ this commit.
   path cancels the transient grace period and dispatches hiding before focused
   node lookup. IME and overlay noise cannot use this path. Runtime timing is not
   claimed in Task 3C.
-- One immutable verified `ReviewTargetId` is created during focused-tree
-  acquisition and stored in `Target`. Retained nodes never recompute identity.
+- A verified window-state event owns one scoped application root. Event package,
+  root package, window ID, application-window type, focused-node package, and
+  focused-node window must match. The same root supplies focus and structural
+  identity. Invalid window-state events never scan `rootInActiveWindow`.
+- `Target` stores an immutable verified `ReviewTargetId`. A refreshed or current
+  focused node is freshly root-proven and derives a comparison ID before it can
+  replace the retained node.
 - Retained accessibility nodes are accepted only while input-focused. A moved
   focus cannot restore or replace text in the old attached editor.
 - MainActivity keyboard restoration uses a tracked named runnable. Invalidation
@@ -122,6 +134,8 @@ this commit.
   panel-open package-switch tests use fixed deadlines started before the
   Settings tap and Back gesture, require ordered disappearance and return, and
   require exactly one stable trigger after returning.
+- The fixture's active-package query releases its borrowed active root on API
+  26 through the guarded device-node recycling helper.
 - No Task 3C instrumentation test uses `performClick` or an accessibility click
   fallback.
 
@@ -132,12 +146,13 @@ Latest focused lifecycle and instrumentation compilation gate:
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Android\openjdk\jdk-21.0.8'
 $env:ANDROID_HOME='C:\Users\stuff\AppData\Local\Android\Sdk'
-.\gradlew.bat --no-daemon --max-workers=2 :app:testDebugUnitTest --tests com.echolink.mobile.ExternalFieldIdentityTest --tests com.echolink.mobile.ExternalPackageChangePolicyTest --tests com.echolink.mobile.FocusedReviewTargetPolicyTest --tests com.echolink.mobile.ReviewSurfaceControllerTest --tests com.echolink.mobile.ReviewSurfaceEffectExecutorTest --tests com.echolink.mobile.ReviewSurfaceHostIntegrationSourceTest :app:assembleDebugAndroidTest
+.\gradlew.bat --no-daemon --max-workers=2 :app:testDebugUnitTest --tests com.echolink.mobile.ExternalFieldIdentityTest --tests com.echolink.mobile.ExternalPackageChangePolicyTest --tests com.echolink.mobile.VerifiedApplicationEventPolicyTest --tests com.echolink.mobile.FocusedReviewTargetPolicyTest --tests com.echolink.mobile.ReviewSurfaceControllerTest --tests com.echolink.mobile.ReviewSurfaceEffectExecutorTest --tests com.echolink.mobile.ReviewSurfaceHostIntegrationSourceTest :app:assembleDebugAndroidTest
 ```
 
-Latest result: 46 focused tests passed. These are 8 identity tests, 3 package
-change policy tests, 3 focused-target policy tests, 15 controller tests, 13
-executor tests, and 4 host integration source tests. The debug instrumentation
+Latest result: 52 focused tests passed. These are 8 identity tests, 3 package
+change policy tests, 4 verified-event policy tests, 3 focused-target policy
+tests, 15 controller tests, 13 executor tests, and 6 host integration source
+tests. The debug instrumentation
 APK compiled. None of its instrumentation tests executed.
 
 Full dual-variant gate:
@@ -146,13 +161,25 @@ Full dual-variant gate:
 .\gradlew.bat --no-daemon --max-workers=2 :app:testDebugUnitTest :app:testReleaseUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest
 ```
 
+Explicit model and product-contract gate:
+
+```powershell
+.\gradlew.bat --no-daemon --max-workers=2 :app:testDebugUnitTest --tests com.echolink.mobile.AiModelInstallerTest --tests com.echolink.mobile.LocalAiRuntimeArchitectureTest --tests com.echolink.mobile.ManuscriptProductContractTest --tests com.echolink.mobile.OnDeviceGrammarEngineTest
+python tools/generate_android_brand_assets.py --check
+.\tools\security_release_gate.ps1
+Invoke-Pester -Script @('tools/tests/v2_identity.Tests.ps1','tools/tests/import_snapshot.Tests.ps1','tools/tests/install_s23_manuscript.Tests.ps1','tools/tests/release_manifest.Tests.ps1') -PassThru
+```
+
 Results:
 
-- Debug unit tests: 442 passed, 0 failed, 0 errors, 0 skipped.
-- Release unit tests: 442 passed, 0 failed, 0 errors, 0 skipped.
+- Debug unit tests: 448 passed, 0 failed, 0 errors, 0 skipped.
+- Release unit tests: 448 passed, 0 failed, 0 errors, 0 skipped.
 - Debug lint: 101 advisory issues, 0 errors.
 - Release lint: 101 advisory issues, 0 errors.
 - Debug APK, unsigned release APK, and debug instrumentation APK assembled.
+- Explicit model and contract unit tests: 53 passed, 0 failed.
+- Contract and release-policy Pester tests: 30 passed, 0 failed.
+- Brand-generation check and local security gate passed.
 - `git diff --check` passed.
 - Forbidden node-hash identity, reconnect shortcut, and direct delayed
   replacement-verification patterns are absent.
@@ -260,5 +287,18 @@ M app/src/main/java/com/echolink/mobile/ManuscriptAccessibilityService.kt
 M app/src/test/java/com/echolink/mobile/ExternalFieldIdentityTest.kt
 M app/src/test/java/com/echolink/mobile/ExternalPackageChangePolicyTest.kt
 M app/src/test/java/com/echolink/mobile/ReviewSurfaceHostIntegrationSourceTest.kt
+M .superpowers/sdd/2026-08-04-manuscript-android-v2-reliability-loop/task-3c-report.md
+```
+
+## Fifth fix-round file set
+
+```text
+M app/src/androidTest/java/com/echolink/mobile/ExternalEditorLifecycleFixtureDeviceTest.kt
+M app/src/main/java/com/echolink/mobile/ExternalFieldIdentity.kt
+M app/src/main/java/com/echolink/mobile/ManuscriptAccessibilityService.kt
+A app/src/main/java/com/echolink/mobile/VerifiedApplicationEventPolicy.kt
+M app/src/test/java/com/echolink/mobile/ExternalFieldIdentityTest.kt
+M app/src/test/java/com/echolink/mobile/ReviewSurfaceHostIntegrationSourceTest.kt
+A app/src/test/java/com/echolink/mobile/VerifiedApplicationEventPolicyTest.kt
 M .superpowers/sdd/2026-08-04-manuscript-android-v2-reliability-loop/task-3c-report.md
 ```

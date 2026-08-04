@@ -2,6 +2,7 @@ package com.echolink.mobile
 
 import android.content.Intent
 import android.graphics.Rect
+import android.os.Build
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -340,8 +341,19 @@ class ExternalEditorLifecycleFixtureDeviceTest {
         return null
     }
 
-    private fun activePackage(): String = instrumentation.uiAutomation.rootInActiveWindow
-        ?.packageName?.toString().orEmpty()
+    private fun activePackage(): String {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return ""
+        return try {
+            root.packageName?.toString().orEmpty()
+        } finally {
+            recycleDeviceNode(root)
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun recycleDeviceNode(node: AccessibilityNodeInfo) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) node.recycle()
+    }
 
     private fun secureSetting(key: String): String = instrumentation.uiAutomation
         .executeShellCommand("settings get secure $key")
