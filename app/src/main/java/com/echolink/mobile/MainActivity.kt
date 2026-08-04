@@ -122,6 +122,7 @@ class MainActivity : Activity() {
             reviewSurfaceController,
             object : ReviewSurfaceEffectActions {
                 override fun cancelStaleCorrectionAndCallbackWork() {
+                    mainKeyboardRestore.cancel()
                     grammarEngine.setSessionWarm(false)
                     modelRequests.cancelAll()
                     modelRequestEpoch += 1
@@ -158,11 +159,7 @@ class MainActivity : Activity() {
                         return
                     }
                     editor.requestFocus()
-                    editor.post {
-                        if (mainEditorEligibility() == ReviewTargetEligibility.ELIGIBLE) {
-                            showSystemKeyboard(editor)
-                        }
-                    }
+                    mainKeyboardRestore.schedule(targetId)
                 }
 
                 override fun renderReviewSurfaceState(state: ReviewSurfaceState) {
@@ -174,6 +171,25 @@ class MainActivity : Activity() {
                     }
                 }
             },
+        )
+    }
+    private val mainKeyboardRestore by lazy {
+        ReviewKeyboardRestore(
+            scheduler = object : ReviewKeyboardRestoreScheduler {
+                override fun post(runnable: Runnable) {
+                    if (::editor.isInitialized) editor.post(runnable)
+                }
+
+                override fun remove(runnable: Runnable) {
+                    if (::editor.isInitialized) editor.removeCallbacks(runnable)
+                }
+            },
+            currentState = { reviewSurfaceController.state },
+            isEligible = { targetId ->
+                targetId == MAIN_EDITOR_TARGET_ID &&
+                    mainEditorEligibility() == ReviewTargetEligibility.ELIGIBLE
+            },
+            restore = { showSystemKeyboard(editor) },
         )
     }
     private val statusHandler = Handler(Looper.getMainLooper())
@@ -284,6 +300,7 @@ class MainActivity : Activity() {
         if (::root.isInitialized && root.viewTreeObserver.isAlive) {
             root.viewTreeObserver.removeOnGlobalFocusChangeListener(focusListener)
         }
+        mainKeyboardRestore.cancel()
         reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.Destroy)
         statusHandler.removeCallbacks(draftSave)
         statusHandler.removeCallbacks(triggerRefresh)
@@ -1882,6 +1899,7 @@ class MainActivity : Activity() {
     }
 
     private fun invalidateMainReviewSurface(event: ReviewSurfaceEvent) {
+        mainKeyboardRestore.cancel()
         reviewSurfaceExecutor.dispatch(event)
     }
 

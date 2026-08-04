@@ -95,7 +95,6 @@ class AcrossAppWritingSourceTest {
         assertTrue(service.contains("restoreKeyboardToReacquiredTarget"))
         assertTrue(service.contains("reacquireReviewTarget"))
         assertTrue(service.contains("cancelKeyboardRestore()"))
-        assertTrue(service.contains("expectedTargetId != null && expectedTargetId != targetId"))
         assertFalse(service.contains("restoreTargetRunnable"))
         assertFalse(service.contains("android.os.Handler(mainLooper).postDelayed"))
     }

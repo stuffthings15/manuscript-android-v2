@@ -11,7 +11,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -29,10 +28,10 @@ class ExternalEditorLifecycleFixtureDeviceTest {
         requireEnabledManuscriptService()
 
         withFixture(S23ExternalEditorFixtureActivity.MODE_EMPTY) {
-            assertFalse(waitForDescription(triggerDescription, expected = false))
+            assertDescriptionNeverAppears(triggerDescription)
         }
         withFixture(S23ExternalEditorFixtureActivity.MODE_PASSWORD) {
-            assertFalse(waitForDescription(triggerDescription, expected = false))
+            assertDescriptionNeverAppears(triggerDescription)
         }
         withFixture(S23ExternalEditorFixtureActivity.MODE_NORMAL) {
             assertTrue(waitForDescription(triggerDescription, expected = true))
@@ -56,11 +55,13 @@ class ExternalEditorLifecycleFixtureDeviceTest {
         ).forEach { mode ->
             withFixture(mode) { activity ->
                 assertTrue(waitForDescription(triggerDescription, expected = true))
+                tapDescription(triggerDescription)
+                assertTrue(waitForDescription(panelCloseDescription, expected = true))
                 tap(activity.window.decorView.findViewWithTag(
                     S23ExternalEditorFixtureActivity.LIFECYCLE_ACTION_TAG,
                 ))
-                assertFalse(waitForDescription(triggerDescription, expected = false))
-                assertFalse(waitForDescription(panelCloseDescription, expected = false))
+                assertDescriptionNeverAppears(panelCloseDescription, observationMs = 1_000L)
+                assertDescriptionNeverAppears(triggerDescription, observationMs = 1_000L)
             }
         }
     }
@@ -81,7 +82,8 @@ class ExternalEditorLifecycleFixtureDeviceTest {
             assertTrue(waitUntil { activity.stopCount >= 1 })
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             assertTrue(waitUntil { activity.resumeCount > resumesBeforeSwitch })
-            assertTrue(waitForDescription(triggerDescription, expected = true))
+            assertTrue(waitUntil { countDescription(triggerDescription) == 1 })
+            assertDescriptionCountStable(triggerDescription, expectedCount = 1)
         }
     }
 
@@ -160,6 +162,49 @@ class ExternalEditorLifecycleFixtureDeviceTest {
             node?.recycle()
             node != null
         }
+
+    private fun assertDescriptionNeverAppears(
+        description: String,
+        observationMs: Long = 5_000L,
+    ) {
+        assertDescriptionCountStable(description, expectedCount = 0, observationMs = observationMs)
+    }
+
+    private fun assertDescriptionCountStable(
+        description: String,
+        expectedCount: Int,
+        observationMs: Long = 1_000L,
+    ) {
+        val deadline = SystemClock.elapsedRealtime() + observationMs
+        do {
+            assertEquals(expectedCount, countDescription(description))
+            SystemClock.sleep(50L)
+        } while (SystemClock.elapsedRealtime() < deadline)
+        assertEquals(expectedCount, countDescription(description))
+    }
+
+    private fun countDescription(description: String): Int =
+        instrumentation.uiAutomation.windows.sumOf { window ->
+            val root = window.root ?: return@sumOf 0
+            try {
+                countDescription(root, description)
+            } finally {
+                root.recycle()
+            }
+        }
+
+    private fun countDescription(node: AccessibilityNodeInfo, description: String): Int {
+        var count = if (node.contentDescription?.toString() == description) 1 else 0
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            try {
+                count += countDescription(child, description)
+            } finally {
+                child.recycle()
+            }
+        }
+        return count
+    }
 
     private fun findDescription(description: String): AccessibilityNodeInfo? {
         instrumentation.uiAutomation.windows.forEach { window ->

@@ -79,7 +79,7 @@ class ReviewSurfaceEffectExecutorTest {
         fixture.executor.dispatch(ReviewSurfaceEvent.ServiceReconnected)
         fixture.executor.dispatch(ReviewSurfaceEvent.ServiceReconnected)
 
-        assertEquals(listOf("reacquire:any", "reacquire:editor"), fixture.actions.calls)
+        assertEquals(listOf("reacquire:any", "reacquire:any"), fixture.actions.calls)
         assertEquals(ReviewSurfaceState.TriggerVisible(TARGET_ID), fixture.controller.state)
     }
 
@@ -95,8 +95,38 @@ class ReviewSurfaceEffectExecutorTest {
 
         fixture.executor.dispatch(ReviewSurfaceEvent.ServiceReconnected)
 
-        assertEquals(listOf("reacquire:editor"), fixture.actions.calls)
+        assertEquals(listOf("reacquire:any"), fixture.actions.calls)
         assertEquals(ReviewSurfaceState.TriggerVisible(TARGET_ID), fixture.controller.state)
+    }
+
+    @Test
+    fun reconnectWhileTriggerVisibleAppliesSameNewAndIneligibleTargets() {
+        val newTargetId = ReviewTargetId("new-editor")
+        val cases = listOf(
+            ReviewTarget(TARGET_ID, ReviewTargetEligibility.ELIGIBLE) to
+                ReviewSurfaceState.TriggerVisible(TARGET_ID),
+            ReviewTarget(newTargetId, ReviewTargetEligibility.ELIGIBLE) to
+                ReviewSurfaceState.TriggerVisible(newTargetId),
+            ReviewTarget(null, ReviewTargetEligibility.INELIGIBLE) to ReviewSurfaceState.Hidden,
+            ReviewTarget(null, ReviewTargetEligibility.MISSING) to ReviewSurfaceState.Hidden,
+            ReviewTarget(null, ReviewTargetEligibility.PASSWORD) to ReviewSurfaceState.Hidden,
+        )
+
+        cases.forEach { (validation, expectedState) ->
+            val fixture = hiddenFixture()
+            fixture.executor.dispatch(
+                ReviewSurfaceEvent.FocusedTargetAvailable(
+                    ReviewTarget(TARGET_ID, ReviewTargetEligibility.ELIGIBLE),
+                ),
+            )
+            fixture.actions.calls.clear()
+            fixture.actions.reacquired = validation
+
+            fixture.executor.dispatch(ReviewSurfaceEvent.ServiceReconnected)
+
+            assertEquals("validation=$validation", listOf("reacquire:any"), fixture.actions.calls)
+            assertEquals("validation=$validation", expectedState, fixture.controller.state)
+        }
     }
 
     @Test

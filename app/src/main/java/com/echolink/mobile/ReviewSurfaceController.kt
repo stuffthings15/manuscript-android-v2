@@ -145,10 +145,12 @@ class ReviewSurfaceController(
             state: ReviewSurfaceState,
             target: ReviewTarget,
         ): ReviewSurfaceTransition = when {
-            state == ReviewSurfaceState.Hidden && target.canRestore -> ReviewSurfaceTransition(
+            (state == ReviewSurfaceState.Hidden || state is ReviewSurfaceState.TriggerVisible) &&
+                target.canRestore -> ReviewSurfaceTransition(
                 ReviewSurfaceState.TriggerVisible(requireNotNull(target.id)),
             )
-            state == ReviewSurfaceState.Hidden -> ReviewSurfaceTransition(ReviewSurfaceState.Hidden)
+            state == ReviewSurfaceState.Hidden || state is ReviewSurfaceState.TriggerVisible ->
+                ReviewSurfaceTransition(ReviewSurfaceState.Hidden)
             else -> ReviewSurfaceTransition(state)
         }
 
@@ -241,22 +243,12 @@ class ReviewSurfaceController(
             ReviewSurfaceTransition(
                 state = state,
                 effects = listOf(
-                    ReviewSurfaceEffect.ReacquireFocusedTarget(state.targetIdOrNull()),
+                    ReviewSurfaceEffect.ReacquireFocusedTarget(null),
                 ),
             )
 
         private fun ReviewSurfaceState.hasAttachedReview(): Boolean =
             this is ReviewSurfaceState.Opening || this is ReviewSurfaceState.ReviewOpen
 
-        private fun ReviewSurfaceState.targetIdOrNull(): ReviewTargetId? = when (this) {
-            is ReviewSurfaceState.TriggerVisible -> targetId
-            is ReviewSurfaceState.Opening -> targetId
-            is ReviewSurfaceState.ReviewOpen -> targetId
-            is ReviewSurfaceState.Closing -> retainedTarget.id
-            is ReviewSurfaceState.RestoringFocus -> targetId
-            ReviewSurfaceState.Hidden,
-            ReviewSurfaceState.Destroyed,
-            -> null
-        }
     }
 }

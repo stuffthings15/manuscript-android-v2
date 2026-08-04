@@ -145,9 +145,56 @@ class ReviewSurfaceControllerTest {
 
         controller.dispatch(ReviewSurfaceEvent.FocusedTargetAvailable(eligibleTarget))
         assertEquals(
-            listOf(ReviewSurfaceEffect.ReacquireFocusedTarget(targetId)),
+            listOf(ReviewSurfaceEffect.ReacquireFocusedTarget(null)),
             controller.dispatch(ReviewSurfaceEvent.ServiceReconnected),
         )
+    }
+
+    @Test
+    fun reconnectValidationWhileTriggerVisibleAppliesEveryResult() {
+        val newTargetId = ReviewTargetId("field-22")
+        val cases = listOf(
+            ReviewTarget(targetId, ReviewTargetEligibility.ELIGIBLE) to
+                ReviewSurfaceState.TriggerVisible(targetId),
+            ReviewTarget(newTargetId, ReviewTargetEligibility.ELIGIBLE) to
+                ReviewSurfaceState.TriggerVisible(newTargetId),
+            ReviewTarget(null, ReviewTargetEligibility.INELIGIBLE) to ReviewSurfaceState.Hidden,
+            ReviewTarget(null, ReviewTargetEligibility.MISSING) to ReviewSurfaceState.Hidden,
+            ReviewTarget(null, ReviewTargetEligibility.PASSWORD) to ReviewSurfaceState.Hidden,
+        )
+
+        cases.forEach { (validation, expectedState) ->
+            val controller = ReviewSurfaceController()
+            controller.dispatch(ReviewSurfaceEvent.FocusedTargetAvailable(eligibleTarget))
+
+            assertEquals(
+                listOf(ReviewSurfaceEffect.ReacquireFocusedTarget(null)),
+                controller.dispatch(ReviewSurfaceEvent.ServiceReconnected),
+            )
+            controller.dispatch(ReviewSurfaceEvent.FocusedTargetAvailable(validation))
+
+            assertEquals("validation=$validation", expectedState, controller.state)
+        }
+    }
+
+    @Test
+    fun repeatedReconnectsProcessEachCompletedValidation() {
+        val newTargetId = ReviewTargetId("field-22")
+        val controller = ReviewSurfaceController()
+        controller.dispatch(ReviewSurfaceEvent.FocusedTargetAvailable(eligibleTarget))
+
+        repeat(2) {
+            assertEquals(
+                listOf(ReviewSurfaceEffect.ReacquireFocusedTarget(null)),
+                controller.dispatch(ReviewSurfaceEvent.ServiceReconnected),
+            )
+            controller.dispatch(
+                ReviewSurfaceEvent.FocusedTargetAvailable(
+                    ReviewTarget(newTargetId, ReviewTargetEligibility.ELIGIBLE),
+                ),
+            )
+            assertEquals(ReviewSurfaceState.TriggerVisible(newTargetId), controller.state)
+        }
     }
 
     @Test

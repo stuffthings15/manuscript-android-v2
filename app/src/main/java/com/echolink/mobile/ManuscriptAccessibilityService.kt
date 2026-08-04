@@ -1447,6 +1447,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     private fun reacquireTarget(captured: Target): AccessibilityNodeInfo? {
         if (captured.node.refresh() &&
             captured.node.packageName?.toString() == captured.packageName &&
+            captured.node.isFocused &&
             captured.node.isEditable &&
             !captured.node.isPassword
         ) {
@@ -1462,12 +1463,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             windowId = candidate.node.windowId,
             viewId = candidate.viewId,
             className = candidate.node.className?.toString().orEmpty().ifBlank { "editable" },
-            bounds = FieldBounds(
-                left = candidate.bounds.left,
-                top = candidate.bounds.top,
-                right = candidate.bounds.right,
-                bottom = candidate.bounds.bottom,
-            ),
+            drawingOrder = candidate.node.drawingOrder,
         ).asReviewTargetId()
 
     private fun currentReviewTargetId(): ReviewTargetId? = when (val state = reviewSurfaceController.state) {
@@ -1509,7 +1505,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
 
     private fun reacquireReviewTarget(expectedTargetId: ReviewTargetId?): ReviewTarget {
         val captured = target
-        val node = captured?.let(::reacquireTarget) ?: focusedEditableNode()
+        val node = focusedEditableNode()
             ?: return ReviewTarget(null, ReviewTargetEligibility.MISSING)
         val packageName = node.packageName?.toString().orEmpty()
         val snapshot = ExternalWritingPolicy.metadataSnapshot(
@@ -1541,13 +1537,22 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             node = node,
         )
         val targetId = reviewTargetId(candidate)
-        if (eligibility != ReviewTargetEligibility.ELIGIBLE) {
+        if (!FocusedReviewTargetPolicy.accepts(
+                isInputFocused = node.isFocused,
+                eligibility = eligibility,
+                actualTargetId = targetId,
+                expectedTargetId = expectedTargetId,
+            )
+        ) {
             recycleIfDetached(node, captured?.node)
-            return ReviewTarget(null, eligibility)
-        }
-        if (expectedTargetId != null && expectedTargetId != targetId) {
-            recycleIfDetached(node, captured?.node)
-            return ReviewTarget(null, ReviewTargetEligibility.DETACHED)
+            return ReviewTarget(
+                null,
+                if (eligibility == ReviewTargetEligibility.ELIGIBLE) {
+                    ReviewTargetEligibility.DETACHED
+                } else {
+                    eligibility
+                },
+            )
         }
         setTarget(candidate)
         return ReviewTarget(targetId, ReviewTargetEligibility.ELIGIBLE)
@@ -1599,7 +1604,12 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         fun visit(node: AccessibilityNodeInfo, depth: Int): Boolean {
             if (!budget.tryVisit(depth)) return false
             visited += node
-            if (node.isEditable && !node.isPassword && node.packageName?.toString() == captured.packageName) {
+            if (
+                node.isFocused &&
+                node.isEditable &&
+                !node.isPassword &&
+                node.packageName?.toString() == captured.packageName
+            ) {
                 candidates += node
             }
             if (!budget.canDescendFrom(depth)) return true

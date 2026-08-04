@@ -13,14 +13,14 @@ class ExternalFieldIdentityTest {
             windowId = 7,
             viewId = "example.editor:id/body",
             className = "android.widget.EditText",
-            bounds = FieldBounds(10, 20, 500, 220),
+            drawingOrder = 3,
         )
         val recreated = ExternalFieldIdentity.from(
             packageName = "example.editor",
             windowId = 7,
             viewId = "example.editor:id/body",
             className = "android.widget.EditText",
-            bounds = FieldBounds(99, 99, 999, 999),
+            drawingOrder = 9,
         )
 
         assertEquals(first, recreated)
@@ -29,22 +29,63 @@ class ExternalFieldIdentityTest {
     }
 
     @Test
-    fun fieldsWithoutViewIdsUseContentFreeGeometryFallback() {
+    fun fieldsWithoutViewIdsKeepIdentityAcrossBoundsAndNodeRecreation() {
         val first = ExternalFieldIdentity.from(
             packageName = "example.editor",
             windowId = 7,
             viewId = null,
             className = "android.widget.EditText",
-            bounds = FieldBounds(10, 20, 500, 220),
+            drawingOrder = 3,
+        )
+        val moved = ExternalFieldIdentity.from(
+            packageName = "example.editor",
+            windowId = 7,
+            viewId = null,
+            className = "android.widget.EditText",
+            drawingOrder = 3,
+        )
+
+        assertEquals(first, moved)
+        assertTrue(first.value.contains("order:android.widget.EditText:3"))
+    }
+
+    @Test
+    fun fieldsWithoutViewIdsUseStableDrawingOrderToRemainDistinct() {
+        val first = ExternalFieldIdentity.from(
+            packageName = "example.editor",
+            windowId = 7,
+            viewId = null,
+            className = "android.widget.EditText",
+            drawingOrder = 3,
         )
         val other = ExternalFieldIdentity.from(
             packageName = "example.editor",
             windowId = 7,
             viewId = null,
             className = "android.widget.EditText",
-            bounds = FieldBounds(10, 300, 500, 500),
+            drawingOrder = 4,
         )
 
         assertNotEquals(first, other)
+    }
+
+    @Test
+    fun recreatedWindowAfterRotationKeepsSemanticFieldIdentity() {
+        val beforeRotation = ExternalFieldIdentity.from(
+            packageName = "example.editor",
+            windowId = 7,
+            viewId = null,
+            className = "android.widget.EditText",
+            drawingOrder = 3,
+        )
+        val afterRotation = ExternalFieldIdentity.from(
+            packageName = "example.editor",
+            windowId = 12,
+            viewId = null,
+            className = "android.widget.EditText",
+            drawingOrder = 3,
+        )
+
+        assertEquals(beforeRotation, afterRotation)
     }
 }
