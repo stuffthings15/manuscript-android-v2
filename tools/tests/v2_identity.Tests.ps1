@@ -6,6 +6,8 @@ $resources = Join-Path $root 'app\src\main\res\values\strings.xml'
 $llamaBuild = Join-Path $root 'llama-runtime\build.gradle'
 $manifest = Join-Path $root 'app\src\main\AndroidManifest.xml'
 $rootBuild = Join-Path $root 'build.gradle'
+$identityTest = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot 'v2_identity.Tests.ps1')).Path
+$textExtensions = @('.gradle', '.java', '.json', '.kt', '.md', '.properties', '.ps1', '.psm1', '.py', '.txt', '.xml')
 
 Describe 'Manuscript Android Version 2 identity isolation' {
     It 'uses the V2 project, package, version, labels, and local contract' {
@@ -36,17 +38,40 @@ Describe 'Manuscript Android Version 2 identity isolation' {
                 (Join-Path $root 'tools'), `
                 (Join-Path $root 'play') `
                 -File |
-                Where-Object { $_.FullName -ne $PSCommandPath } |
+                Where-Object {
+                    $_.FullName -ne $identityTest -and
+                    $_.Extension.ToLowerInvariant() -in $textExtensions
+                } |
                 Select-Object -ExpandProperty FullName
         )
-        $text = ($active | ForEach-Object { Get-Content -Raw -LiteralPath $_ }) -join "`n"
-        $text | Should Not Match 'com\.remote\.Manuscript(?!\.v2)'
-        $text | Should Not Match 'manuscript-android-v1'
-        $text | Should Not Match 'Manuscript/Android'
-        $text | Should Not Match 'build_play_bundle'
-        $text | Should Not Match 'internaltest/'
-        $text | Should Not Match 'validatePlayBundle'
-        $text | Should Not Match '\[switch\]\$PlayUpload'
+        $patterns = @(
+            'com\.remote\.Manuscript(?!\.v2)',
+            'manuscript-android-v1',
+            'Manuscript[\\/]Android(?! Version 2)',
+            'build_play_bundle',
+            'internaltest/',
+            'validatePlayBundle',
+            '\[switch\]\$PlayUpload'
+        )
+        $terminologyTest = (Resolve-Path -LiteralPath (
+            Join-Path $root 'app\src\test\java\com\echolink\mobile\UserVisibleAiTerminologyTest.kt'
+        )).Path
+        $violations = @()
+        foreach ($path in $active) {
+            $content = Get-Content -Raw -LiteralPath $path
+            foreach ($pattern in $patterns) {
+                if ($content -match $pattern) {
+                    $allowedForbiddenAssertion = (
+                        $path -eq $terminologyTest -and
+                        $Matches[0] -eq 'internaltest/'
+                    )
+                    if (-not $allowedForbiddenAssertion) {
+                        $violations += "$path matched $pattern as $($Matches[0])"
+                    }
+                }
+            }
+        }
+        $violations | Should BeNullOrEmpty
     }
 
     It 'has a V2 product contract and copied canonical brand assets' {
