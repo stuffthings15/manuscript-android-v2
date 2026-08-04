@@ -11,6 +11,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -80,10 +81,31 @@ class ExternalEditorLifecycleFixtureDeviceTest {
             assertTrue(waitUntil { activePackage() == SETTINGS_PACKAGE })
             assertEquals(SETTINGS_PACKAGE, activePackage())
             assertTrue(waitUntil { activity.stopCount >= 1 })
+            assertDescriptionCountStable(triggerDescription, expectedCount = 0, observationMs = 2_000L)
+            assertDescriptionCountStable(panelCloseDescription, expectedCount = 0, observationMs = 2_000L)
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             assertTrue(waitUntil { activity.resumeCount > resumesBeforeSwitch })
             assertTrue(waitUntil { countDescription(triggerDescription) == 1 })
             assertDescriptionCountStable(triggerDescription, expectedCount = 1)
+        }
+    }
+
+    @Test
+    fun nullViewIdFieldsUnderDifferentParentsHaveDifferentStructuralLocators() {
+        withFixture(S23ExternalEditorFixtureActivity.MODE_STRUCTURAL_FIELDS) {
+            val first = findDescription(S23ExternalEditorFixtureActivity.STRUCTURAL_FIELD_ONE_DESCRIPTION)
+                ?: error("First structural field missing")
+            val second = findDescription(S23ExternalEditorFixtureActivity.STRUCTURAL_FIELD_TWO_DESCRIPTION)
+                ?: error("Second structural field missing")
+            try {
+                assertNotEquals(
+                    AccessibilityNodeStructuralLocator.from(first),
+                    AccessibilityNodeStructuralLocator.from(second),
+                )
+            } finally {
+                first.recycle()
+                second.recycle()
+            }
         }
     }
 

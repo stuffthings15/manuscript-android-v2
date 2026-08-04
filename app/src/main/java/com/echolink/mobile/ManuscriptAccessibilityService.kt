@@ -120,8 +120,8 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
                     }
                 }
 
-                override fun reacquireFocusedTarget(expectedTargetId: ReviewTargetId?): ReviewTarget =
-                    reacquireReviewTarget(expectedTargetId)
+                override fun reacquireFocusedTarget(mode: ReviewTargetReacquisition): ReviewTarget =
+                    reacquireReviewTarget(mode)
 
                 override fun restoreKeyboard(targetId: ReviewTargetId) {
                     restoreKeyboardToReacquiredTarget(targetId)
@@ -179,6 +179,20 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || isOverlaySelfEvent(event)) return
         val eventPackage = event.packageName?.toString().orEmpty()
+        val activeWindowPackage = activeApplicationPackage()
+        if (
+            ExternalPackageChangePolicy.confirmed(
+                retainedPackage = target?.packageName.orEmpty(),
+                activeWindowPackage = activeWindowPackage,
+                eventPackage = eventPackage,
+                verifiedApplicationWindowTransition = isVerifiedApplicationWindowTransition(event),
+            )
+        ) {
+            cancelTargetClear()
+            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ApplicationSwitched)
+            clearTarget()
+            return
+        }
         if (eventPackage == packageName) {
             if (panelView != null) {
                 reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ApplicationSwitched)
@@ -282,11 +296,27 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         return found
     }
 
+    private fun activeApplicationPackage(): String {
+        val root = rootInActiveWindow ?: return ""
+        return try {
+            root.packageName?.toString().orEmpty()
+        } finally {
+            recycleLegacy(root)
+        }
+    }
+
     private fun isOverlaySelfEvent(event: AccessibilityEvent): Boolean {
         if (event.packageName?.toString() != packageName) return false
         return windows.any { window ->
             window.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY &&
                 window.id == event.windowId
+        }
+    }
+
+    private fun isVerifiedApplicationWindowTransition(event: AccessibilityEvent): Boolean {
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return false
+        return windows.any { window ->
+            window.id == event.windowId && window.type == AccessibilityWindowInfo.TYPE_APPLICATION
         }
     }
 
@@ -1460,10 +1490,13 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     private fun reviewTargetId(candidate: Target): ReviewTargetId =
         ExternalFieldIdentity.from(
             packageName = candidate.packageName,
-            windowId = candidate.node.windowId,
+            platformUniqueId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                candidate.node.uniqueId
+            } else {
+                null
+            },
             viewId = candidate.viewId,
-            className = candidate.node.className?.toString().orEmpty().ifBlank { "editable" },
-            drawingOrder = candidate.node.drawingOrder,
+            structuralLocator = AccessibilityNodeStructuralLocator.from(candidate.node),
         ).asReviewTargetId()
 
     private fun currentReviewTargetId(): ReviewTargetId? = when (val state = reviewSurfaceController.state) {
@@ -1503,7 +1536,8 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         }
     }
 
-    private fun reacquireReviewTarget(expectedTargetId: ReviewTargetId?): ReviewTarget {
+    private fun reacquireReviewTarget(mode: ReviewTargetReacquisition): ReviewTarget {
+        val expectedTargetId = (mode as? ReviewTargetReacquisition.RestoreExact)?.targetId
         val captured = target
         val node = focusedEditableNode()
             ?: return ReviewTarget(null, ReviewTargetEligibility.MISSING)
@@ -1516,14 +1550,18 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             selectionStart = node.textSelectionStart,
             selectionEnd = node.textSelectionEnd,
         )
-        val eligibility = when {
+        val baseEligibility = when {
             node.isPassword -> ReviewTargetEligibility.PASSWORD
-            captured != null && packageName != captured.packageName ->
-                ReviewTargetEligibility.SWITCHED_APPLICATION
             !ExternalWritingPolicy.canOffer(snapshot, this.packageName) ->
                 ReviewTargetEligibility.INELIGIBLE
             else -> ReviewTargetEligibility.ELIGIBLE
         }
+        val eligibility = FocusedReviewTargetPolicy.resolveEligibility(
+            baseEligibility = baseEligibility,
+            expectedTargetId = expectedTargetId,
+            retainedPackage = captured?.packageName,
+            focusedPackage = packageName,
+        )
         val bounds = Rect().also(node::getBoundsInScreen)
         if (bounds.isEmpty) {
             recycleIfDetached(node, captured?.node)

@@ -54,8 +54,13 @@ sealed interface ReviewSurfaceEffect {
     data object CancelStaleCorrectionAndCallbackWork : ReviewSurfaceEffect
     data object DetachReviewPanelSafely : ReviewSurfaceEffect
     data object ScrubTransientTextHolders : ReviewSurfaceEffect
-    data class ReacquireFocusedTarget(val expectedTargetId: ReviewTargetId?) : ReviewSurfaceEffect
+    data class ReacquireFocusedTarget(val mode: ReviewTargetReacquisition) : ReviewSurfaceEffect
     data class RestoreKeyboard(val targetId: ReviewTargetId) : ReviewSurfaceEffect
+}
+
+sealed interface ReviewTargetReacquisition {
+    data object AdoptCurrent : ReviewTargetReacquisition
+    data class RestoreExact(val targetId: ReviewTargetId) : ReviewTargetReacquisition
 }
 
 data class ReviewSurfaceTransition(
@@ -75,7 +80,10 @@ class ReviewSurfaceController(
             reacquisitionPending = false
         }
         if (event == ReviewSurfaceEvent.ServiceReconnected && reacquisitionPending) {
-            return emptyList()
+            if (state == ReviewSurfaceState.Hidden || state is ReviewSurfaceState.TriggerVisible) {
+                return emptyList()
+            }
+            reacquisitionPending = false
         }
         val transition = reduce(state, event)
         state = transition.state
@@ -190,7 +198,9 @@ class ReviewSurfaceController(
                     ReviewSurfaceTransition(
                         state = ReviewSurfaceState.RestoringFocus(targetId),
                         effects = listOf(
-                            ReviewSurfaceEffect.ReacquireFocusedTarget(targetId),
+                            ReviewSurfaceEffect.ReacquireFocusedTarget(
+                                ReviewTargetReacquisition.RestoreExact(targetId),
+                            ),
                             ReviewSurfaceEffect.RestoreKeyboard(targetId),
                         ),
                     )
@@ -239,13 +249,29 @@ class ReviewSurfaceController(
             else -> ReviewSurfaceTransition(state)
         }
 
-        private fun reconnect(state: ReviewSurfaceState): ReviewSurfaceTransition =
-            ReviewSurfaceTransition(
+        private fun reconnect(state: ReviewSurfaceState): ReviewSurfaceTransition = when (state) {
+            ReviewSurfaceState.Hidden,
+            is ReviewSurfaceState.TriggerVisible,
+            -> ReviewSurfaceTransition(
                 state = state,
                 effects = listOf(
-                    ReviewSurfaceEffect.ReacquireFocusedTarget(null),
+                    ReviewSurfaceEffect.ReacquireFocusedTarget(
+                        ReviewTargetReacquisition.AdoptCurrent,
+                    ),
                 ),
             )
+            is ReviewSurfaceState.Opening -> beginClose(
+                state.targetId,
+                ReviewTargetEligibility.MISSING,
+            )
+            is ReviewSurfaceState.ReviewOpen -> beginClose(
+                state.targetId,
+                ReviewTargetEligibility.MISSING,
+            )
+            is ReviewSurfaceState.Closing -> ReviewSurfaceTransition(state)
+            is ReviewSurfaceState.RestoringFocus -> ReviewSurfaceTransition(ReviewSurfaceState.Hidden)
+            ReviewSurfaceState.Destroyed -> ReviewSurfaceTransition(ReviewSurfaceState.Destroyed)
+        }
 
         private fun ReviewSurfaceState.hasAttachedReview(): Boolean =
             this is ReviewSurfaceState.Opening || this is ReviewSurfaceState.ReviewOpen

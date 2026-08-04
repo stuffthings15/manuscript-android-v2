@@ -7,85 +7,97 @@ import org.junit.Test
 
 class ExternalFieldIdentityTest {
     @Test
-    fun recreatedNodeKeepsIdentityWithoutTextOrObjectHash() {
-        val first = ExternalFieldIdentity.from(
-            packageName = "example.editor",
+    fun api33UniqueIdSurvivesHierarchyChanges() {
+        val first = identity(uniqueId = "platform-field-41", windowId = 7, path = listOf(0, 2))
+        val recreated = identity(uniqueId = "platform-field-41", windowId = 12, path = listOf(4, 1))
+
+        assertEquals(first, recreated)
+    }
+
+    @Test
+    fun api33DifferentUniqueIdsRemainDistinct() {
+        val first = identity(uniqueId = "platform-field-41", windowId = 7, path = listOf(0, 2))
+        val second = identity(uniqueId = "platform-field-42", windowId = 7, path = listOf(0, 2))
+
+        assertNotEquals(first, second)
+    }
+
+    @Test
+    fun api26FreshNodeAtSameWindowPathKeepsIdentityThroughKeyboardLayoutChanges() {
+        val beforeKeyboard = identity(windowId = 7, path = listOf(0, 2, 1))
+        val afterKeyboard = identity(windowId = 7, path = listOf(0, 2, 1))
+
+        assertEquals(beforeKeyboard, afterKeyboard)
+    }
+
+    @Test
+    fun api26WindowRecreationStrictlyInvalidatesFallbackIdentity() {
+        val beforeRecreation = identity(windowId = 7, path = listOf(0, 2, 1))
+        val afterRecreation = identity(windowId = 12, path = listOf(0, 2, 1))
+
+        assertNotEquals(beforeRecreation, afterRecreation)
+    }
+
+    @Test
+    fun nullViewIdFieldsUnderDifferentParentsRemainDistinct() {
+        val leftParent = identity(windowId = 7, path = listOf(0, 1, 0))
+        val rightParent = identity(windowId = 7, path = listOf(0, 2, 0))
+
+        assertNotEquals(leftParent, rightParent)
+    }
+
+    @Test
+    fun duplicateViewIdsInDifferentRowsDoNotCollapse() {
+        val firstRow = identity(
             windowId = 7,
-            viewId = "example.editor:id/body",
-            className = "android.widget.EditText",
-            drawingOrder = 3,
+            path = listOf(0, 1, 0),
+            viewId = "example.editor:id/repeated_body",
         )
-        val recreated = ExternalFieldIdentity.from(
-            packageName = "example.editor",
+        val secondRow = identity(
             windowId = 7,
+            path = listOf(0, 2, 0),
+            viewId = "example.editor:id/repeated_body",
+        )
+
+        assertNotEquals(firstRow, secondRow)
+        assertTrue(firstRow.value.contains("example.editor:id/repeated_body"))
+    }
+
+    @Test
+    fun viewIdAndStructuralPathTogetherRemainStableForFreshNode() {
+        val first = identity(
+            windowId = 7,
+            path = listOf(0, 2, 0),
             viewId = "example.editor:id/body",
-            className = "android.widget.EditText",
-            drawingOrder = 9,
+        )
+        val recreated = identity(
+            windowId = 7,
+            path = listOf(0, 2, 0),
+            viewId = "example.editor:id/body",
         )
 
         assertEquals(first, recreated)
-        assertTrue(first.value.contains("example.editor:id/body"))
-        assertTrue(!first.value.contains("generated words"))
     }
 
-    @Test
-    fun fieldsWithoutViewIdsKeepIdentityAcrossBoundsAndNodeRecreation() {
-        val first = ExternalFieldIdentity.from(
-            packageName = "example.editor",
-            windowId = 7,
-            viewId = null,
-            className = "android.widget.EditText",
-            drawingOrder = 3,
-        )
-        val moved = ExternalFieldIdentity.from(
-            packageName = "example.editor",
-            windowId = 7,
-            viewId = null,
-            className = "android.widget.EditText",
-            drawingOrder = 3,
-        )
-
-        assertEquals(first, moved)
-        assertTrue(first.value.contains("order:android.widget.EditText:3"))
-    }
-
-    @Test
-    fun fieldsWithoutViewIdsUseStableDrawingOrderToRemainDistinct() {
-        val first = ExternalFieldIdentity.from(
-            packageName = "example.editor",
-            windowId = 7,
-            viewId = null,
-            className = "android.widget.EditText",
-            drawingOrder = 3,
-        )
-        val other = ExternalFieldIdentity.from(
-            packageName = "example.editor",
-            windowId = 7,
-            viewId = null,
-            className = "android.widget.EditText",
-            drawingOrder = 4,
-        )
-
-        assertNotEquals(first, other)
-    }
-
-    @Test
-    fun recreatedWindowAfterRotationKeepsSemanticFieldIdentity() {
-        val beforeRotation = ExternalFieldIdentity.from(
-            packageName = "example.editor",
-            windowId = 7,
-            viewId = null,
-            className = "android.widget.EditText",
-            drawingOrder = 3,
-        )
-        val afterRotation = ExternalFieldIdentity.from(
-            packageName = "example.editor",
-            windowId = 12,
-            viewId = null,
-            className = "android.widget.EditText",
-            drawingOrder = 3,
-        )
-
-        assertEquals(beforeRotation, afterRotation)
-    }
+    private fun identity(
+        uniqueId: String? = null,
+        windowId: Int,
+        path: List<Int>,
+        viewId: String? = null,
+    ): ExternalFieldIdentity = ExternalFieldIdentity.from(
+        packageName = "example.editor",
+        platformUniqueId = uniqueId,
+        viewId = viewId,
+        structuralLocator = FieldStructuralLocator(
+            windowId = windowId,
+            ancestry = path.mapIndexed { depth, childIndex ->
+                StructuralNodeStep(
+                    parentClassName = "fixture.Parent$depth",
+                    childIndex = childIndex,
+                    childDrawingOrder = depth + 1,
+                )
+            },
+            leafClassName = "android.widget.EditText",
+        ),
+    )
 }

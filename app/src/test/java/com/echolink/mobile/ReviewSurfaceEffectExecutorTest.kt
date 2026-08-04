@@ -130,6 +130,45 @@ class ReviewSurfaceEffectExecutorTest {
     }
 
     @Test
+    fun reconnectCanRetargetButOrdinaryCloseRejectsDifferentFocusedTarget() {
+        val newTargetId = ReviewTargetId("other-package-editor")
+        val reconnect = hiddenFixture()
+        reconnect.executor.dispatch(
+            ReviewSurfaceEvent.FocusedTargetAvailable(
+                ReviewTarget(TARGET_ID, ReviewTargetEligibility.ELIGIBLE),
+            ),
+        )
+        reconnect.actions.calls.clear()
+        reconnect.actions.reacquired = ReviewTarget(newTargetId, ReviewTargetEligibility.ELIGIBLE)
+
+        reconnect.executor.dispatch(ReviewSurfaceEvent.ServiceReconnected)
+
+        assertEquals(ReviewSurfaceState.TriggerVisible(newTargetId), reconnect.controller.state)
+        assertEquals(listOf("reacquire:any"), reconnect.actions.calls)
+
+        val close = openFixture()
+        close.actions.reacquired = ReviewTarget(newTargetId, ReviewTargetEligibility.ELIGIBLE)
+        close.executor.dispatch(ReviewSurfaceEvent.CloseRequested)
+
+        assertEquals(ReviewSurfaceState.Hidden, close.controller.state)
+        assertEquals(listOf("cancel", "detach", "scrub", "reacquire:editor"), close.actions.calls)
+    }
+
+    @Test
+    fun reconnectWhileReviewOpenScrubsAndClosesBeforeAnyAdoption() {
+        val fixture = openFixture()
+        fixture.actions.reacquired = ReviewTarget(
+            ReviewTargetId("new-package-field"),
+            ReviewTargetEligibility.ELIGIBLE,
+        )
+
+        fixture.executor.dispatch(ReviewSurfaceEvent.ServiceReconnected)
+
+        assertEquals(listOf("cancel", "detach", "scrub"), fixture.actions.calls)
+        assertEquals(ReviewSurfaceState.Hidden, fixture.controller.state)
+    }
+
+    @Test
     fun closeScrubsBeforeAnyRestorationWork() {
         val fixture = openFixture()
 
@@ -191,8 +230,11 @@ class ReviewSurfaceEffectExecutorTest {
             calls += "scrub"
         }
 
-        override fun reacquireFocusedTarget(expectedTargetId: ReviewTargetId?): ReviewTarget {
-            calls += "reacquire:${expectedTargetId?.value ?: "any"}"
+        override fun reacquireFocusedTarget(mode: ReviewTargetReacquisition): ReviewTarget {
+            calls += when (mode) {
+                ReviewTargetReacquisition.AdoptCurrent -> "reacquire:any"
+                is ReviewTargetReacquisition.RestoreExact -> "reacquire:${mode.targetId.value}"
+            }
             return reacquired
         }
 

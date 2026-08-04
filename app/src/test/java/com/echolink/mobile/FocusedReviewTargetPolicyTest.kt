@@ -1,6 +1,7 @@
 package com.echolink.mobile
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -44,6 +45,28 @@ class FocusedReviewTargetPolicyTest {
                 eligibility = ReviewTargetEligibility.ELIGIBLE,
                 actualTargetId = moved,
                 expectedTargetId = null,
+            ),
+        )
+    }
+
+    @Test
+    fun reconnectMayChangePackagesButExpectedRestorationMayNot() {
+        assertEquals(
+            ReviewTargetEligibility.ELIGIBLE,
+            FocusedReviewTargetPolicy.resolveEligibility(
+                baseEligibility = ReviewTargetEligibility.ELIGIBLE,
+                expectedTargetId = null,
+                retainedPackage = "old.package",
+                focusedPackage = "new.package",
+            ),
+        )
+        assertEquals(
+            ReviewTargetEligibility.SWITCHED_APPLICATION,
+            FocusedReviewTargetPolicy.resolveEligibility(
+                baseEligibility = ReviewTargetEligibility.ELIGIBLE,
+                expectedTargetId = retained,
+                retainedPackage = "old.package",
+                focusedPackage = "new.package",
             ),
         )
     }

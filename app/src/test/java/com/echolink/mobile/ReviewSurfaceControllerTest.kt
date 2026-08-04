@@ -40,7 +40,9 @@ class ReviewSurfaceControllerTest {
 
         assertEquals(
             listOf(
-                ReviewSurfaceEffect.ReacquireFocusedTarget(targetId),
+                ReviewSurfaceEffect.ReacquireFocusedTarget(
+                    ReviewTargetReacquisition.RestoreExact(targetId),
+                ),
                 ReviewSurfaceEffect.RestoreKeyboard(targetId),
             ),
             effects,
@@ -50,6 +52,58 @@ class ReviewSurfaceControllerTest {
 
         controller.dispatch(ReviewSurfaceEvent.RestorationCompleted(eligibleTarget))
         assertEquals(ReviewSurfaceState.TriggerVisible(targetId), controller.state)
+    }
+
+    @Test
+    fun reconnectIsUnrestrictedButCloseRestorationRequiresOriginalTarget() {
+        val controller = ReviewSurfaceController()
+        controller.dispatch(ReviewSurfaceEvent.FocusedTargetAvailable(eligibleTarget))
+
+        assertEquals(
+            listOf(
+                ReviewSurfaceEffect.ReacquireFocusedTarget(ReviewTargetReacquisition.AdoptCurrent),
+            ),
+            controller.dispatch(ReviewSurfaceEvent.ServiceReconnected),
+        )
+        controller.dispatch(ReviewSurfaceEvent.FocusedTargetAvailable(eligibleTarget))
+        controller.dispatch(ReviewSurfaceEvent.OpenRequested)
+        controller.dispatch(ReviewSurfaceEvent.ReviewAttached)
+        controller.dispatch(ReviewSurfaceEvent.CloseRequested)
+
+        assertEquals(
+            listOf(
+                ReviewSurfaceEffect.ReacquireFocusedTarget(
+                    ReviewTargetReacquisition.RestoreExact(targetId),
+                ),
+                ReviewSurfaceEffect.RestoreKeyboard(targetId),
+            ),
+            controller.dispatch(ReviewSurfaceEvent.PanelDetached),
+        )
+    }
+
+    @Test
+    fun reconnectInvalidatesAttachedOrRestoringSurfacesBeforeAnyAdoption() {
+        listOf(ReviewSurfaceState.Opening(targetId), ReviewSurfaceState.ReviewOpen(targetId)).forEach { state ->
+            val transition = ReviewSurfaceController.reduce(state, ReviewSurfaceEvent.ServiceReconnected)
+
+            assertTrue(transition.state is ReviewSurfaceState.Closing)
+            assertEquals(3, transition.effects.size)
+            assertTrue(transition.effects.none { it is ReviewSurfaceEffect.ReacquireFocusedTarget })
+        }
+
+        val closing = ReviewSurfaceController.reduce(
+            ReviewSurfaceState.Closing(eligibleTarget),
+            ReviewSurfaceEvent.ServiceReconnected,
+        )
+        val restoring = ReviewSurfaceController.reduce(
+            ReviewSurfaceState.RestoringFocus(targetId),
+            ReviewSurfaceEvent.ServiceReconnected,
+        )
+
+        assertEquals(ReviewSurfaceState.Closing(eligibleTarget), closing.state)
+        assertTrue(closing.effects.isEmpty())
+        assertEquals(ReviewSurfaceState.Hidden, restoring.state)
+        assertTrue(restoring.effects.isEmpty())
     }
 
     @Test
@@ -123,7 +177,9 @@ class ReviewSurfaceControllerTest {
         val controller = ReviewSurfaceController()
 
         assertEquals(
-            listOf(ReviewSurfaceEffect.ReacquireFocusedTarget(null)),
+            listOf(
+                ReviewSurfaceEffect.ReacquireFocusedTarget(ReviewTargetReacquisition.AdoptCurrent),
+            ),
             controller.dispatch(ReviewSurfaceEvent.ServiceReconnected),
         )
         assertEquals(ReviewSurfaceState.Hidden, controller.state)
@@ -140,12 +196,17 @@ class ReviewSurfaceControllerTest {
         val first = controller.dispatch(ReviewSurfaceEvent.ServiceReconnected)
         val repeated = controller.dispatch(ReviewSurfaceEvent.ServiceReconnected)
 
-        assertEquals(listOf(ReviewSurfaceEffect.ReacquireFocusedTarget(null)), first)
+        assertEquals(
+            listOf(ReviewSurfaceEffect.ReacquireFocusedTarget(ReviewTargetReacquisition.AdoptCurrent)),
+            first,
+        )
         assertTrue(repeated.isEmpty())
 
         controller.dispatch(ReviewSurfaceEvent.FocusedTargetAvailable(eligibleTarget))
         assertEquals(
-            listOf(ReviewSurfaceEffect.ReacquireFocusedTarget(null)),
+            listOf(
+                ReviewSurfaceEffect.ReacquireFocusedTarget(ReviewTargetReacquisition.AdoptCurrent),
+            ),
             controller.dispatch(ReviewSurfaceEvent.ServiceReconnected),
         )
     }
@@ -168,7 +229,9 @@ class ReviewSurfaceControllerTest {
             controller.dispatch(ReviewSurfaceEvent.FocusedTargetAvailable(eligibleTarget))
 
             assertEquals(
-                listOf(ReviewSurfaceEffect.ReacquireFocusedTarget(null)),
+                listOf(
+                    ReviewSurfaceEffect.ReacquireFocusedTarget(ReviewTargetReacquisition.AdoptCurrent),
+                ),
                 controller.dispatch(ReviewSurfaceEvent.ServiceReconnected),
             )
             controller.dispatch(ReviewSurfaceEvent.FocusedTargetAvailable(validation))
@@ -185,7 +248,9 @@ class ReviewSurfaceControllerTest {
 
         repeat(2) {
             assertEquals(
-                listOf(ReviewSurfaceEffect.ReacquireFocusedTarget(null)),
+                listOf(
+                    ReviewSurfaceEffect.ReacquireFocusedTarget(ReviewTargetReacquisition.AdoptCurrent),
+                ),
                 controller.dispatch(ReviewSurfaceEvent.ServiceReconnected),
             )
             controller.dispatch(
@@ -224,16 +289,18 @@ class ReviewSurfaceControllerTest {
     }
 
     @Test
-    fun detachReacquisitionAlsoSuppressesReconnectUntilRestorationFinishes() {
+    fun reconnectCancelsPendingExactRestorationBeforeLaterAdoption() {
         val controller = openController()
         controller.dispatch(ReviewSurfaceEvent.CloseRequested)
         assertEquals(2, controller.dispatch(ReviewSurfaceEvent.PanelDetached).size)
 
         assertTrue(controller.dispatch(ReviewSurfaceEvent.ServiceReconnected).isEmpty())
+        assertEquals(ReviewSurfaceState.Hidden, controller.state)
 
-        controller.dispatch(ReviewSurfaceEvent.RestorationFailed)
         assertEquals(
-            listOf(ReviewSurfaceEffect.ReacquireFocusedTarget(null)),
+            listOf(
+                ReviewSurfaceEffect.ReacquireFocusedTarget(ReviewTargetReacquisition.AdoptCurrent),
+            ),
             controller.dispatch(ReviewSurfaceEvent.ServiceReconnected),
         )
     }
@@ -246,6 +313,7 @@ class ReviewSurfaceControllerTest {
             ReviewSurfaceState::class.java,
             ReviewSurfaceEvent::class.java,
             ReviewSurfaceEffect::class.java,
+            ReviewTargetReacquisition::class.java,
         )
         val concreteTypes = rootTypes.flatMap(::concreteContractTypes).distinct()
         val concreteNames = concreteTypes.map(Class<*>::getSimpleName).toSet()
@@ -257,7 +325,7 @@ class ReviewSurfaceControllerTest {
             "Opening.targetId",
             "ReviewOpen.targetId",
             "RestoringFocus.targetId",
-            "ReacquireFocusedTarget.expectedTargetId",
+            "RestoreExact.targetId",
             "RestoreKeyboard.targetId",
         )
 
@@ -290,6 +358,8 @@ class ReviewSurfaceControllerTest {
                 "ScrubTransientTextHolders",
                 "ReacquireFocusedTarget",
                 "RestoreKeyboard",
+                "AdoptCurrent",
+                "RestoreExact",
             ),
             concreteNames,
         )

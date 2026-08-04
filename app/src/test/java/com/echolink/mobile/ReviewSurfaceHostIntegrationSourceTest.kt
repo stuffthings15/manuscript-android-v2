@@ -41,6 +41,14 @@ class ReviewSurfaceHostIntegrationSourceTest {
         assertFalse(source.contains("candidate.node.hashCode()"))
         assertTrue(source.contains("ExternalFieldIdentity.from("))
         assertEquals(2, Regex("reacquireReviewTarget\\(").findAll(source).count())
+        assertTrue(source.contains("AccessibilityNodeStructuralLocator.from(candidate.node)"))
+        assertTrue(source.contains("FocusedReviewTargetPolicy.resolveEligibility("))
+        assertTrue(source.contains("isVerifiedApplicationWindowTransition(event)"))
+        val packageGuard = source.indexOf("ExternalPackageChangePolicy.confirmed(")
+        val focusedLookup = source.indexOf("val node = focusedEditableNode()")
+        assertTrue(packageGuard >= 0)
+        assertTrue(packageGuard < focusedLookup)
+        assertTrue(source.contains("cancelTargetClear()"))
     }
 
     @Test

@@ -143,8 +143,9 @@ class MainActivity : Activity() {
                     hideReviewProgress()
                 }
 
-                override fun reacquireFocusedTarget(expectedTargetId: ReviewTargetId?): ReviewTarget {
+                override fun reacquireFocusedTarget(mode: ReviewTargetReacquisition): ReviewTarget {
                     val eligibility = mainEditorEligibility()
+                    val expectedTargetId = (mode as? ReviewTargetReacquisition.RestoreExact)?.targetId
                     return ReviewTarget(
                         id = MAIN_EDITOR_TARGET_ID.takeIf {
                             eligibility == ReviewTargetEligibility.ELIGIBLE &&

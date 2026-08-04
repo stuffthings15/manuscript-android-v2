@@ -53,6 +53,22 @@ class S23ExternalEditorFixtureActivity : Activity() {
             }
             setSelection(text.length)
         }
+        val structuralSecondEditor = if (mode == MODE_STRUCTURAL_FIELDS) {
+            EditText(this).apply {
+                tag = SECOND_EDITOR_TAG
+                contentDescription = STRUCTURAL_FIELD_TWO_DESCRIPTION
+                minHeight = dp(56)
+                setTextColor(Color.BLACK)
+                setBackgroundColor(Color.WHITE)
+                setText("Second generated field.")
+                setSelection(text.length)
+            }
+        } else {
+            null
+        }
+        if (mode == MODE_STRUCTURAL_FIELDS) {
+            editor.contentDescription = STRUCTURAL_FIELD_ONE_DESCRIPTION
+        }
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(30), dp(20), dp(20))
@@ -61,19 +77,23 @@ class S23ExternalEditorFixtureActivity : Activity() {
                 textSize = 18f
                 setTextColor(Color.BLACK)
             })
-            addView(
-                editor,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ),
-            )
-            if (mode in LIFECYCLE_MODES) {
+            if (structuralSecondEditor != null) {
+                addView(LinearLayout(this@S23ExternalEditorFixtureActivity).apply {
+                    addView(editor, matchWidthWrapHeight())
+                })
+                addView(LinearLayout(this@S23ExternalEditorFixtureActivity).apply {
+                    addView(structuralSecondEditor, matchWidthWrapHeight())
+                })
+            } else {
+                addView(editor, matchWidthWrapHeight())
+            }
+            if (mode in LIFECYCLE_MODES || structuralSecondEditor != null) {
                 addView(Button(this@S23ExternalEditorFixtureActivity).apply {
                     tag = LIFECYCLE_ACTION_TAG
                     text = when (mode) {
                         MODE_DETACHED -> "Detach generated field"
                         MODE_TARGET_LOSS -> "Move focus from generated field"
+                        MODE_STRUCTURAL_FIELDS -> "Focus second generated field"
                         else -> "Switch from generated field"
                     }
                     setOnClickListener {
@@ -84,6 +104,10 @@ class S23ExternalEditorFixtureActivity : Activity() {
                                 requestFocus()
                             }
                             MODE_PACKAGE_SWITCH -> startActivity(Intent(Settings.ACTION_SETTINGS))
+                            MODE_STRUCTURAL_FIELDS -> {
+                                editor.clearFocus()
+                                structuralSecondEditor?.requestFocus()
+                            }
                         }
                     }
                 })
@@ -112,6 +136,11 @@ class S23ExternalEditorFixtureActivity : Activity() {
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
 
+    private fun matchWidthWrapHeight() = LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.WRAP_CONTENT,
+    )
+
     companion object {
         const val EXTRA_MODE = "mode"
         const val MODE_EMPTY = "empty"
@@ -122,7 +151,11 @@ class S23ExternalEditorFixtureActivity : Activity() {
         const val MODE_DETACHED = "detached"
         const val MODE_TARGET_LOSS = "target-loss"
         const val MODE_PACKAGE_SWITCH = "package-switch"
+        const val MODE_STRUCTURAL_FIELDS = "structural-fields"
         const val EDITOR_TAG = "external-fixture-editor"
+        const val SECOND_EDITOR_TAG = "external-fixture-editor-second"
+        const val STRUCTURAL_FIELD_ONE_DESCRIPTION = "Generated structural field one"
+        const val STRUCTURAL_FIELD_TWO_DESCRIPTION = "Generated structural field two"
         const val LIFECYCLE_ACTION_TAG = "external-fixture-lifecycle-action"
         const val TRANSIENT_CLEAR_DELAY_MS = 900L
         private val LIFECYCLE_MODES = setOf(

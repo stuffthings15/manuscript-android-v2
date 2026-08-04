@@ -4,7 +4,7 @@ interface ReviewSurfaceEffectActions {
     fun cancelStaleCorrectionAndCallbackWork()
     fun detachReviewPanelSafely()
     fun scrubTransientTextHolders()
-    fun reacquireFocusedTarget(expectedTargetId: ReviewTargetId?): ReviewTarget
+    fun reacquireFocusedTarget(mode: ReviewTargetReacquisition): ReviewTarget
     fun restoreKeyboard(targetId: ReviewTargetId)
     fun renderReviewSurfaceState(state: ReviewSurfaceState) = Unit
 }
@@ -66,17 +66,19 @@ class ReviewSurfaceEffectExecutor(
                 ReviewSurfaceEffect.ScrubTransientTextHolders ->
                     actions.scrubTransientTextHolders()
                 is ReviewSurfaceEffect.ReacquireFocusedTarget -> {
-                    val target = actions.reacquireFocusedTarget(effect.expectedTargetId)
+                    val target = actions.reacquireFocusedTarget(effect.mode)
                     reacquiredTarget = target
                     raisedEvents.addLast(
-                        if (controller.state is ReviewSurfaceState.RestoringFocus) {
-                            if (target.canRestore) {
-                                ReviewSurfaceEvent.RestorationCompleted(target)
-                            } else {
-                                ReviewSurfaceEvent.RestorationFailed
+                        when (effect.mode) {
+                            ReviewTargetReacquisition.AdoptCurrent ->
+                                ReviewSurfaceEvent.FocusedTargetAvailable(target)
+                            is ReviewTargetReacquisition.RestoreExact -> {
+                                if (target.canRestore && target.id == effect.mode.targetId) {
+                                    ReviewSurfaceEvent.RestorationCompleted(target)
+                                } else {
+                                    ReviewSurfaceEvent.RestorationFailed
+                                }
                             }
-                        } else {
-                            ReviewSurfaceEvent.FocusedTargetAvailable(target)
                         },
                     )
                 }
