@@ -1,0 +1,31 @@
+# SDD ledger: plan docs/superpowers/plans/2026-08-04-manuscript-android-v2-reliability-loop.md
+
+Setup: source copied from Version 1 without modifying Version 1.
+Setup: destination initialized as standalone repository on codex/manuscript-android-v2.
+Setup: canonical ZIP SHA256 C80A6FBA0978596A464E1E9FF3C17D17D6A928FA56445A97C8E045A0EB9FF771.
+Task 1: fix round 1/5 (2 addressed, 0 open; commits 2d5c484..c21bc2a)
+Task 1: complete (commits a055eba..c21bc2a, review clean)
+Task 2: fix round 1/5 (4 addressed, 0 open; commits dc0ac5b..94e4168)
+Task 2: local proof green (388 unit tests, lint debug/release, 3 APK artifacts, 5 identity tests)
+Task 2: complete (commits 5448c2e..97b7f54, independent fix-round review approved)
+Task 3: started (reliability mechanisms split into focused TDD increments)
+Task 3A: complete (commit 95b48ed, 392 unit tests per variant, review approved)
+Task 3B: started (pure review state controller and first-frame expansion)
+Task 3B: fix round 1/5 (3 addressed, 0 open; commits 4d3295b..7f9717a)
+Task 3B: complete (403 unit tests per variant, independent re-review approved)
+Task 3C: started (MainActivity and accessibility lifecycle integration)
+Task 3C: fix round 1/5 (7 addressed; commits 2709cd8..61c1269)
+Task 3C: fix round 2/5 (8 addressed; commits 61c1269..9aa79ec)
+Task 3C: fix round 3/5 (identity, reconnect, and immediate app-switch blockers addressed; commit 56af0b2)
+Task 3C: fix round 4/5 (verified roots, fail-closed hierarchy proof, immutable target identity, and timing fixtures; commit e5c71cf)
+Task 3C: fix round 5/5 (scoped verified event roots, negative-ID rejection, ownership cleanup, and exact report; commit c44bc7a)
+Task 3C: complete (448 unit tests per variant; independent final review approved)
+Task 3D: started (pure download telemetry, rolling speed and ETA, and shared presentation)
+Task 3D: complete (commit b2f77b6, 497 unit tests per variant, independent audit approved)
+Task 3E: started (durable telemetry store and current plus fallback worker integration)
+Task 3E1: RED captured (durable store API absent; focused test compilation failed)
+Task 3E1: local GREEN (23 store tests; 72 related telemetry tests; independent audit pending)
+Task 3E2: started (shared lifecycle coordinator and byte/time progress publisher)
+Task 3E1: complete (commit 5e300ff, 30 store tests, independent re-audit approved)
+Task 3E2: complete (commit 1ecda97, 29 coordinator and publisher tests, independent audit approved)
+Task 3E3: complete (commit 79fed5d plus installer checkpoint, 49 focused tests, independent audits approved)
