@@ -1,6 +1,7 @@
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $policyPath = Join-Path $root 'tools\ManuscriptReleaseManifestPolicy.psm1'
 $verifierPath = Join-Path $root 'tools\verify_manuscript_release_manifest.ps1'
+$creatorPath = Join-Path $root 'tools\create_manuscript_release_manifest.ps1'
 
 Describe 'Manuscript frozen release manifest' {
     BeforeAll {
@@ -67,5 +68,11 @@ Describe 'Manuscript frozen release manifest' {
         $source | Should Match 'Get-FileHash'
         $source | Should Match 'em dash'
         $source | Should Match 'Test-ManuscriptReleaseManifestData'
+    }
+
+    It 'creator reads the V2 contractVersion field' {
+        $source = Get-Content -Raw -LiteralPath $creatorPath
+        $source | Should Match '\$contract\.contractVersion'
+        $source | Should Not Match '\$contract\.version\b'
     }
 }

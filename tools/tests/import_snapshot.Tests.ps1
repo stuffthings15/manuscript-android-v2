@@ -81,6 +81,20 @@ Describe 'Version 2 import snapshot' {
         & git -C $testRoot commit --quiet -m 'fixture'
 
         { & "$testRoot\tools\security_release_gate.ps1" -ProjectRoot $testRoot } | Should Not Throw
+
+        $signingPassword = 'MANUSCRIPT_UPLOAD_' + 'STORE_PASSWORD=not-allowed'
+        Set-Content -LiteralPath "$testRoot\signing.env" -Value $signingPassword
+        & git -C $testRoot add signing.env
+        & git -C $testRoot commit --quiet -m 'fixture with signing password'
+        $portablePattern = '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|sk-[A-Za-z0-9_-]{20,}|MANUSCRIPT_UPLOAD_STORE_PASSWORD[[:space:]]*=)'
+        $secretMatches = & git -C $testRoot grep -l -I -E $portablePattern -- .
+        $LASTEXITCODE | Should Be 0
+        (@($secretMatches) -contains 'signing.env') | Should Be $true
+        { & "$testRoot\tools\security_release_gate.ps1" -ProjectRoot $testRoot } | Should Throw
+        Remove-Item -LiteralPath "$testRoot\signing.env" -Force
+        & git -C $testRoot add -u signing.env
+        & git -C $testRoot commit --quiet -m 'remove signing password fixture'
+
         $secret = 'BEGIN ' + 'RSA PRIVATE ' + 'KEY'
         Set-Content -LiteralPath "$testRoot\vendor\llama.cpp\tools\server\tests\unit\test_security.py" -Value $secret
         & git -C $testRoot add vendor/llama.cpp/tools/server/tests/unit/test_security.py
