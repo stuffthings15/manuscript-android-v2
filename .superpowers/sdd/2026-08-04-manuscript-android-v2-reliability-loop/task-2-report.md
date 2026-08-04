@@ -29,3 +29,13 @@ The final combined Gradle gate timed out after 124 seconds while native llama co
 ## Commit
 
 `0cd68d49225703ff4ee80a5dd0fd08ad6de800bc` (superseded by the report amendment).
+
+## Fix round 1
+
+RED: Pester V2 identity failed because V2 did not use the debug test build type
+or test application ID, and active V1 Play upload paths remained.
+
+GREEN: Pester passed 4 of 4. Brand check, local security gate, and diff check passed.
+
+This round removed the V1 Play bundle script, upload guard, upload docs, assets,
+and credentials path. Root will run the full native artifact gates and archive inspection.

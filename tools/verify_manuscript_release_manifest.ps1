@@ -76,7 +76,7 @@ if ($releaseStatus.Count -gt 0) {
 $changedProductFiles = @(
     & git -C $projectRoot show --pretty=format: --name-only HEAD |
         Where-Object {
-            $_ -match '^Manuscript/Android/(app/src/main|tools|docs/product-contract|docs/qa)'
+            $_ -match '^(app/src/main|tools|docs/product-contract|docs/qa)'
         }
 )
 $repositoryRoot = (& git -C $projectRoot rev-parse --show-toplevel).Trim()

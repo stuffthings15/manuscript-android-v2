@@ -38,8 +38,8 @@ $aab = Resolve-ProjectPath $AabPath
 $unitReceipt = Resolve-ProjectPath $UnitTestReceiptPath
 $lintReceipt = Resolve-ProjectPath $LintReceiptPath
 $s23ManifestPath = Resolve-ProjectPath $S23EvidenceManifestPath
-$contractPath = Join-Path $projectRoot 'docs\product-contract\manuscript-android-v1.json'
-$brandSvgPath = Join-Path $projectRoot '..\Windows\resources\manuscript.svg'
+$contractPath = Join-Path $projectRoot 'docs\product-contract\manuscript-android-v2.json'
+$brandSvgPath = Join-Path $projectRoot 'brand\canonical\manuscript.svg'
 $brandProvenancePath = Join-Path $projectRoot 'evidence\brand\generated-brand-assets.json'
 
 foreach ($path in @(

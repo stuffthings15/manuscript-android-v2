@@ -3,12 +3,6 @@ plugins {
     id "com.google.devtools.ksp"
 }
 
-def manuscriptStoreFile = System.getenv("MANUSCRIPT_UPLOAD_STORE_FILE")
-def manuscriptStorePassword = System.getenv("MANUSCRIPT_UPLOAD_STORE_PASSWORD")
-def manuscriptKeyAlias = System.getenv("MANUSCRIPT_UPLOAD_KEY_ALIAS")
-def manuscriptKeyPassword = System.getenv("MANUSCRIPT_UPLOAD_KEY_PASSWORD")
-def hasReleaseSigning = manuscriptStoreFile && manuscriptStorePassword &&
-    manuscriptKeyAlias && manuscriptKeyPassword
 def manuscriptGitCommit = providers.exec {
     commandLine "git", "-C", rootProject.projectDir, "rev-parse", "--short=12", "HEAD"
 }.standardOutput.asText.get().trim()
@@ -16,7 +10,7 @@ def manuscriptGitCommit = providers.exec {
 android {
     namespace "com.echolink.mobile"
     compileSdk 36
-    testBuildType providers.gradleProperty("manuscript.testBuildType").getOrElse("release")
+    testBuildType "debug"
 
     defaultConfig {
         applicationId "com.remote.Manuscript.v2"
@@ -31,19 +25,7 @@ android {
             providers.gradleProperty("manuscript.vulkan").getOrElse("false")
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-    }
-
-    signingConfigs {
-        release {
-            if (hasReleaseSigning) {
-                storeFile file(manuscriptStoreFile)
-                storePassword manuscriptStorePassword
-                keyAlias manuscriptKeyAlias
-                keyPassword manuscriptKeyPassword
-                enableV1Signing true
-                enableV2Signing true
-            }
-        }
+        testApplicationId "com.remote.Manuscript.v2.debug.test"
     }
 
     buildTypes {
@@ -56,7 +38,6 @@ android {
             buildConfigField "boolean", "SUBSCRIPTION_ENFORCED", "false"
             minifyEnabled false
             shrinkResources false
-            if (hasReleaseSigning) signingConfig signingConfigs.release
         }
     }
 
@@ -101,17 +82,6 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
-tasks.configureEach { task ->
-    if (task.name in ["assembleRelease", "bundleRelease", "packageRelease"]) {
-        task.doFirst {
-            if (!hasReleaseSigning) {
-                throw new GradleException(
-                    "Release packaging requires the Manuscript upload signing credentials."
-                )
-            }
-        }
-    }
-}
 
 dependencies {
     implementation "androidx.core:core-ktx:1.18.0"

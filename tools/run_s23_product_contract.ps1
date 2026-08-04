@@ -50,7 +50,7 @@ function Get-WorkspaceFingerprint {
         Get-ChildItem -LiteralPath (Join-Path $projectRoot 'app\src') -Recurse -File
         Get-ChildItem -LiteralPath (Join-Path $projectRoot 'tools') -Recurse -File
         Get-Item -LiteralPath (Join-Path $projectRoot 'app\build.gradle')
-        Get-Item -LiteralPath (Join-Path $projectRoot 'docs\product-contract\manuscript-android-v1.json')
+        Get-Item -LiteralPath (Join-Path $projectRoot 'docs\product-contract\manuscript-android-v2.json')
     ) | Sort-Object FullName -Unique
     $lines = foreach ($path in $paths) {
         $relative = $path.FullName.Substring($projectRoot.Length).TrimStart('\')
@@ -154,7 +154,7 @@ if ($keyboardAfter -ne $keyboardBefore) {
 
 $manifest = [ordered]@{
     schema = 'manuscript-s23-three-run-gate-v1'
-    contract = 'manuscript-android-v1'
+    contract = 'manuscript-android-v2'
     serial = $Serial
     model = $model
     package = $targetPackage

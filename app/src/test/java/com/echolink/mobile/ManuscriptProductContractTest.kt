@@ -104,10 +104,7 @@ class ManuscriptProductContractTest {
     fun runtimeAndReleaseFilesUseOnlyTheCanonicalPackage() {
         val build = File(androidRoot, "app/build.gradle").readText()
         val manifest = File(androidRoot, "app/src/main/AndroidManifest.xml").readText()
-        val releaseScripts = listOf(
-            File(androidRoot, "tools/build_play_bundle.ps1"),
-            File(androidRoot, "tools/security_release_gate.ps1"),
-        ).filter(File::isFile)
+        val releaseScripts = listOf(File(androidRoot, "tools/security_release_gate.ps1"))
 
         assertTrue(build.contains("applicationId \"com.remote.Manuscript.v2\""))
         assertFalse(build.contains("com.echolink.manuscript"))

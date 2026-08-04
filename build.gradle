@@ -22,14 +22,6 @@ dependencies {
     bundletoolCli "org.jetbrains.kotlin:kotlin-stdlib:2.3.21"
 }
 
-tasks.register("validatePlayBundle", JavaExec) {
-    group = "verification"
-    description = "Validates the signed Manuscript release AAB with bundletool."
-    dependsOn ":app:bundleRelease"
-    classpath = configurations.bundletoolCli
-    mainClass = "com.android.tools.build.bundletool.BundleToolMain"
-    args "validate", "--bundle=${project.file('app/build/outputs/bundle/release/app-release.aab')}"
-}
 
 tasks.register("buildConnectedDebugApks", JavaExec) {
     group = "verification"

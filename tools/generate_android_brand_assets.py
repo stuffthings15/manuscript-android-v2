@@ -58,7 +58,7 @@ def validate_canonical_assets(data: dict) -> tuple[str, str]:
 
 def vector(width_dp: int, master_hash: str, body: str) -> str:
     return f"""<?xml version="1.0" encoding="utf-8"?>
-<!-- Generated from Windows manuscript.svg SHA256 {master_hash}. -->
+<!-- Generated from canonical V2 manuscript.svg SHA256 {master_hash}. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="{width_dp}dp"
     android:height="{width_dp}dp"
@@ -99,8 +99,8 @@ def provenance(data: dict, svg_hash: str, png_hash: str, outputs: dict[Path, str
     record = {
         "contractVersion": data["contractVersion"],
         "generator": "tools/generate_android_brand_assets.py",
-        "windowsSvgSha256": svg_hash,
-        "windowsPngSha256": png_hash,
+        "canonicalSvgSha256": svg_hash,
+        "canonicalPngSha256": png_hash,
         "adaptiveForegroundScale": data["brand"]["adaptiveForegroundScale"],
         "outputs": {
             path.relative_to(ANDROID_ROOT).as_posix(): hashlib.sha256(

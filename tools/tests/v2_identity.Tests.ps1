@@ -4,6 +4,8 @@ $settings = Join-Path $root 'settings.gradle'
 $contract = Join-Path $root 'docs\product-contract\manuscript-android-v2.json'
 $resources = Join-Path $root 'app\src\main\res\values\strings.xml'
 $llamaBuild = Join-Path $root 'llama-runtime\build.gradle'
+$manifest = Join-Path $root 'app\src\main\AndroidManifest.xml'
+$rootBuild = Join-Path $root 'build.gradle'
 
 Describe 'Manuscript Android Version 2 identity isolation' {
     It 'uses the V2 project, package, version, labels, and local contract' {
@@ -12,14 +14,31 @@ Describe 'Manuscript Android Version 2 identity isolation' {
         $build = Get-Content -Raw -LiteralPath $appBuild
         $build | Should Match 'applicationId\s+"com\.remote\.Manuscript\.v2"'
         $build | Should Match 'applicationIdSuffix\s+"\.debug"'
+        $build | Should Match 'testBuildType\s+"debug"'
+        $build | Should Match 'testApplicationId\s+"com\.remote\.Manuscript\.v2\.debug\.test"'
         $build | Should Match 'versionCode\s+1'
         $build | Should Match 'versionName\s+"2\.0\.0-internal"'
         $build | Should Match 'rootProject\.file\("shared/contract/v1"\)'
         $build | Should Not Match '\.\./\.\./shared/contract/v1'
-        $build | Should Match 'SUBSCRIPTION_ENFORCED", "false"'
+        ([regex]::Matches($build, 'SUBSCRIPTION_ENFORCED", "false"')).Count | Should Be 2
+        (Get-Content -Raw -LiteralPath $manifest) | Should Match 'android:label="@string/launcher_name"'
 
         (Get-Content -Raw -LiteralPath $resources) | Should Match '<string name="app_name">Manuscript Android Version 2</string>'
         (Get-Content -Raw -LiteralPath $resources) | Should Match '<string name="launcher_name">Manuscript V2</string>'
+    }
+
+    It 'has no active V1 contract, parent path, or Play upload workflow' {
+        $active = @($appBuild, $settings, $rootBuild) + @(
+            Get-ChildItem -Recurse tools, play -File |
+                Where-Object { $_.FullName -ne $PSCommandPath } |
+                Select-Object -ExpandProperty FullName
+        )
+        $text = ($active | ForEach-Object { Get-Content -Raw -LiteralPath $_ }) -join "`n"
+        $text | Should Not Match 'manuscript-android-v1'
+        $text | Should Not Match 'Manuscript/Android'
+        $text | Should Not Match 'build_play_bundle'
+        $text | Should Not Match 'internaltest/'
+        $text | Should Not Match 'validatePlayBundle'
     }
 
     It 'has a V2 product contract and copied canonical brand assets' {
