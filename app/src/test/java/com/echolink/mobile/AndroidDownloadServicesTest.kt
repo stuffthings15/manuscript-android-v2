@@ -315,6 +315,29 @@ class AndroidDownloadServicesTest {
             assertTrue(harness.core.isCurrent(attempt))
         }
 
+    @Test
+    fun restartResumesTheExactDurableDownloadingAttemptWithoutChangingItsIdentity() =
+        withHarness { harness ->
+            val exactAttempt = harness.core.ensure(gemmaTarget)
+            harness.clock.now += 1L
+            assertEquals(
+                DownloadPublishResult.Persisted,
+                harness.core.publish(
+                    exactAttempt,
+                    downloading(exactAttempt, downloadedBytes = 100L),
+                    finalByteCount = false,
+                ),
+            )
+            harness.scheduler.scheduled.clear()
+
+            val resumed = harness.core.resumeActive(gemmaTarget)
+
+            assertEquals(exactAttempt, resumed)
+            assertEquals(listOf(exactAttempt), harness.scheduler.scheduled)
+            assertEquals(exactAttempt.generation, resumed?.generation)
+            assertEquals(exactAttempt.workIdentity, resumed?.workIdentity)
+        }
+
     private fun withHarness(block: (Harness) -> Unit) {
         val directory = Files.createTempDirectory("manuscript-v2-download-services-").toFile()
         try {

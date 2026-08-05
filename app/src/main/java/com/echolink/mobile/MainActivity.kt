@@ -290,6 +290,7 @@ class MainActivity : Activity() {
                 .getString(TONE_KEY, WritingTone.PROOFREAD.label).orEmpty(),
         )
         buildShell()
+        resumeActiveDownload()
         refreshDownloadTelemetry()
         val openModelSetup = intent.getBooleanExtra(EXTRA_OPEN_MODEL_SETUP, false)
         if (intent.getBooleanExtra(EXTRA_OPEN_PERSONALIZE, false)) {
@@ -640,6 +641,17 @@ class MainActivity : Activity() {
     private fun refreshDownloadTelemetry() {
         val presentation = currentDownloadPresentation()
         renderDownloadTelemetry(presentation)
+    }
+
+    private fun resumeActiveDownload() {
+        try {
+            val manager = AiModelManager.get(this)
+            if (!manager.hasDownloadConsent()) return
+            val target = DownloadTargetCatalog.targetFor(manager.selectedRuntime())
+            AndroidDownloadServices.get(this).resumeActive(target)
+        } catch (failure: Exception) {
+            Log.e(DOWNLOAD_LOG, "Could not resume the exact durable AI download.", failure)
+        }
     }
 
     private fun stopDownloadTelemetryUpdates() {

@@ -109,6 +109,11 @@ internal class AndroidDownloadServicesCore(
         coordinator.ensure(target)
     }
 
+    fun resumeActive(target: DownloadTargetKey): DownloadAttempt? =
+        synchronized(operationLock) {
+            coordinator.resumeActive(target)
+        }
+
     fun restoreTelemetry(target: DownloadTargetKey): DownloadTelemetry? =
         synchronized(operationLock) {
             coordinator.restoreTelemetry(target)
@@ -292,6 +297,8 @@ internal class AndroidDownloadServices private constructor(context: Context) :
     }
 
     override fun ensure(target: DownloadTargetKey): DownloadAttempt = core.ensure(target)
+
+    fun resumeActive(target: DownloadTargetKey): DownloadAttempt? = core.resumeActive(target)
 
     fun restoreTelemetry(target: DownloadTargetKey): DownloadTelemetry? =
         core.restoreTelemetry(target)

@@ -76,6 +76,14 @@ internal class DownloadLifecycleCoordinator(
         )
     }
 
+    fun resumeActive(target: DownloadTargetKey): DownloadAttempt? = synchronized(PROCESS_LOCK) {
+        val existing = store.read(target) ?: return@synchronized null
+        if (existing.telemetry.phase !in ACTIVE_OR_WAITING_PHASES) return@synchronized null
+        val attempt = DownloadAttempt.from(existing)
+        ensureScheduledSafely(attempt)
+        attempt
+    }
+
     fun restoreTelemetry(target: DownloadTargetKey): DownloadTelemetry? =
         synchronized(PROCESS_LOCK) {
             store.read(target)?.telemetry
