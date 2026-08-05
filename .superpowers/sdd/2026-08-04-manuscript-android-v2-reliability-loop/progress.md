@@ -39,3 +39,4 @@ Task 4A: fix round 3 local green (snapshot-start deadline semantics; bounded tra
 Task 4A: fix round 4 local green (10ms strict sampling; bounded physical tap acquisition; hint-aware transient proof; 11 focused contracts)
 Task 4A: fix round 5 harness green/device red (rendered exact-PTS probe; Close return 1044ms after visible panel disappearance; 16 focused contracts)
 Task 4C: local contract green (physical 300/500ms unchanged; verified emulator functional rendered ceiling 2000ms; fail-closed hardware and argument tests)
+Task 4C: exact-video and emulator gate complete (bounded three-frame decoder; reference-crop return proof; physical 300/500ms unchanged; emulator 1000/2500ms; 29 local tests; exact videos 5/5; full fixture 6/6)

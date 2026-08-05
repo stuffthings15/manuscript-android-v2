@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.UiAutomation
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Build
 import android.os.SystemClock
@@ -76,7 +77,7 @@ open class FixtureDeviceSupport {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             putExtra(S23ExternalEditorFixtureActivity.EXTRA_MODE, mode)
         })
-        try {
+        FixtureFinallyCleanup.run(body = {
             assertTrue("Fixture application window did not become active.", waitUntil { activePackage() == fixturePackage })
             val editorDescription = S23ExternalEditorFixtureActivity.editorDescription(mode)
             assertTrue(
@@ -84,7 +85,7 @@ open class FixtureDeviceSupport {
                 waitUntil { findFixtureDescription(editorDescription).let { node -> node?.recycle(); node != null } },
             )
             block()
-        } finally {
+        }, cleanup = {
             if (activePackage() != fixturePackage) {
                 instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
                 waitUntil { activePackage() == fixturePackage }
@@ -102,8 +103,12 @@ open class FixtureDeviceSupport {
                 instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
                 clean = v2OverlayClearsWithinGateAndStaysAbsent()
             }
-            assertTrue("Fixture cleanup left a V2 overlay after the 300ms removal gate.", clean)
-        }
+            assertTrue(
+                "Fixture cleanup left a V2 overlay after the ${renderedReturnContract.profile.reportName} " +
+                    "${renderedReturnContract.removalCeilingMs}ms removal gate.",
+                clean,
+            )
+        })
     }
 
     private fun clearFixtureAndV2Surfaces() {
@@ -185,6 +190,29 @@ open class FixtureDeviceSupport {
         return Rect(x, y, x + size, y + size)
     }
 
+    protected fun fixtureReturnReferenceRegion(editorDescription: String): Rect {
+        val editorBounds = fixtureBounds(editorDescription)
+        val triggerBounds = expectedRenderedTriggerRegion(editorDescription)
+        return Rect(
+            editorBounds.left,
+            triggerBounds.top,
+            triggerBounds.left - fixtureDp(8),
+            triggerBounds.bottom,
+        ).also { check(!it.isEmpty) { "Fixture reference region is empty: $it" } }
+    }
+
+    protected fun captureFixtureReturnReference(region: Rect): Bitmap {
+        val screenshot = requireNotNull(automation.takeScreenshot()) { "Fixture reference screenshot is unavailable." }
+        return try {
+            check(region.left >= 0 && region.top >= 0 && region.right <= screenshot.width && region.bottom <= screenshot.height) {
+                "Fixture reference region $region exceeds ${screenshot.width}x${screenshot.height}."
+            }
+            Bitmap.createBitmap(screenshot, region.left, region.top, region.width(), region.height())
+        } finally {
+            screenshot.recycle()
+        }
+    }
+
     protected fun fixtureBounds(description: String): Rect {
         val node = requireNotNull(findFixtureDescription(description)) { "Missing fixture bounds: $description" }
         return Rect().also(node::getBoundsInScreen).also { node.recycle() }
@@ -198,7 +226,8 @@ open class FixtureDeviceSupport {
     protected fun recordRenderedTriggerReturn(
         name: String,
         triggerRegion: Rect,
-        transitionRegion: Rect,
+        fixtureReference: Bitmap,
+        fixtureReferenceRegion: Rect,
         action: () -> Long,
     ): Pair<Long, FixtureRenderedVideoProbe.Observation> {
         val directory = requireNotNull(fixtureContext.getExternalFilesDir(null)) {
@@ -222,7 +251,8 @@ open class FixtureDeviceSupport {
         return injectedAt to FixtureRenderedVideoProbe.analyze(
             path = video.absolutePath,
             triggerRegion = triggerRegion,
-            transitionRegion = transitionRegion,
+            fixtureReference = fixtureReference,
+            fixtureReferenceRegion = fixtureReferenceRegion,
             ignoreBeforeMs = ignoreBeforeMs,
             contract = renderedReturnContract,
         )
@@ -249,11 +279,12 @@ open class FixtureDeviceSupport {
         try { root.packageName?.toString() == PRODUCT_PACKAGE } finally { root.recycle() }
     }
 
-    private fun v2OverlayClearsWithinGateAndStaysAbsent(): Boolean =
+    protected fun v2OverlayClearsWithinGateAndStaysAbsent(): Boolean =
         FixtureCleanupTiming.awaitRemovalThenStableAbsence(
             isOverlayPresent = ::hasV2OverlaySurface,
             nowMs = SystemClock::elapsedRealtime,
             pauseMs = SystemClock::sleep,
+            removalGateMs = renderedReturnContract.removalCeilingMs,
         )
 
     protected fun v2OverlayHeightContaining(description: String): Int? = automation.windows.firstNotNullOfOrNull { window ->

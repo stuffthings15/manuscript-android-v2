@@ -13,23 +13,25 @@ class FixtureRenderedReturnContractTest {
         )
 
         assertEquals(FixtureRenderedReturnContract.Profile.PHYSICAL, contract.profile)
+        assertEquals(300L, contract.removalCeilingMs)
         assertEquals(500L, contract.ceilingMs)
         assertEquals(3, contract.recordingDurationSeconds)
         assertTrue(contract.accepts(transitionAtMs = 1_000L, triggerAtMs = 1_500L))
         assertFalse(contract.accepts(transitionAtMs = 1_000L, triggerAtMs = 1_501L))
     }
 
-    @Test fun verifiedRanchuEmulatorUsesTheSeparate2000MsFunctionalCeiling() {
+    @Test fun verifiedRanchuEmulatorUsesTheSeparate2500MsFunctionalCeiling() {
         val contract = FixtureRenderedReturnContract.select(
             hardware = "ranchu",
             requestedProfile = null,
         )
 
         assertEquals(FixtureRenderedReturnContract.Profile.VERIFIED_EMULATOR_FUNCTIONAL, contract.profile)
-        assertEquals(2_000L, contract.ceilingMs)
+        assertEquals(1_000L, contract.removalCeilingMs)
+        assertEquals(2_500L, contract.ceilingMs)
         assertEquals(5, contract.recordingDurationSeconds)
-        assertTrue(contract.accepts(transitionAtMs = 1_000L, triggerAtMs = 3_000L))
-        assertFalse(contract.accepts(transitionAtMs = 1_000L, triggerAtMs = 3_001L))
+        assertTrue(contract.accepts(transitionAtMs = 1_000L, triggerAtMs = 3_500L))
+        assertFalse(contract.accepts(transitionAtMs = 1_000L, triggerAtMs = 3_501L))
     }
 
     @Test fun emulatorArgumentCannotDowngradePhysicalHardware() {

@@ -25,21 +25,27 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
         withFixture(S23ExternalEditorFixtureActivity.MODE_NORMAL) { assertTrue(productSurfaceMeetsExpectation(trigger, true)) }
         withFixture(S23ExternalEditorFixtureActivity.MODE_MULTILINE) {
             assertTrue(productSurfaceMeetsExpectation(trigger, true))
-            val triggerRegion = expectedRenderedTriggerRegion(
-                S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_MULTILINE),
-            )
+            val editorDescription = S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_MULTILINE)
+            val triggerRegion = expectedRenderedTriggerRegion(editorDescription)
+            val fixtureReferenceRegion = fixtureReturnReferenceRegion(editorDescription)
+            val fixtureReference = captureFixtureReturnReference(fixtureReferenceRegion)
             tapProductSurface(trigger)
             assertTrue(productSurfaceMeetsExpectation(close, true))
-            val closeRegion = productSurfaceBounds(close)
             var closeLookupStartedAt = 0L
-            val (closeInjectedAt, rendered) = recordRenderedTriggerReturn(
-                name = "close",
-                triggerRegion = triggerRegion,
-                transitionRegion = closeRegion,
-            ) {
-                closeLookupStartedAt = SystemClock.elapsedRealtime()
-                tapProductSurface(close)
+            val closeResult = try {
+                recordRenderedTriggerReturn(
+                    name = "close",
+                    triggerRegion = triggerRegion,
+                    fixtureReference = fixtureReference,
+                    fixtureReferenceRegion = fixtureReferenceRegion,
+                ) {
+                    closeLookupStartedAt = SystemClock.elapsedRealtime()
+                    tapProductSurface(close)
+                }
+            } finally {
+                fixtureReference.recycle()
             }
+            val (closeInjectedAt, rendered) = closeResult
             val lookupMs = closeInjectedAt - closeLookupStartedAt
             val exactIdentity = productSurfaceMeetsExpectation(trigger, true)
             assertTrue(
@@ -67,8 +73,11 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
                 tapProductSurface(trigger)
                 assertTrue(productSurfaceMeetsExpectation(close, true))
                 tapFixtureDescription(S23ExternalEditorFixtureActivity.actionDescription(mode))
-                productSurfaceNeverVisible(close)
-                productSurfaceNeverVisible(trigger)
+                assertTrue(
+                    "$mode surface missed the ${renderedReturnContract.profile.reportName} " +
+                        "${renderedReturnContract.removalCeilingMs}ms removal gate or reappeared.",
+                    v2OverlayClearsWithinGateAndStaysAbsent(),
+                )
             }
         }
     }
@@ -103,9 +112,9 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
             val triggerRegion = expectedRenderedTriggerRegion(
                 S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH),
             )
-            val fixtureTransitionRegion = fixtureBounds(
-                S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH),
-            )
+            val editorDescription = S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH)
+            val fixtureReferenceRegion = fixtureReturnReferenceRegion(editorDescription)
+            val fixtureReference = captureFixtureReturnReference(fixtureReferenceRegion)
             if (panelOpen) { tapProductSurface(trigger); assertTrue(productSurfaceMeetsExpectation(close, true)) }
             val settingsLaunchStartedAt = SystemClock.elapsedRealtime()
             tapFixtureDescription(S23ExternalEditorFixtureActivity.actionDescription(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH))
@@ -113,7 +122,7 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
             val settingsActivatedAt = SystemClock.elapsedRealtime()
             val settingsActivationMs = settingsActivatedAt - settingsLaunchStartedAt
             assertTrue("Settings did not become active; elapsed=${settingsActivationMs}ms", settingsActivated)
-            val disappearDeadline = settingsActivatedAt + 300L
+            val disappearDeadline = settingsActivatedAt + renderedReturnContract.removalCeilingMs
             val departureTrace = FixtureSettingsDepartureDiagnostics(
                 settingsActivatedAtMs = settingsActivatedAt,
                 deadlineMs = disappearDeadline,
@@ -138,21 +147,31 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
             val disappearedMs = conditionReturnedAt - settingsActivatedAt
             departureTrace.assertionStarted(SystemClock.elapsedRealtime())
             try {
-                assertTrue("V2 surface removal missed the total 300ms gate; elapsed=${disappearedMs}ms", surfaceRemoved)
-                assertTrue(disappearedMs <= 300L)
+                assertTrue(
+                    "V2 surface removal missed the ${renderedReturnContract.profile.reportName} " +
+                        "${renderedReturnContract.removalCeilingMs}ms gate; elapsed=${disappearedMs}ms",
+                    surfaceRemoved,
+                )
+                assertTrue(disappearedMs <= renderedReturnContract.removalCeilingMs)
             } finally {
                 departureTrace.assertionCompleted(SystemClock.elapsedRealtime())
                 departureTrace.flush()
             }
-            val (navigationStartedAt, rendered) = recordRenderedTriggerReturn(
-                name = "settings-${if (panelOpen) "panel" else "trigger"}",
-                triggerRegion = triggerRegion,
-                transitionRegion = fixtureTransitionRegion,
-            ) {
-                val startedAt = SystemClock.elapsedRealtime()
-                instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-                startedAt
+            val settingsResult = try {
+                recordRenderedTriggerReturn(
+                    name = "settings-${if (panelOpen) "panel" else "trigger"}",
+                    triggerRegion = triggerRegion,
+                    fixtureReference = fixtureReference,
+                    fixtureReferenceRegion = fixtureReferenceRegion,
+                ) {
+                    val startedAt = SystemClock.elapsedRealtime()
+                    instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+                    startedAt
+                }
+            } finally {
+                fixtureReference.recycle()
             }
+            val (navigationStartedAt, rendered) = settingsResult
             val fixtureReturned = waitUntil { applicationWindowPresent(fixturePackage) }
             val fixtureReturnedAt = SystemClock.elapsedRealtime()
             val navigationMs = fixtureReturnedAt - navigationStartedAt

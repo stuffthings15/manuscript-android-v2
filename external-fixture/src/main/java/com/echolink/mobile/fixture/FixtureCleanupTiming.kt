@@ -9,8 +9,10 @@ object FixtureCleanupTiming {
         isOverlayPresent: () -> Boolean,
         nowMs: () -> Long,
         pauseMs: (Long) -> Unit,
+        removalGateMs: Long = REMOVAL_GATE_MS,
     ): Boolean {
-        val removalDeadline = nowMs() + REMOVAL_GATE_MS
+        require(removalGateMs >= 0L)
+        val removalDeadline = nowMs() + removalGateMs
         while (isOverlayPresent() && nowMs() < removalDeadline) pauseMs(SAMPLE_MS)
         if (isOverlayPresent()) return false
 

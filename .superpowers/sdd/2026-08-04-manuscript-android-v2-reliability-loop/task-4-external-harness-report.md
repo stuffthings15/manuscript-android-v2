@@ -467,3 +467,68 @@ and content-description identity. Strict selector tests were captured RED and
 then GREEN for the two ceilings, both recording durations, null and backwards
 observations, and instrumentation-argument safety. No emulator was used while
 implementing this contract correction.
+
+### Task 4C exact-video decoder and final emulator gate
+
+Strict device RED reproduced the exact EE755 analyzer defect: the trigger and
+panel recordings both returned null transition and trigger timestamps through
+the production probe. Repeated single-frame `MediaMetadataRetriever` requests
+did not expose changed P-frames. Indexed batch decoding did. The final probe
+uses batches of at most three decoded 1080 by 2400 frames and recycles every
+batch before requesting the next one.
+
+Transition detection no longer guesses from a Settings baseline. Before
+leaving the generated fixture, the harness captures a stable reference crop
+from the left control row. The crop excludes the official trigger region and
+the editable user-text region. Return is the first encoded frame matching that
+reference; the existing strict official-icon detector then finds the trigger.
+Unique cache identities prevent simultaneous source and reference copies from
+deleting each other.
+
+The exact production-probe suite passed 5 of 5 on `emulator-5554`:
+
+- Trigger video SHA-256
+  `4DAF2046921B3684DAE9DC51AEBE51D7E72C120FDAF34FCEC0EDFE00665CEDB6`:
+  transition 227 ms, trigger 1475 ms, delay 1248 ms, 15 encoded frames.
+- Panel video SHA-256
+  `3D0B16987F2BF9363B9B88DC022F60386340EA60963315598A81445DFE38797F`:
+  transition 232 ms, trigger 2133 ms, delay 1901 ms, 17 encoded frames.
+- Real blank-return video SHA-256
+  `A74682E163EC532B76591B6627597C948E952A71CC18C33BF3D71AD6BB3A3D15`:
+  transition 1579 ms and no trigger, correctly failed closed.
+- Settings adversary SHA-256
+  `F41FE5CD63A67537BAAD1359DA4CBFFD6077B47DB7AA6A7A3CADB121BEF7A9DD`:
+  no transition and no trigger, correctly failed closed.
+- A bounded three-frame indexed decoder exposed the exact official frame.
+
+Hardware selection remains fail closed. Physical acceptance is unchanged at
+300 ms removal, 500 ms rendered return, and a three-second recording. Only
+verified `ranchu` or `goldfish` emulators select the explicitly reported
+functional profile: 1000 ms removal, 2500 ms rendered return, and a five-second
+recording. A physical argument still makes an emulator run the stricter
+physical profile. Null and backwards observations still fail.
+
+Cleanup is now a tested finally contract. A failed assertion cannot skip the
+fixture cleanup attempt. Detached and target-loss checks use the selected
+removal ceiling, then require 750 ms stable absence instead of demanding an
+impossible zero-millisecond disappearance.
+
+TDD proof included RED selector compilation for the missing removal ceiling,
+RED 2000-versus-2500 boundary behavior, RED unique-copy collision, and RED
+detached zero-time removal. Final local result: 29 tests, 0 failures, 0 errors,
+0 skipped; fixture target and instrumentation APKs built successfully.
+
+During repeated pre-fix runs the emulator system server became unavailable and
+a normal reboot wedged in `SurfaceControl` during `DisplayManagerService`
+startup. The exact AVD `manuscript_v2_api36` was cold-started with
+`-no-snapshot-load` and without `-wipe-data`. Product and fixture packages were
+preserved. The three local model sizes remained 639446688, 1282439584, and
+2497280256 bytes. The exact V2 accessibility component remained enabled and
+bound; crashed services remained empty.
+
+Final emulator result: detached and target-loss focused test 1 of 1 passed,
+then the complete ordered fixture gate passed 6 of 6 in 64.118 seconds. Host
+QEMU working set was 9816313856 bytes before and 9916870656 bytes after. Android
+reported `sys.boot_completed=1`, Settings service found, exact V2 service bound,
+and crashed services empty after the run. Only fixture APKs were updated. No
+product package, product data, model, or Version 1 state was cleared.

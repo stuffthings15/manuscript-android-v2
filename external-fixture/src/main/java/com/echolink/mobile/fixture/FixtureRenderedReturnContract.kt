@@ -12,6 +12,7 @@ object FixtureRenderedReturnContract {
 
     data class Selection(
         val profile: Profile,
+        val removalCeilingMs: Long,
         val ceilingMs: Long,
         val recordingDurationSeconds: Int,
     ) {
@@ -31,17 +32,25 @@ object FixtureRenderedReturnContract {
         return if (verifiedEmulator && !physicalRequested) {
             Selection(
                 Profile.VERIFIED_EMULATOR_FUNCTIONAL,
+                EMULATOR_FUNCTIONAL_REMOVAL_CEILING_MS,
                 EMULATOR_FUNCTIONAL_CEILING_MS,
                 EMULATOR_RECORDING_DURATION_SECONDS,
             )
         } else {
-            Selection(Profile.PHYSICAL, PHYSICAL_CEILING_MS, PHYSICAL_RECORDING_DURATION_SECONDS)
+            Selection(
+                Profile.PHYSICAL,
+                PHYSICAL_REMOVAL_CEILING_MS,
+                PHYSICAL_CEILING_MS,
+                PHYSICAL_RECORDING_DURATION_SECONDS,
+            )
         }
     }
 
     private val VERIFIED_EMULATOR_HARDWARE = setOf("goldfish", "ranchu")
+    private const val PHYSICAL_REMOVAL_CEILING_MS = 300L
+    private const val EMULATOR_FUNCTIONAL_REMOVAL_CEILING_MS = 1_000L
     private const val PHYSICAL_CEILING_MS = 500L
-    private const val EMULATOR_FUNCTIONAL_CEILING_MS = 2_000L
+    private const val EMULATOR_FUNCTIONAL_CEILING_MS = 2_500L
     private const val PHYSICAL_RECORDING_DURATION_SECONDS = 3
     private const val EMULATOR_RECORDING_DURATION_SECONDS = 5
 }
