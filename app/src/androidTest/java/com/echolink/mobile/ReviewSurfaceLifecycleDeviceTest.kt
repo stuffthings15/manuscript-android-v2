@@ -19,10 +19,16 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.FileInputStream
 
 @RunWith(AndroidJUnit4::class)
 class ReviewSurfaceLifecycleDeviceTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
+
+    @Test
+    fun mainActivityThreeConsecutiveWarmCyclesMeetContractTimes() {
+        repeat(3) { mainActivityRealCloseRemovesCardAndReturnsTriggerWithinContractTimes() }
+    }
 
     @Test
     fun mainActivityRealCloseRemovesCardAndReturnsTriggerWithinContractTimes() {
@@ -47,11 +53,12 @@ class ReviewSurfaceLifecycleDeviceTest {
                 editor.requestFocus()
             }
             instrumentation.waitForIdleSync()
+            sendRequestedTrimMemory(targetContext.packageName)
 
             val trigger = activity.findViewById<View>(R.id.writing_assist_icon)
             assertTrue(
-                "The visible in-app trigger did not return after entering text.",
-                waitUntil { trigger.visibility == View.VISIBLE && trigger.isShown },
+                "The rendered in-app trigger did not return after entering text. ${viewChain(trigger)}",
+                waitUntil { fullyVisibleBounds(trigger) != null },
             )
             val openedAt = SystemClock.elapsedRealtime()
             tap(trigger)
@@ -75,7 +82,7 @@ class ReviewSurfaceLifecycleDeviceTest {
                     "card=${viewChain(card)} close=${viewChain(close)}",
             ) { card.visibility != View.VISIBLE }
             val triggerReturned = waitUntil(TRIGGER_LIMIT_MS) {
-                trigger.visibility == View.VISIBLE && trigger.isShown
+                fullyVisibleBounds(trigger) != null
             }
             assertTrue(
                 "Trigger did not return within 500 ms. " +
@@ -117,6 +124,7 @@ class ReviewSurfaceLifecycleDeviceTest {
         }
         val x = visibleBounds.exactCenterX()
         val y = visibleBounds.exactCenterY()
+        println("REAL_TOUCH_BOUNDS id=${view.id} bounds=$visibleBounds chain=${viewChain(view)}")
         val downAt = SystemClock.uptimeMillis()
         val down = MotionEvent.obtain(
             downAt,
@@ -144,31 +152,30 @@ class ReviewSurfaceLifecycleDeviceTest {
         }
     }
 
+    private fun sendRequestedTrimMemory(packageName: String) {
+        val level = InstrumentationRegistry.getArguments().getString(TRIM_LEVEL_ARGUMENT) ?: return
+        require(level in SUPPORTED_TRIM_LEVELS) { "Unsupported trim level: $level" }
+        val output = instrumentation.uiAutomation
+            .executeShellCommand("am send-trim-memory $packageName $level")
+            .use { descriptor ->
+                FileInputStream(descriptor.fileDescriptor).bufferedReader().use { it.readText().trim() }
+            }
+        assertTrue("System trim-memory command failed: $output", output.isBlank())
+        SystemClock.sleep(250L)
+        instrumentation.waitForIdleSync()
+        println("SYSTEM_TRIM_MEMORY level=$level")
+    }
+
     private fun hasGlobalVisibleBounds(view: View): Boolean {
         return fullyVisibleBounds(view) != null
     }
 
     private fun fullyVisibleBounds(view: View): Rect? {
         if (!view.isShown || view.width <= 0 || view.height <= 0) return null
-        val location = IntArray(2).also(view::getLocationOnScreen)
-        val bounds = Rect(
-            location[0],
-            location[1],
-            location[0] + view.width,
-            location[1] + view.height,
-        )
-        var ancestor = view.parent as? View
-        while (ancestor != null) {
-            val ancestorLocation = IntArray(2).also(ancestor::getLocationOnScreen)
-            val ancestorBounds = Rect(
-                ancestorLocation[0],
-                ancestorLocation[1],
-                ancestorLocation[0] + ancestor.width,
-                ancestorLocation[1] + ancestor.height,
-            )
-            if (!ancestorBounds.contains(bounds)) return null
-            ancestor = ancestor.parent as? View
-        }
+        val bounds = Rect()
+        if (!view.getGlobalVisibleRect(bounds)) return null
+        val minimumTouchTarget = (48 * view.resources.displayMetrics.density).toInt()
+        if (bounds.width() < minimumTouchTarget || bounds.height() < minimumTouchTarget) return null
         return bounds
     }
 
@@ -256,5 +263,7 @@ class ReviewSurfaceLifecycleDeviceTest {
         private const val OPEN_CLOSE_VISIBLE_LIMIT_MS = 500L
         private const val CLOSE_LIMIT_MS = 300L
         private const val TRIGGER_LIMIT_MS = 500L
+        private const val TRIM_LEVEL_ARGUMENT = "trimLevel"
+        private val SUPPORTED_TRIM_LEVELS = setOf("RUNNING_LOW", "RUNNING_CRITICAL")
     }
 }

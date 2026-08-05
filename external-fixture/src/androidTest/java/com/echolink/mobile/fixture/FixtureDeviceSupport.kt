@@ -9,6 +9,7 @@ import android.graphics.Rect
 import android.os.Build
 import android.os.SystemClock
 import android.view.InputDevice
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
@@ -54,16 +55,23 @@ open class FixtureDeviceSupport {
             secureSetting("enabled_accessibility_services").split(':').filter(String::isNotBlank) == listOf(SERVICE_COMPONENT),
         )
         assertTrue("Global accessibility is off.", secureSetting("accessibility_enabled") == "1")
-        val accessibility = shell("dumpsys accessibility")
-        val bound = accessibility.section("Bound services", "Crashed services")
-        val crashed = accessibility.section("Crashed services", "Client list info")
-        assertTrue("Expected exactly one bound accessibility service.\n$accessibility", bound.countOccurrences("Service[") == 1)
-        assertTrue("A Manuscript service is not bound.\n$accessibility", bound.contains(SERVICE_CLASS))
-        assertTrue("Any crashed service invalidates V2 proof.\n$accessibility", crashed.trim().removePrefix(":") == "{}")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val accessibility = shell("dumpsys accessibility")
+            assertFalse(
+                "The platform could not report accessibility health.\n$accessibility",
+                accessibility.contains("Exception occurred while dumping"),
+            )
+            val bound = accessibility.section("Bound services", "Crashed services")
+            val crashed = accessibility.section("Crashed services", "Client list info")
+            assertTrue("Expected exactly one bound accessibility service.\n$accessibility", bound.countOccurrences("Service[") == 1)
+            assertTrue("A Manuscript service is not bound.\n$accessibility", bound.contains(SERVICE_CLASS))
+            assertTrue("Any crashed service invalidates V2 proof.\n$accessibility", crashed.trim().removePrefix(":") == "{}")
+        }
         val service = shell("dumpsys activity services $SERVICE_COMPONENT")
         assertTrue("Exact V2 service record is absent.\n$service", service.contains("ServiceRecord"))
         assertTrue("Exact V2 service is not bound.\n$service", service.contains("hasBound=true"))
         assertTrue("Exact V2 component mismatch.\n$service", service.contains(SERVICE_COMPONENT))
+        assertFalse("A dead V2 binding invalidates proof.\n$service", service.contains(" DEAD "))
     }
 
     protected fun assertInstalledCorrectionModel() {
@@ -87,20 +95,17 @@ open class FixtureDeviceSupport {
             block()
         }, cleanup = {
             if (activePackage() != fixturePackage) {
-                instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+                pressBack()
                 waitUntil { activePackage() == fixturePackage }
             }
             findProductSurface(manuscriptString("close_action"))?.let { node ->
                 node.recycle()
                 tapProductSurface(manuscriptString("close_action"))
             }
-            if (activePackage() == fixturePackage && findFixtureDescription(S23ExternalEditorFixtureActivity.FINISH_DESCRIPTION) != null) {
-                tapFixtureDescription(S23ExternalEditorFixtureActivity.FINISH_DESCRIPTION)
-                waitUntil { activePackage() != fixturePackage }
-            }
+            finishFixtureWithUserInput()
             var clean = v2OverlayClearsWithinGateAndStaysAbsent()
             if (!clean) {
-                instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+                pressBack()
                 clean = v2OverlayClearsWithinGateAndStaysAbsent()
             }
             assertTrue(
@@ -112,19 +117,48 @@ open class FixtureDeviceSupport {
     }
 
     private fun clearFixtureAndV2Surfaces() {
-        if (activePackage() == fixturePackage && findFixtureDescription(S23ExternalEditorFixtureActivity.FINISH_DESCRIPTION) != null) {
-            tapFixtureDescription(S23ExternalEditorFixtureActivity.FINISH_DESCRIPTION)
-        }
+        finishFixtureWithUserInput()
         if (hasV2OverlaySurface()) {
             findProductSurface(manuscriptString("close_action"))?.let { node ->
                 node.recycle()
                 tapProductSurface(manuscriptString("close_action"))
-            } ?: instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+            } ?: pressBack()
         }
         assumeTrue(
             "STALE_V2_OVERLAY: V2 overlay missed the 300ms removal gate or reappeared during the 750ms stable interval.",
             v2OverlayClearsWithinGateAndStaysAbsent(),
         )
+    }
+
+    private fun finishFixtureWithUserInput() {
+        if (activePackage() != fixturePackage) return
+        pressBack()
+        if (waitUntil(500L) { activePackage() != fixturePackage }) return
+        if (findFixtureDescription(S23ExternalEditorFixtureActivity.FINISH_DESCRIPTION) == null) return
+        tapFixtureDescription(S23ExternalEditorFixtureActivity.FINISH_DESCRIPTION)
+        assertTrue(
+            "Fixture did not leave after Back and a real Finish tap.",
+            waitUntil { activePackage() != fixturePackage },
+        )
+    }
+
+    protected fun pressBack() {
+        val started = SystemClock.uptimeMillis()
+        val down = KeyEvent(
+            started,
+            started,
+            KeyEvent.ACTION_DOWN,
+            KeyEvent.KEYCODE_BACK,
+            0,
+            0,
+            KeyEvent.KEYCODE_UNKNOWN,
+            0,
+            0,
+            InputDevice.SOURCE_KEYBOARD,
+        )
+        val up = KeyEvent.changeAction(down, KeyEvent.ACTION_UP)
+        assertTrue(automation.injectInputEvent(down, true))
+        assertTrue(automation.injectInputEvent(up, true))
     }
 
     protected fun tapFixtureDescription(description: String): Long {
@@ -146,9 +180,13 @@ open class FixtureDeviceSupport {
         assertFalse("Empty bounds", bounds.isEmpty)
         val started = SystemClock.uptimeMillis()
         val down = MotionEvent.obtain(started, started, MotionEvent.ACTION_DOWN, bounds.exactCenterX(), bounds.exactCenterY(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
-        val up = MotionEvent.obtain(started, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, bounds.exactCenterX(), bounds.exactCenterY(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+        val up = MotionEvent.obtain(started, started + 50L, MotionEvent.ACTION_UP, bounds.exactCenterX(), bounds.exactCenterY(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
         val injectedAt = SystemClock.elapsedRealtime()
-        try { assertTrue(automation.injectInputEvent(down, true)); assertTrue(automation.injectInputEvent(up, true)) } finally { down.recycle(); up.recycle() }
+        try {
+            assertTrue(automation.injectInputEvent(down, true))
+            SystemClock.sleep(50L)
+            assertTrue(automation.injectInputEvent(up, true))
+        } finally { down.recycle(); up.recycle() }
         return injectedAt
     }
 
@@ -255,6 +293,44 @@ open class FixtureDeviceSupport {
             fixtureReferenceRegion = fixtureReferenceRegion,
             ignoreBeforeMs = ignoreBeforeMs,
             contract = renderedReturnContract,
+        )
+    }
+
+    protected fun recordAccessibilityTriggerReturn(
+        transitionCondition: () -> Boolean,
+        triggerDescription: String,
+        action: () -> Long,
+    ): AccessibilityTriggerReturnObservation {
+        check(Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            "Accessibility-window timing is reserved for pre-P devices."
+        }
+        val actionStartedAt = action()
+        var transitionAt: Long? = null
+        val transitionObserved = waitUntil {
+            if (!transitionCondition()) return@waitUntil false
+            transitionAt = SystemClock.elapsedRealtime()
+            true
+        }
+        if (!transitionObserved) {
+            return AccessibilityTriggerReturnObservation(
+                actionStartedAtMs = actionStartedAt,
+                transitionAtMs = null,
+                triggerAtMs = null,
+                ceilingMs = renderedReturnContract.ceilingMs,
+            )
+        }
+        var triggerAt: Long? = null
+        waitUntilDeadline(requireNotNull(transitionAt) + renderedReturnContract.ceilingMs) {
+            val node = findProductSurface(triggerDescription) ?: return@waitUntilDeadline false
+            node.recycle()
+            triggerAt = SystemClock.elapsedRealtime()
+            true
+        }
+        return AccessibilityTriggerReturnObservation(
+            actionStartedAtMs = actionStartedAt,
+            transitionAtMs = transitionAt,
+            triggerAtMs = triggerAt,
+            ceilingMs = renderedReturnContract.ceilingMs,
         )
     }
 
@@ -401,5 +477,18 @@ open class FixtureDeviceSupport {
         const val FIXTURE_PACKAGE = "com.remote.Manuscript.v2.fixture"
         const val SERVICE_CLASS = "com.echolink.mobile.ManuscriptAccessibilityService"
         const val SERVICE_COMPONENT = "$PRODUCT_PACKAGE/$SERVICE_CLASS"
+    }
+
+    protected data class AccessibilityTriggerReturnObservation(
+        val actionStartedAtMs: Long,
+        val transitionAtMs: Long?,
+        val triggerAtMs: Long?,
+        val ceilingMs: Long,
+    ) {
+        val triggerDelayMs: Long?
+            get() = if (transitionAtMs == null || triggerAtMs == null) null else triggerAtMs - transitionAtMs
+
+        val matched: Boolean
+            get() = triggerDelayMs?.let { it in 0L..ceilingMs } == true
     }
 }

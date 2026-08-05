@@ -9,6 +9,7 @@ import android.text.InputType;
 import android.text.method.PasswordTransformationMethod;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityEvent;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
@@ -61,10 +62,15 @@ public final class S23ExternalEditorFixtureActivity extends Activity {
             Button action = new Button(this);
             action.setText(actionDescription(mode));
             action.setContentDescription(action.getText());
+            if (MODE_TARGET_LOSS.equals(mode)) action.setFocusableInTouchMode(true);
             EditText secondEditor = second;
             action.setOnClickListener(view -> {
                 if (MODE_DETACHED.equals(mode)) ((ViewGroup) editor.getParent()).removeView(editor);
-                else if (MODE_TARGET_LOSS.equals(mode)) { editor.clearFocus(); view.requestFocus(); }
+                else if (MODE_TARGET_LOSS.equals(mode)) {
+                    editor.clearFocus();
+                    view.requestFocus();
+                    view.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_FOCUSED);
+                }
                 else if (MODE_PACKAGE_SWITCH.equals(mode)) startActivity(new Intent(Settings.ACTION_SETTINGS));
                 else if (FixtureActionContract.INSTANCE.clearsEditor(mode)) {
                     editor.requestFocus();

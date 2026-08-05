@@ -1,7 +1,7 @@
 package com.echolink.mobile.fixture
 
+import android.os.Build
 import android.os.SystemClock
-import android.view.KeyEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
@@ -25,43 +25,65 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
         withFixture(S23ExternalEditorFixtureActivity.MODE_NORMAL) { assertTrue(productSurfaceMeetsExpectation(trigger, true)) }
         withFixture(S23ExternalEditorFixtureActivity.MODE_MULTILINE) {
             assertTrue(productSurfaceMeetsExpectation(trigger, true))
-            val editorDescription = S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_MULTILINE)
-            val triggerRegion = expectedRenderedTriggerRegion(editorDescription)
-            val fixtureReferenceRegion = fixtureReturnReferenceRegion(editorDescription)
-            val fixtureReference = captureFixtureReturnReference(fixtureReferenceRegion)
             tapProductSurface(trigger)
             assertTrue(productSurfaceMeetsExpectation(close, true))
-            var closeLookupStartedAt = 0L
-            val closeResult = try {
-                recordRenderedTriggerReturn(
-                    name = "close",
-                    triggerRegion = triggerRegion,
-                    fixtureReference = fixtureReference,
-                    fixtureReferenceRegion = fixtureReferenceRegion,
-                ) {
-                    closeLookupStartedAt = SystemClock.elapsedRealtime()
-                    tapProductSurface(close)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val editorDescription = S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_MULTILINE)
+                val triggerRegion = expectedRenderedTriggerRegion(editorDescription)
+                val fixtureReferenceRegion = fixtureReturnReferenceRegion(editorDescription)
+                val fixtureReference = captureFixtureReturnReference(fixtureReferenceRegion)
+                var closeLookupStartedAt = 0L
+                val closeResult = try {
+                    recordRenderedTriggerReturn(
+                        name = "close",
+                        triggerRegion = triggerRegion,
+                        fixtureReference = fixtureReference,
+                        fixtureReferenceRegion = fixtureReferenceRegion,
+                    ) {
+                        closeLookupStartedAt = SystemClock.elapsedRealtime()
+                        tapProductSurface(close)
+                    }
+                } finally {
+                    fixtureReference.recycle()
                 }
-            } finally {
-                fixtureReference.recycle()
+                val (closeInjectedAt, rendered) = closeResult
+                val lookupMs = closeInjectedAt - closeLookupStartedAt
+                val exactIdentity = productSurfaceMeetsExpectation(trigger, true)
+                assertTrue(
+                    "Recorded V2 trigger failed the ${rendered.contractProfile} rendered-return contract " +
+                        "ceiling=${rendered.ceilingMs}ms after visible panel disappearance; lookup=${lookupMs}ms " +
+                        "transitionAt=${rendered.transitionAtMs}ms triggerAt=${rendered.triggerAtMs}ms " +
+                        "triggerDelay=${rendered.triggerDelayMs}ms encodedFrames=${rendered.encodedFrameCount}",
+                    rendered.matched,
+                )
+                assertTrue("Rendered trigger lacked eventual exact V2 overlay/contentDescription identity.", exactIdentity)
+                println(
+                    "FIXTURE_CLOSE_TIMING lookupMs=$lookupMs transitionAtMs=${rendered.transitionAtMs} " +
+                        "triggerAtMs=${rendered.triggerAtMs} triggerDelayMs=${rendered.triggerDelayMs} " +
+                        "encodedFrames=${rendered.encodedFrameCount} exactIdentity=$exactIdentity " +
+                        "contract=${rendered.contractProfile} ceilingMs=${rendered.ceilingMs}",
+                )
+            } else {
+                val observation = recordAccessibilityTriggerReturn(
+                    transitionCondition = { findProductSurface(close)?.let { it.recycle(); false } ?: true },
+                    triggerDescription = trigger,
+                ) {
+                    val startedAt = SystemClock.elapsedRealtime()
+                    tapProductSurface(close)
+                    startedAt
+                }
+                assertTrue(
+                    "Pre-P exact accessibility trigger missed the ${observation.ceilingMs}ms functional ceiling " +
+                        "after panel disappearance; transitionAt=${observation.transitionAtMs} " +
+                        "triggerAt=${observation.triggerAtMs} triggerDelay=${observation.triggerDelayMs}",
+                    observation.matched,
+                )
+                println(
+                    "FIXTURE_CLOSE_ACCESSIBILITY_TIMING transitionAtMs=${observation.transitionAtMs} " +
+                        "triggerAtMs=${observation.triggerAtMs} triggerDelayMs=${observation.triggerDelayMs} " +
+                        "contract=pre-p-accessibility-functional ceilingMs=${observation.ceilingMs}",
+                )
             }
-            val (closeInjectedAt, rendered) = closeResult
-            val lookupMs = closeInjectedAt - closeLookupStartedAt
-            val exactIdentity = productSurfaceMeetsExpectation(trigger, true)
-            assertTrue(
-                "Recorded V2 trigger failed the ${rendered.contractProfile} rendered-return contract " +
-                    "ceiling=${rendered.ceilingMs}ms after visible panel disappearance; lookup=${lookupMs}ms " +
-                    "transitionAt=${rendered.transitionAtMs}ms triggerAt=${rendered.triggerAtMs}ms " +
-                    "triggerDelay=${rendered.triggerDelayMs}ms encodedFrames=${rendered.encodedFrameCount}",
-                rendered.matched,
-            )
-            assertTrue("Rendered trigger lacked eventual exact V2 overlay/contentDescription identity.", exactIdentity)
-            println(
-                "FIXTURE_CLOSE_TIMING lookupMs=$lookupMs transitionAtMs=${rendered.transitionAtMs} " +
-                    "triggerAtMs=${rendered.triggerAtMs} triggerDelayMs=${rendered.triggerDelayMs} " +
-                    "encodedFrames=${rendered.encodedFrameCount} exactIdentity=$exactIdentity " +
-                    "contract=${rendered.contractProfile} ceilingMs=${rendered.ceilingMs}",
-            )
         }
     }
 
@@ -109,12 +131,14 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
         requireHealthyManuscriptService()
         withFixture(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH) {
             assertTrue(productSurfaceMeetsExpectation(trigger, true))
-            val triggerRegion = expectedRenderedTriggerRegion(
-                S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH),
-            )
             val editorDescription = S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH)
-            val fixtureReferenceRegion = fixtureReturnReferenceRegion(editorDescription)
-            val fixtureReference = captureFixtureReturnReference(fixtureReferenceRegion)
+            val triggerRegion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                expectedRenderedTriggerRegion(editorDescription)
+            } else null
+            val fixtureReferenceRegion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                fixtureReturnReferenceRegion(editorDescription)
+            } else null
+            val fixtureReference = fixtureReferenceRegion?.let(::captureFixtureReturnReference)
             if (panelOpen) { tapProductSurface(trigger); assertTrue(productSurfaceMeetsExpectation(close, true)) }
             val settingsLaunchStartedAt = SystemClock.elapsedRealtime()
             tapFixtureDescription(S23ExternalEditorFixtureActivity.actionDescription(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH))
@@ -157,42 +181,67 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
                 departureTrace.assertionCompleted(SystemClock.elapsedRealtime())
                 departureTrace.flush()
             }
-            val settingsResult = try {
-                recordRenderedTriggerReturn(
-                    name = "settings-${if (panelOpen) "panel" else "trigger"}",
-                    triggerRegion = triggerRegion,
-                    fixtureReference = fixtureReference,
-                    fixtureReferenceRegion = fixtureReferenceRegion,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val settingsResult = try {
+                    recordRenderedTriggerReturn(
+                        name = "settings-${if (panelOpen) "panel" else "trigger"}",
+                        triggerRegion = requireNotNull(triggerRegion),
+                        fixtureReference = requireNotNull(fixtureReference),
+                        fixtureReferenceRegion = requireNotNull(fixtureReferenceRegion),
+                    ) {
+                        val startedAt = SystemClock.elapsedRealtime()
+                        pressBack()
+                        startedAt
+                    }
+                } finally {
+                    fixtureReference?.recycle()
+                }
+                val (navigationStartedAt, rendered) = settingsResult
+                val fixtureReturned = waitUntil { applicationWindowPresent(fixturePackage) }
+                val fixtureReturnedAt = SystemClock.elapsedRealtime()
+                val navigationMs = fixtureReturnedAt - navigationStartedAt
+                assertTrue("Fixture did not return after Back; elapsed=${navigationMs}ms", fixtureReturned)
+                val exactIdentity = productSurfaceMeetsExpectation(trigger, true)
+                assertTrue(
+                    "Recorded V2 trigger failed the ${rendered.contractProfile} rendered-return contract " +
+                        "ceiling=${rendered.ceilingMs}ms after visible fixture return; " +
+                        "transitionAt=${rendered.transitionAtMs}ms triggerAt=${rendered.triggerAtMs}ms " +
+                        "triggerDelay=${rendered.triggerDelayMs}ms encodedFrames=${rendered.encodedFrameCount}",
+                    rendered.matched,
+                )
+                assertTrue("Rendered trigger lacked eventual exact V2 overlay/contentDescription identity.", exactIdentity)
+                println(
+                    "FIXTURE_SETTINGS_TIMING panelOpen=$panelOpen " +
+                        "settingsActivationMs=$settingsActivationMs disappearedMs=$disappearedMs " +
+                        "navigationMs=$navigationMs transitionAtMs=${rendered.transitionAtMs} " +
+                        "triggerAtMs=${rendered.triggerAtMs} triggerDelayMs=${rendered.triggerDelayMs} " +
+                        "encodedFrames=${rendered.encodedFrameCount} exactIdentity=$exactIdentity " +
+                        "contract=${rendered.contractProfile} ceilingMs=${rendered.ceilingMs}",
+                )
+            } else {
+                val observation = recordAccessibilityTriggerReturn(
+                    transitionCondition = { applicationWindowPresent(fixturePackage) },
+                    triggerDescription = trigger,
                 ) {
                     val startedAt = SystemClock.elapsedRealtime()
-                    instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+                    pressBack()
                     startedAt
                 }
-            } finally {
-                fixtureReference.recycle()
+                assertTrue("Fixture did not return after Back.", observation.transitionAtMs != null)
+                assertTrue(
+                    "Pre-P exact accessibility trigger missed the ${observation.ceilingMs}ms functional ceiling " +
+                        "after fixture return; transitionAt=${observation.transitionAtMs} " +
+                        "triggerAt=${observation.triggerAtMs} triggerDelay=${observation.triggerDelayMs}",
+                    observation.matched,
+                )
+                println(
+                    "FIXTURE_SETTINGS_ACCESSIBILITY_TIMING panelOpen=$panelOpen " +
+                        "settingsActivationMs=$settingsActivationMs disappearedMs=$disappearedMs " +
+                        "transitionAtMs=${observation.transitionAtMs} triggerAtMs=${observation.triggerAtMs} " +
+                        "triggerDelayMs=${observation.triggerDelayMs} " +
+                        "contract=pre-p-accessibility-functional ceilingMs=${observation.ceilingMs}",
+                )
             }
-            val (navigationStartedAt, rendered) = settingsResult
-            val fixtureReturned = waitUntil { applicationWindowPresent(fixturePackage) }
-            val fixtureReturnedAt = SystemClock.elapsedRealtime()
-            val navigationMs = fixtureReturnedAt - navigationStartedAt
-            assertTrue("Fixture did not return after Back; elapsed=${navigationMs}ms", fixtureReturned)
-            val exactIdentity = productSurfaceMeetsExpectation(trigger, true)
-            assertTrue(
-                "Recorded V2 trigger failed the ${rendered.contractProfile} rendered-return contract " +
-                    "ceiling=${rendered.ceilingMs}ms after visible fixture return; " +
-                    "transitionAt=${rendered.transitionAtMs}ms triggerAt=${rendered.triggerAtMs}ms " +
-                    "triggerDelay=${rendered.triggerDelayMs}ms encodedFrames=${rendered.encodedFrameCount}",
-                rendered.matched,
-            )
-            assertTrue("Rendered trigger lacked eventual exact V2 overlay/contentDescription identity.", exactIdentity)
-            println(
-                "FIXTURE_SETTINGS_TIMING panelOpen=$panelOpen " +
-                    "settingsActivationMs=$settingsActivationMs disappearedMs=$disappearedMs " +
-                    "navigationMs=$navigationMs transitionAtMs=${rendered.transitionAtMs} " +
-                    "triggerAtMs=${rendered.triggerAtMs} triggerDelayMs=${rendered.triggerDelayMs} " +
-                    "encodedFrames=${rendered.encodedFrameCount} exactIdentity=$exactIdentity " +
-                    "contract=${rendered.contractProfile} ceilingMs=${rendered.ceilingMs}",
-            )
             productSurfaceNeverVisible(close, 250L)
         }
     }

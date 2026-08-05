@@ -25,7 +25,9 @@ object TriggerPulseController {
             return
         }
 
+        val wasGone = view.visibility == View.GONE
         view.visibility = View.VISIBLE
+        if (wasGone) view.requestLayout()
         if (!TriggerPulsePolicy.shouldAnimate(state)) {
             stop(view)
             return

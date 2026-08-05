@@ -1795,7 +1795,13 @@ class MainActivity : Activity() {
     private fun showCorrectionOverlay() {
         correctionCard.visibility = View.VISIBLE
         correctionCardOverlay?.apply {
+            val wasGone = visibility == View.GONE
             visibility = View.VISIBLE
+            if (wasGone) {
+                correctionCard.requestLayout()
+                requestLayout()
+                pageHost.requestLayout()
+            }
             scrollTo(0, 0)
             bringToFront()
             post {
@@ -2562,6 +2568,7 @@ class MainActivity : Activity() {
     private fun configureEdgeToEdge() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) window.setDecorFitsSystemWindows(false)
         else {
+            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
