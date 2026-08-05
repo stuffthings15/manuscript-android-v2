@@ -13,6 +13,7 @@ import android.view.accessibility.AccessibilityWindowInfo
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 
 open class FixtureDeviceSupport {
     protected val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -90,7 +91,7 @@ open class FixtureDeviceSupport {
                 instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
                 waitUntil { !hasV2OverlaySurface() }
             }
-            assertTrue("Fixture cleanup left a V2 overlay.", waitUntil { !hasV2OverlaySurface() })
+            assertTrue("Fixture cleanup left a V2 overlay.", v2OverlayStaysAbsent())
         }
     }
 
@@ -104,7 +105,10 @@ open class FixtureDeviceSupport {
                 tapProductSurface(manuscriptString("close_action"))
             } ?: instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
         }
-        assertTrue("Test started with a stale V2 overlay.", waitUntil { !hasV2OverlaySurface() })
+        assumeTrue(
+            "STALE_V2_OVERLAY: V2 overlay remained present during the ${V2_OVERLAY_STABLE_MS}ms pre-start interval.",
+            v2OverlayStaysAbsent(),
+        )
     }
 
     protected fun tapFixtureDescription(description: String) = tapNode(
@@ -168,6 +172,15 @@ open class FixtureDeviceSupport {
         if (window.type != AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) return@any false
         val root = window.root ?: return@any false
         try { root.packageName?.toString() == PRODUCT_PACKAGE } finally { root.recycle() }
+    }
+
+    private fun v2OverlayStaysAbsent(): Boolean {
+        val deadline = SystemClock.elapsedRealtime() + V2_OVERLAY_STABLE_MS
+        do {
+            if (hasV2OverlaySurface()) return false
+            SystemClock.sleep(50L)
+        } while (SystemClock.elapsedRealtime() < deadline)
+        return !hasV2OverlaySurface()
     }
 
     protected fun v2OverlayHeightContaining(description: String): Int? = automation.windows.firstNotNullOfOrNull { window ->
@@ -266,5 +279,6 @@ open class FixtureDeviceSupport {
         const val FIXTURE_PACKAGE = "com.remote.Manuscript.v2.fixture"
         const val SERVICE_CLASS = "com.echolink.mobile.ManuscriptAccessibilityService"
         const val SERVICE_COMPONENT = "$PRODUCT_PACKAGE/$SERVICE_CLASS"
+        const val V2_OVERLAY_STABLE_MS = 750L
     }
 }

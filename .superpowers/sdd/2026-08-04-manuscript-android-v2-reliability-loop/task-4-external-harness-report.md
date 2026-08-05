@@ -198,3 +198,29 @@ exercised IME/panel behavior. The latest full run was 6 run, 1 passed, 5
 failed; remaining failures are settings timing, detach Close persistence,
 structural focus, and product trigger behavior. Lifecycle controls were moved
 above IME-obscured editor rows; the fixture/test APKs rebuilt successfully.
+
+### Exact commit d8c52e19 verification
+
+Verified `d8c52e19cdf91ab3ceccbb9944f6f026307774e2` unchanged. Both fixture APKs
+built successfully (63 Gradle tasks up-to-date) and installed with `adb install
+-r -t` before all six tests ran.
+
+Result: 6 run, 0 passed, 6 failed, 0 skipped.
+
+- Both Settings tests failed the 300 ms disappearance assertion.
+- Structural, lifecycle, and product-contract tests failed their start guard:
+  `Test started with a stale V2 overlay.`
+
+Post-run `dumpsys accessibility` reported Bound Manuscript and `Crashed
+services:{}`. `dumpsys activity services` contained the exact V2 ServiceRecord
+with `hasBound=true`. No code change or commit was made; the unrelated
+`progress.md` modification remains preserved.
+
+### Round 3 stable-overlay gate
+
+The fixture now requires 750 ms continuously free of a V2 accessibility overlay
+before each fixture start. After real Close/Back cleanup, a persistent overlay
+causes `STALE_V2_OVERLAY` JUnit assumption skips rather than contaminated
+failures. Build passed. Exact rerun: 6 run, 0 passed, 0 failed, 6 skipped.
+Every skip reported the 750 ms stale-V2 message. Post-run Manuscript remained
+Bound and `Crashed services:{}`.
