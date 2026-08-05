@@ -122,6 +122,28 @@ class ParagraphCorrectionException(
     val validation: SafetyValidation? = null,
 ) : IllegalStateException(message)
 
+/** Rejects model-authored fewer/less swaps; deterministic grammar owns those repairs. */
+object ProofreadCountabilityPolicy {
+    private val countabilityQuantifier = Regex(
+        "(?i)\\b(?:fewer|less|the\\s+amount\\s+of|the\\s+number\\s+of)\\b",
+    )
+
+    private fun signature(value: String): List<String> =
+        countabilityQuantifier.findAll(value)
+            .map { it.value.lowercase().replace(Regex("\\s+"), " ") }
+            .toList()
+
+    fun changes(source: String, candidate: String): Boolean {
+        return signature(source) != signature(candidate)
+    }
+
+    fun matchesTrustedRepair(source: String, candidate: String, trustedTarget: String): Boolean {
+        val repairedSignature = signature(CountabilityGrammar.repair(source))
+        return signature(trustedTarget) == repairedSignature &&
+            signature(candidate) == repairedSignature
+    }
+}
+
 object AiSafetyValidator {
     private val placeholder = ProtectedDocument.PLACEHOLDER
     private val markdownPrefix = Regex(
@@ -131,6 +153,15 @@ object AiSafetyValidator {
         "(?i)\\b(?:not|never|no(?:body|thing|where)?|neither|nor|without|cannot|can't|won't|don't|" +
             "doesn't|didn't|isn't|aren't|wasn't|weren't|hasn't|haven't|hadn't|" +
             "couldn't|wouldn't|shouldn't|mustn't|ain't)\\b",
+    )
+    private val negativePronounForm = Regex("(?i)\\b(?:no\\s+one|nobody)\\b")
+    private val noOneClosedPredicates = setOf(
+        "am", "are", "can", "could", "did", "do", "does", "had", "has", "have", "is",
+        "may", "might", "must", "shall", "should", "was", "were", "will", "would",
+    )
+    private val predicateObjectMarkers = setOf(
+        "a", "an", "at", "for", "from", "in", "on", "the", "this", "that", "these",
+        "those", "to", "with",
     )
     // "needs?" alone, not "needs to": broken sources drop the "to"
     // ("exits needs remain clear"), and repairing it must not read as a new
@@ -213,6 +244,53 @@ object AiSafetyValidator {
         var result = value
         contractionTypos.forEach { (regex, replacement) ->
             result = regex.replace(result, replacement)
+        }
+        return normalizeStructuralNoOnePronouns(result)
+    }
+
+    private fun normalizeStructuralNoOnePronouns(value: String): String {
+        val tokens = word.findAll(value).toList()
+        val replacements = mutableListOf<IntRange>()
+        for (index in 0 until tokens.lastIndex) {
+            val no = tokens[index]
+            val one = tokens[index + 1]
+            if (!no.value.equals("no", ignoreCase = true) ||
+                !one.value.equals("one", ignoreCase = true)
+            ) {
+                continue
+            }
+            val predicate = tokens.getOrNull(index + 2) ?: continue
+            val lower = predicate.value.lowercase()
+            val afterPredicate = tokens.getOrNull(index + 3)
+            val predicateGap = afterPredicate?.let {
+                value.substring(predicate.range.last + 1, it.range.first)
+            }.orEmpty()
+            val sFormHasPredicateShape =
+                lower.endsWith('s') &&
+                    !lower.endsWith("ss") &&
+                    !lower.endsWith("ous") &&
+                    (
+                        afterPredicate == null ||
+                            Regex("[.!?,;:]").containsMatchIn(predicateGap) ||
+                            afterPredicate.value.lowercase() in predicateObjectMarkers ||
+                            afterPredicate.value.lowercase().endsWith("ly")
+                        )
+            val structurallyFinite = lower in noOneClosedPredicates ||
+                sFormHasPredicateShape ||
+                (
+                    lower.endsWith("ed") &&
+                        (
+                            afterPredicate == null ||
+                                Regex("[.!?,;:]").containsMatchIn(predicateGap) ||
+                                afterPredicate.value.lowercase() in predicateObjectMarkers
+                            )
+                    )
+            if (structurallyFinite) replacements += no.range.first..one.range.last
+        }
+        var result = value
+        replacements.asReversed().forEach { range ->
+            val replacement = if (result[range.first].isUpperCase()) "Nobody" else "nobody"
+            result = result.replaceRange(range, replacement)
         }
         return result
     }
@@ -304,6 +382,7 @@ object AiSafetyValidator {
         candidate: String,
         toneTransformation: Boolean = false,
         requiresVisibleChange: Boolean = toneTransformation,
+        trustedDeterministicTarget: String? = null,
     ): SafetyValidation {
         val hard = linkedSetOf<SafetyIssue>()
         val high = linkedSetOf<SafetyIssue>()
@@ -324,8 +403,31 @@ object AiSafetyValidator {
         ) {
             hard += SafetyIssue.UNCHANGED_TRANSFORMATION
         }
-        val normalizedOriginal = normalizeMeaning(original)
-        val normalizedCandidate = normalizeMeaning(candidate)
+        val trustedCountabilityRepair = trustedDeterministicTarget?.let { target ->
+            ProofreadCountabilityPolicy.matchesTrustedRepair(original, candidate, target)
+        } == true
+        val normalizedOriginal = normalizeMeaning(
+            if (trustedCountabilityRepair) CountabilityGrammar.repair(original) else original,
+        )
+        val normalizedCandidate = normalizeMeaning(
+            if (trustedCountabilityRepair) CountabilityGrammar.repair(candidate) else candidate,
+        )
+        if (ProofreadCountabilityPolicy.changes(original, candidate) && !trustedCountabilityRepair) {
+            hard += SafetyIssue.CONTENT_WORD_CHANGED
+        }
+        val originalNegativePronouns = negativePronounForm.findAll(normalizedOriginal)
+            .map { it.value.lowercase() }
+            .toList()
+        val candidateNegativePronouns = negativePronounForm.findAll(normalizedCandidate)
+            .map { it.value.lowercase() }
+            .toList()
+        if (
+            originalNegativePronouns.isNotEmpty() &&
+            candidateNegativePronouns.isNotEmpty() &&
+            originalNegativePronouns != candidateNegativePronouns
+        ) {
+            hard += SafetyIssue.CONTENT_WORD_CHANGED
+        }
         if (
             placeholder.findAll(original).map(MatchResult::value).toList() !=
             placeholder.findAll(candidate).map(MatchResult::value).toList()
@@ -847,7 +949,10 @@ class DocumentCorrectionPipeline(
                     prepareGrammarRetry = { candidate ->
                         val restoredCandidate = restoreFragment(protected, candidate)
                         val proposed = prepareGrammarRetryCandidate(restoredCandidate)
-                        encodeFragment(protected, candidate, proposed)
+                        val approved = proposed.takeIf {
+                            it == GrammarSafetyNet.repair(restoredCandidate)
+                        } ?: restoredCandidate
+                        encodeFragment(protected, candidate, approved)
                     },
                 )
             } catch (failure: ParagraphCorrectionException) {
@@ -882,7 +987,10 @@ class DocumentCorrectionPipeline(
                         { candidate ->
                             val restoredCandidate = restoreFragment(protected, candidate)
                             val proposed = prepareGrammarRetryCandidate(restoredCandidate)
-                            encodeFragment(protected, candidate, proposed)
+                            val approved = proposed.takeIf {
+                                it == GrammarSafetyNet.repair(restoredCandidate)
+                            } ?: restoredCandidate
+                            encodeFragment(protected, candidate, approved)
                         },
                     )
                         ?.also { outcomePath = "proofread-fallback" }
@@ -1434,13 +1542,38 @@ class DocumentCorrectionPipeline(
             val result = generate(primaryBackend, document.jobId, request)
             val reviewedText = result.text.takeIf { result.completed }.orEmpty()
             lastCandidate = reviewedText
-            val validation = AiSafetyValidator.validate(
-                original = chunk.text,
+            // The second proofread review targets a deterministic grammar
+            // repair prepared from an already meaning-safe model candidate.
+            // Validate the model against that exact target. Comparing it to
+            // the raw source rejects the trusted repair itself (for example,
+            // amount -> number or fewer -> less) and restores the broken text.
+            val targetValidation = AiSafetyValidator.validate(
+                original = if (rewriteProposedProofread) reviewInput else chunk.text,
                 candidate = reviewedText,
                 toneTransformation =
                     document.tone !in setOf(WritingTone.PROOFREAD, WritingTone.IMPROVE),
                 requiresVisibleChange = document.tone != WritingTone.PROOFREAD,
             )
+            // Keep the raw-source gate. Only failures already caused by the
+            // trusted deterministic target may be waived; any new model
+            // failure relative to either the target or raw source still blocks.
+            val validation = if (rewriteProposedProofread) {
+                val rawValidation = AiSafetyValidator.validate(
+                    original = chunk.text,
+                    candidate = reviewedText,
+                    toneTransformation = false,
+                    requiresVisibleChange = false,
+                    trustedDeterministicTarget = reviewInput,
+                )
+                targetValidation.copy(
+                    hardFailures = targetValidation.hardFailures +
+                        rawValidation.hardFailures,
+                    highRisks = targetValidation.highRisks +
+                        rawValidation.highRisks,
+                )
+            } else {
+                targetValidation
+            }
             val grammarAccepted =
                 validation.safe &&
                     (
@@ -1517,6 +1650,8 @@ class DocumentCorrectionPipeline(
                 candidate = text,
                 toneTransformation = toneTransformation,
                 requiresVisibleChange = operation != WritingOperation.CORRECT_ONLY,
+                trustedDeterministicTarget = generationTarget
+                    .takeIf { it != immutableOriginal },
             )
             val validation = if (
                 document.tone == WritingTone.PROOFREAD &&

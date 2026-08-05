@@ -561,10 +561,22 @@ object ProofreadPreservationPolicy {
         isKnownWord: ((String) -> Boolean)? = null,
     ): Boolean =
         !crossesArticlePronounBoundary(prepared, candidate) &&
+            !introducesUnsafeFunctionWordSplit(prepared, candidate) &&
             sentenceCount(candidate) <= sentenceCount(prepared) &&
             sentenceCount(prepared) - sentenceCount(candidate) <=
             (sentenceCount(prepared) / 10).coerceAtLeast(1) &&
             preservesContentLemmas(prepared, candidate, isKnownWord)
+
+    private fun introducesUnsafeFunctionWordSplit(source: String, candidate: String): Boolean {
+        val unsafeSplits = listOf(
+            Regex("(?i)\\binto\\b") to Regex("(?i)\\bin\\s+to\\b"),
+            Regex("(?i)\\bonto\\b") to Regex("(?i)\\bon\\s+to\\b"),
+        )
+        return unsafeSplits.any { (joined, split) ->
+            split.findAll(candidate).count() > split.findAll(source).count() &&
+                joined.findAll(candidate).count() < joined.findAll(source).count()
+        }
+    }
 
     private fun preservesContentLemmas(
         source: String,
@@ -574,19 +586,47 @@ object ProofreadPreservationPolicy {
         val sourceLexemes = contentLexemes(source)
         val candidateLexemes = contentLexemes(candidate)
         if (isKnownWord != null) {
-            // The live proofread path only needs to veto ambiguous real-word
-            // substitutions such as caring -> crying. Broader additions and
-            // removals are handled by AiSafetyValidator; rejecting them here
-            // caused every long paragraph to spend two costly full retries.
-            val noUnsafeSubstitution = sourceLexemes.size != candidateLexemes.size ||
-                sourceLexemes.zip(candidateLexemes).none { (left, right) ->
-                left.lemma != right.lemma &&
-                    isKnownWord(left.word) &&
-                    isKnownWord(right.word) &&
-                    editDistance(left.lemma, right.lemma) <= 2
+            // Cancel retained lemmas before looking for a known-word swap.
+            // Sequence zipping missed substitutions whenever the model also
+            // inserted or removed a modifier. Unknown source words remain
+            // eligible for spelling repair; two known content words do not.
+            val unmatchedSource = sourceLexemes.toMutableList()
+            val unmatchedCandidate = candidateLexemes.toMutableList()
+            sourceLexemes.forEach { sourceLexeme ->
+                val exact = unmatchedCandidate.indexOfFirst { it.lemma == sourceLexeme.lemma }
+                if (exact >= 0) {
+                    unmatchedSource.remove(sourceLexeme)
+                    unmatchedCandidate.removeAt(exact)
+                }
             }
+            val spacingRepairs = safeSpacingRepairAllowances(source, candidate, isKnownWord)
+                .toMutableMap()
+            val noUnsafeSubstitution = unmatchedSource.none { left ->
+                val spacingKey = left.word.lowercase()
+                val spacingAllowed = (spacingRepairs[spacingKey] ?: 0) > 0
+                if (spacingAllowed) spacingRepairs[spacingKey] = spacingRepairs.getValue(spacingKey) - 1
+                !spacingAllowed &&
+                    isKnownWord(left.word.lowercase()) && unmatchedCandidate.any { right ->
+                    isKnownWord(right.word.lowercase()) &&
+                        alignedKnownWordSubstitution(
+                            left,
+                            right,
+                            sourceLexemes,
+                            candidateLexemes,
+                        )
+                }
+            }
+            val unknownEntityCasePreserved = sourceLexemes.none { sourceLexeme ->
+                sourceLexeme.word.firstOrNull()?.isUpperCase() == true &&
+                    !isKnownWord(sourceLexeme.word.lowercase()) &&
+                    candidateLexemes.any { candidateLexeme ->
+                        candidateLexeme.lemma == sourceLexeme.lemma &&
+                            candidateLexeme.word.firstOrNull()?.isLowerCase() == true
+                    }
+            }
+            val contextualEntityCasePreserved = preservesContextualEntityCase(source, candidate)
             val knownSource = sourceLexemes
-                .filter { isKnownWord(it.word) }
+                .filter { isKnownWord(it.word.lowercase()) }
                 .map(Lexeme::lemma)
                 .toSet()
             val candidateSet = candidateLexemes.map(Lexeme::lemma).toSet()
@@ -594,7 +634,10 @@ object ProofreadPreservationPolicy {
             val completeEnough = knownSource.size < 12 ||
                 knownSource.size - retained <= 2 ||
                 retained.toDouble() / knownSource.size >= 0.90
-            return noUnsafeSubstitution && completeEnough
+            return noUnsafeSubstitution &&
+                unknownEntityCasePreserved &&
+                contextualEntityCasePreserved &&
+                completeEnough
         }
         val unmatched = candidateLexemes.toMutableList()
         return sourceLexemes.all { sourceLexeme ->
@@ -649,12 +692,158 @@ object ProofreadPreservationPolicy {
             (articleDelta > 0 && pronounDelta < 0)
     }
 
-    private data class Lexeme(val word: String, val lemma: String)
+    private fun alignedKnownWordSubstitution(
+        source: Lexeme,
+        candidate: Lexeme,
+        sourceLexemes: List<Lexeme>,
+        candidateLexemes: List<Lexeme>,
+    ): Boolean {
+        if (editDistance(source.lemma, candidate.lemma) <= 3) return true
+        val sourceLeft = nearbyLemmas(sourceLexemes, source.index, -1)
+        val candidateLeft = nearbyLemmas(candidateLexemes, candidate.index, -1)
+        val sourceRight = nearbyLemmas(sourceLexemes, source.index, 1)
+        val candidateRight = nearbyLemmas(candidateLexemes, candidate.index, 1)
+        return sourceLeft.intersect(candidateLeft).isNotEmpty() ||
+            sourceRight.intersect(candidateRight).isNotEmpty()
+    }
+
+    private fun preservesContextualEntityCase(source: String, candidate: String): Boolean {
+        val sourceWords = words.findAll(source).toList()
+        val candidateWords = words.findAll(candidate).toList()
+
+        fun isContextualEntity(text: String, textWords: List<MatchResult>, index: Int): Boolean {
+                val match = textWords[index]
+                val predicate = textWords.getOrNull(index - 1)?.value.orEmpty()
+                val subject = textWords.getOrNull(index - 2)?.value.orEmpty().lowercase()
+                val follower = textWords.getOrNull(index + 1)
+                val gapToFollower = follower?.let {
+                    text.substring(match.range.last + 1, it.range.first)
+                }.orEmpty()
+                val endsObjectSpan = follower == null ||
+                    Regex("[.!?,;:]").containsMatchIn(gapToFollower) ||
+                    follower.value.lowercase() in objectSpanFollowers ||
+                    follower.value.lowercase().endsWith("ly")
+                val previous = textWords.getOrNull(index - 1)
+                val gapFromPrevious = previous?.let {
+                    text.substring(it.range.last + 1, match.range.first)
+                }.orEmpty()
+                val beginsSentence = previous == null ||
+                    Regex("[.!?]").containsMatchIn(gapFromPrevious)
+                val sentenceFollower = follower?.value.orEmpty().lowercase()
+                val finiteSentencePredicate = sentenceFollower in placeAuxiliaries ||
+                    sentenceFollower in irregularFinitePredicates ||
+                    sentenceFollower.endsWith("ed") ||
+                    (
+                        sentenceFollower.endsWith('s') &&
+                            !sentenceFollower.endsWith("ss") &&
+                            !sentenceFollower.endsWith("ous")
+                        )
+                val sentenceSubject = beginsSentence && finiteSentencePredicate
+                val directObject = subject in objectSubjectPronouns &&
+                    predicate.firstOrNull()?.isLowerCase() == true
+                val preposition = textWords.getOrNull(index - 1)?.value.orEmpty().lowercase()
+                val prepositionalPredicate = textWords.getOrNull(index - 2)?.value.orEmpty()
+                val prepositionalSubject = textWords.getOrNull(index - 3)?.value.orEmpty().lowercase()
+                val prepositionalObject = preposition in entityObjectPrepositions &&
+                    prepositionalSubject in objectSubjectPronouns &&
+                    prepositionalPredicate.firstOrNull()?.isLowerCase() == true
+                val rawPlaceSubject = textWords.getOrNull(index - 2)?.value.orEmpty().lowercase()
+                val placeSubject = lemma(rawPlaceSubject)
+                    .takeIf { it in placeBearingSubjects }
+                    ?: rawPlaceSubject
+                val placeFollower = follower?.value.orEmpty().lowercase()
+                val wordAfterFollower = textWords.getOrNull(index + 2)?.value.orEmpty().lowercase()
+                val finitePlacePredicate = placeFollower in placeAuxiliaries ||
+                    placeFollower in irregularFinitePredicates ||
+                    placeFollower.endsWith("ed") ||
+                    (
+                        placeFollower.endsWith('s') &&
+                            !placeFollower.endsWith("ss") &&
+                            !placeFollower.endsWith("ous")
+                        ) ||
+                    (
+                        placeFollower.firstOrNull()?.isLowerCase() == true &&
+                            wordAfterFollower.endsWith("ly")
+                        )
+                val placeObject = preposition in placePrepositions &&
+                    placeSubject in placeBearingSubjects &&
+                    finitePlacePredicate
+                return sentenceSubject ||
+                    ((directObject || prepositionalObject) && endsObjectSpan) ||
+                    placeObject
+        }
+
+        fun contextualCapitalCounts(text: String, textWords: List<MatchResult>): Map<String, Int> =
+            textWords.withIndex()
+                .filter { (index, match) ->
+                    match.value.firstOrNull()?.isUpperCase() == true &&
+                        isContextualEntity(text, textWords, index)
+                }
+                .map { it.value.value.lowercase() }
+                .groupingBy { it }
+                .eachCount()
+
+        val evidencedNames = contextualCapitalCounts(source, sourceWords)
+        val candidateEvidencedNames = contextualCapitalCounts(candidate, candidateWords)
+        return evidencedNames.all { (name, count) ->
+            (candidateEvidencedNames[name] ?: 0) >= count
+            }
+    }
+
+    private val objectSubjectPronouns = setOf(
+        "he", "i", "it", "she", "they", "we", "you",
+    )
+    private val objectSpanFollowers = setOf(
+        "about", "after", "at", "before", "during", "for", "from", "in", "near", "on",
+        "through", "to", "today", "tonight", "tomorrow", "until", "with", "yesterday",
+    )
+    private val entityObjectPrepositions = setOf("about", "to", "with")
+    private val placePrepositions = setOf("at", "in", "near")
+    private val placeBearingSubjects = setOf(
+        "agency", "branch", "clinic", "company", "hospital", "hotel", "office",
+        "school", "station", "store",
+    )
+    private val placeAuxiliaries = setOf(
+        "are", "can", "could", "did", "does", "had", "has", "have", "is", "may",
+        "might", "must", "shall", "should", "was", "were", "will", "would",
+    )
+    private val irregularFinitePredicates = setOf(
+        "began", "broke", "came", "chose", "did", "found", "gave", "had", "knew",
+        "left", "made", "met", "paid", "ran", "read", "said", "sat", "saw", "sent",
+        "sold", "spoke", "stood", "thought", "told", "took", "went", "won", "wrote",
+    )
+
+    /** Allows the unambiguous adverb repair "everyday." -> "every day." only. */
+    private fun safeSpacingRepairAllowances(
+        source: String,
+        candidate: String,
+        isKnownWord: (String) -> Boolean,
+    ): Map<String, Int> {
+        if (!listOf("everyday", "every", "day").all(isKnownWord)) return emptyMap()
+        val joinedAtBoundary = Regex("(?i)\\beveryday(?=\\s*[.!?])")
+        val splitAtBoundary = Regex("(?i)\\bevery\\s+day(?=\\s*[.!?])")
+        val introducedSplits = splitAtBoundary.findAll(candidate).count() -
+            splitAtBoundary.findAll(source).count()
+        val availableJoined = joinedAtBoundary.findAll(source).count() -
+            joinedAtBoundary.findAll(candidate).count()
+        val allowed = minOf(introducedSplits, availableJoined).coerceAtLeast(0)
+        return if (allowed > 0) mapOf("everyday" to allowed) else emptyMap()
+    }
+
+    private fun nearbyLemmas(
+        lexemes: List<Lexeme>,
+        index: Int,
+        direction: Int,
+    ): Set<String> = (1..3).mapNotNull { distance ->
+        lexemes.getOrNull(index + distance * direction)?.lemma
+    }.toSet()
+
+    private data class Lexeme(val word: String, val lemma: String, val index: Int)
 
     private fun contentLexemes(value: String): List<Lexeme> = words.findAll(value)
-        .map { it.value.lowercase() }
-        .filter { it !in functionWords }
-        .map { Lexeme(it, lemma(it)) }
+        .map(MatchResult::value)
+        .filter { it.lowercase() !in functionWords }
+        .mapIndexed { index, word -> Lexeme(word, lemma(word.lowercase()), index) }
         .toList()
 
     private fun lemma(value: String): String {
@@ -718,6 +907,11 @@ object GrammarQualityGate {
                 "(?:am|are|is|was|were|can|could|will|would|should|must|have|has|do|does)\\b",
         ),
         Regex("(?i)\\band,\\s+(?:I|we|you|he|she|it|they|this|that|these|those)\\b"),
+        Regex("(?i)\\band\\s+but\\b"),
+        Regex(
+            "(?i)\\b(?:ask(?:s|ed)?|wonder(?:s|ed)?|know(?:s|n)?)\\s+why\\s+" +
+                "(?:do|does|did|is|are|was|were|can|could|will|would|should)\\b",
+        ),
         Regex("(?i)\\bstuff for peoples\\b"),
         Regex("\\s+[,.;:!?]"),
         Regex("([.!?]){2,}"),
@@ -750,10 +944,105 @@ object GrammarQualityGate {
 }
 
 /** Small deterministic guard around the real model for known agreement failures. */
+/** Shared countability rules used by deterministic repair and semantic validation. */
+object CountabilityGrammar {
+    private val sEndingMassNouns = setOf(
+        "earnings", "mathematics", "news", "physics", "proceeds", "savings",
+    )
+    private val massNouns = setOf(
+        "advice", "equipment", "evidence", "furniture", "information", "money",
+        "progress", "research", "software", "time", "traffic", "water", "work",
+    )
+    private val amountOfSForm = Regex(
+        "(?i)\\bthe amount of\\s+([a-z][a-z'â€™-]*s)\\b",
+    )
+    private val numberTooMany = Regex(
+        "(?i)(\\bthe number of\\s+[a-z][a-z'Ã¢â‚¬â„¢-]*s\\s+)" +
+            "(is|are|was|were)\\s+too many\\b",
+    )
+    private val fewerMass = Regex(
+        "(?i)\\bfewer\\s+(${massNouns.joinToString("|")})" +
+            "(?=\\s+(?:is|was|has|had|does|did)\\b|[.,!?;:]|$)",
+    )
+    private val conservativeAmountTooMany = Regex(
+        "(?i)(\\bthe amount of\\s+)([a-z][a-z-]*s)\\s+" +
+            "(is|are|was|were)\\s+too many\\b",
+    )
+
+    private fun isSingularSForm(noun: String): Boolean =
+        noun in sEndingMassNouns ||
+            noun in setOf("gas", "measles") ||
+            noun.endsWith("sis") ||
+            noun.endsWith("ics") ||
+            noun.endsWith("ss") ||
+            noun.endsWith("us")
+
+    fun repair(value: String): String {
+        var result = amountOfSForm.replace(value) { match ->
+            val noun = match.groupValues[1].lowercase()
+            if (isSingularSForm(noun)) {
+                match.value
+            } else {
+                val replacement = "the number of ${match.groupValues[1]}"
+                if (match.value.firstOrNull()?.isUpperCase() == true) {
+                    replacement.replaceFirstChar(Char::uppercase)
+                } else {
+                    replacement
+                }
+            }
+        }
+        result = conservativeAmountTooMany.replace(result) { match ->
+            val noun = match.groupValues[2].lowercase()
+            val verb = if (match.groupValues[3].lowercase() in setOf("was", "were")) "was" else "is"
+            if (isSingularSForm(noun)) {
+                "${match.groupValues[1]}${match.groupValues[2]} $verb too large"
+            } else {
+                val prefix = if (match.groupValues[1].firstOrNull()?.isUpperCase() == true) {
+                    "The number of "
+                } else {
+                    "the number of "
+                }
+                "$prefix${match.groupValues[2]} $verb too large"
+            }
+        }
+        result = numberTooMany.replace(result) { match ->
+            val verb = if (match.groupValues[2].lowercase() in setOf("was", "were")) "was" else "is"
+            "${match.groupValues[1]}$verb too large"
+        }
+        return fewerMass.replace(result, "less $1")
+    }
+}
+
 object GrammarSafetyNet {
     fun repair(value: String): String {
         val immutable = DeterministicCleanup.protect(value)
         var result = immutable.text
+        result = Regex(
+            "(?i)\\b(there) is (several|many|few|numerous|two|three|four|five|" +
+                "six|seven|eight|nine|ten|\\d+) ([a-z][a-z'-]*s)\\b",
+        ).replace(result, "$1 are $2 $3")
+        result = Regex(
+            "(?i)(^|[.!?]\\s+)([a-z][a-z'-]*ing),\\s*([a-z][a-z'-]*ing)\\s+and\\s+" +
+                "([a-z][a-z'-]*ing)\\s+(creates|makes|provides|requires|needs|helps)\\b",
+        ).replace(result) { match ->
+            "${match.groupValues[1]}${match.groupValues[2]}, ${match.groupValues[3]}, and " +
+                "${match.groupValues[4]} ${thirdPersonBase(match.groupValues[5])}"
+        }
+        result = Regex("\\b(make|makes)\\s+(?:create|creates)\\b(?=\\s+(?:a|an|the)\\b)")
+            .replace(result) { match ->
+                if (match.groupValues[1] == "makes") "creates" else "create"
+            }
+        result = Regex("(?i)\\b(after|for) awhile\\b").replace(result, "$1 a while")
+        result = Regex("(?i)(^|[.!?]\\s+)(After a while)\\s+(?=(?:the|these|those)\\b)")
+            .replace(result, "$1$2, ")
+        result = Regex(
+            "(?i)\\b(the|these|those|all)\\s+" +
+                "(values|changes|benefits|results|requirements|records|forms|items)\\s+" +
+                "(changes|creates|makes|provides|requires|needs|helps)\\b",
+        ).replace(result) { match ->
+            "${match.groupValues[1]} ${match.groupValues[2]} " +
+                thirdPersonBase(match.groupValues[3])
+        }
         result = Regex("(?i)\\breadyness\\b").replace(result) { match ->
             if (match.value.first().isUpperCase()) "Readiness" else "readiness"
         }
@@ -796,10 +1085,6 @@ object GrammarSafetyNet {
         result = Regex("(?i)\\bequipments\\b").replace(result, "equipment")
         result = Regex("(?i)\\bIt ait\\b").replace(result, "It isn't")
         result = Regex("(?i)\\b(in) I guess\\b").replace(result, "$1, I guess,")
-        result = Regex("(?i)\\bforces the one to learn\\b")
-            .replace(result, "forces the owner to learn")
-        result = Regex("(?i)\\bThen the one realizes\\b")
-            .replace(result, "Then the owner realizes")
         result = Regex("(?i)\\bfeels embarrassed learning from\\b")
             .replace(result, "feels embarrassed, but learning from")
         result = Regex("(?i)\\bexactly like a dog would have, but\\b")
@@ -1713,24 +1998,6 @@ object GrammarSafetyNet {
         result = Regex("(?i)\\bcould care less\\b").replace(result, "couldn't care less")
         result = Regex("(?i)\\birregardless\\b").replace(result, "regardless")
         result = Regex(
-            "(?i)\\bthe amount of\\s+([a-z][a-z'â€™-]*s)\\b",
-        ).replace(result) { match ->
-            val noun = match.groupValues[1].lowercase()
-            if (noun in setOf("news", "savings", "earnings", "proceeds", "mathematics", "physics")) {
-                match.value
-            } else {
-                val replacement = "the number of ${match.groupValues[1]}"
-                if (match.value.firstOrNull()?.isUpperCase() == true) {
-                    replacement.replaceFirstChar { it.uppercase() }
-                } else {
-                    replacement
-                }
-            }
-        }
-        result = Regex(
-            "(?i)(\\bthe number of\\s+[a-z][a-z'â€™-]*s\\s+(?:is|was)\\s+)too many\\b",
-        ).replace(result, "$1too large")
-        result = Regex(
             "(?i)\\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\\d+)\\s+" +
                 "(day|week|month|year|page)\\s+" +
                 "(digital|field|pilot|program|plan|report|brief|document|project|workshop|" +
@@ -1757,9 +2024,7 @@ object GrammarSafetyNet {
             }
             "${match.groupValues[1]}it $singularVerb"
         }
-        result = Regex(
-            "(?i)\\bfewer\\s+(time|information|evidence|work|money|water|traffic|research)\\b",
-        ).replace(result, "less $1")
+        result = CountabilityGrammar.repair(result)
         result = Regex(
             "(?i)\\b(access|information|evidence|equipment|software|research|advice|traffic|" +
                 "progress|work|furniture)\\s+are\\b",

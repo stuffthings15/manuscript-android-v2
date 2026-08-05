@@ -313,6 +313,26 @@ class DocumentCorrectionPipelineTest {
     }
 
     @Test
+    fun fallbackCannotClaimAnUnprovenCountabilityRepair() = runBlocking {
+        val primary = ScriptedBackend { "Less furniture was needed 7 times." }
+        val fallback = ScriptedBackend { "Less furniture was needed." }
+
+        val failure = runCatching {
+            DocumentCorrectionPipeline(primary, fallback).process(
+                DocumentCorrectionRequest(
+                    jobId = "fallback-countability",
+                    source = "Fewer furniture was needed.",
+                    tone = WritingTone.PROOFREAD,
+                    qualityMode = QualityMode.FAST,
+                ),
+            )
+        }.exceptionOrNull()
+
+        assertTrue(failure is ParagraphCorrectionException)
+        assertEquals(1, fallback.requests.size)
+    }
+
+    @Test
     fun thoroughModeReviewsEveryParagraphEvenWhenFirstPassIsUnchanged() = runBlocking {
         val primary = ScriptedBackend { request ->
             request.firstPassCandidate ?: request.originalTarget
@@ -388,6 +408,36 @@ class DocumentCorrectionPipelineTest {
             "The number of columns was too large. There was less information.",
             strictRewrite.originalTarget,
         )
+    }
+
+    @Test
+    fun strictReviewCannotTrustAReplacementOutsideTheDeterministicRepair() = runBlocking {
+        val primary = ScriptedBackend { request ->
+            when (request.operation) {
+                WritingOperation.CORRECT_ONLY ->
+                    if (request.strictRetry) request.originalTarget else "Dogs are loyal."
+                WritingOperation.REVIEW_CANDIDATE -> requireNotNull(request.firstPassCandidate)
+                else -> error("Unexpected operation")
+            }
+        }
+        val pipeline = DocumentCorrectionPipeline(
+            primaryBackend = primary,
+            acceptsGeneratedGrammar = { false },
+            acceptsStrictlyReviewedGrammar = { true },
+            prepareGrammarRetryCandidate = { "Cats sleep." },
+        )
+
+        val result = pipeline.process(
+            DocumentCorrectionRequest(
+                jobId = "trusted-repair-boundary",
+                source = "Dogs is loyal.",
+                tone = WritingTone.PROOFREAD,
+                qualityMode = QualityMode.THOROUGH,
+            ),
+        )
+
+        assertEquals("Dogs are loyal.", result.text)
+        assertFalse(result.text.contains("Cats"))
     }
 
     @Test
