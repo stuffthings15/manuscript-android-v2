@@ -360,3 +360,33 @@ Focused local result: 9 tests, 0 failures, 0 errors, 0 skipped. Fixture unit
 tests, fixture APK, and fixture test APK built successfully (70 tasks; 13
 executed, 57 up-to-date). No device mutation was made because Task 4B retained
 exclusive use of `emulator-5554`.
+
+### Task 4A fix round 4: strict 10 ms sampling and transient proof
+
+Exact product logs placed the normal Close overlay event at +263 ms, but the
+harness slept from about 451 ms to the deadline and rejected at 507 ms without
+sampling the already-visible surface. Strict deadline sampling now uses 10 ms
+resolution. Snapshot-start semantics and the exact 300/500 ms deadlines remain
+unchanged. A focused contract proves a condition becoming true at 480 ms is
+sampled exactly at 480 ms before the 500 ms deadline; no grace is added.
+
+`tapFixtureDescription` now waits boundedly to acquire the exact fixture node,
+then performs the same physical injection. A missing structural or transient
+action still fails; only the immediate node-acquisition race was removed.
+
+Manual transient reproduction installed only the fixture target APK with
+`adb install -r -t`. Local and installed SHA-256 both equaled
+`5295c0830a0a85160deeddd869400181279f47d0f32ae29891541bcb175e26fa`,
+confirming the current action contract was installed. Before the real tap, the
+exact editor reported text `Generated transient text.` and `focused=true`.
+After tapping `Clear generated transient field`, it remained focused and
+reported text `Generated test text` equal to hint `Generated test text`.
+Root cause: the action cleared correctly, but Android exposed the hint through
+`AccessibilityNodeInfo.text`; the old self-proof mistook it for user text. The
+bounded proof now accepts empty text or `isShowingHintText` with text equal to
+the hint, while still requiring the exact editor to remain focused.
+
+Focused local result: 11 tests, 0 failures, 0 errors, 0 skipped. Fixture unit
+tests, fixture APK, and fixture test APK built successfully (70 tasks; 13
+executed, 57 up-to-date). No product package was installed, edited, cleared, or
+force-stopped. Full product-plus-fixture acceptance remains separate.

@@ -111,9 +111,14 @@ open class FixtureDeviceSupport {
         )
     }
 
-    protected fun tapFixtureDescription(description: String) = tapNode(
-        requireNotNull(findFixtureDescription(description)) { "Missing fixture node: $description" },
-    )
+    protected fun tapFixtureDescription(description: String): Long {
+        var node: AccessibilityNodeInfo? = null
+        assertTrue(
+            "Missing fixture node after bounded acquisition: $description",
+            waitUntil { node = findFixtureDescription(description); node != null },
+        )
+        return tapNode(requireNotNull(node))
+    }
 
     protected fun tapProductSurface(description: String) = tapNode(
         requireNotNull(findProductSurface(description)) { "Missing V2 overlay node: $description" },

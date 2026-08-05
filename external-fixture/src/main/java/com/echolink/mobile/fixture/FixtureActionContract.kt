@@ -19,4 +19,14 @@ object FixtureActionContract {
     }
 
     fun clearsEditor(mode: String): Boolean = mode == "transient"
+
+    fun isFocusedEmptySnapshot(
+        focused: Boolean,
+        text: String?,
+        hintText: String?,
+        isShowingHintText: Boolean,
+    ): Boolean = focused && (
+        text.isNullOrEmpty() ||
+            (isShowingHintText && hintText != null && text == hintText)
+        )
 }

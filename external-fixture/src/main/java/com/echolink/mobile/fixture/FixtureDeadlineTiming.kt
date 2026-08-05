@@ -1,7 +1,7 @@
 package com.echolink.mobile.fixture
 
 object FixtureDeadlineTiming {
-    private const val SAMPLE_INTERVAL_MS = 50L
+    private const val SAMPLE_INTERVAL_MS = 10L
 
     fun awaitCondition(
         deadlineMs: Long,

@@ -24,4 +24,31 @@ class FixtureActionContractTest {
             assertFalse(FixtureActionContract.clearsEditor(mode))
         }
     }
+
+    @Test fun focusedEmptySnapshotAcceptsAndroidsExposedHintText() {
+        assertTrue(
+            FixtureActionContract.isFocusedEmptySnapshot(
+                focused = true,
+                text = "Generated test text",
+                hintText = "Generated test text",
+                isShowingHintText = true,
+            ),
+        )
+        assertFalse(
+            FixtureActionContract.isFocusedEmptySnapshot(
+                focused = true,
+                text = "Generated test text",
+                hintText = "Generated test text",
+                isShowingHintText = false,
+            ),
+        )
+        assertFalse(
+            FixtureActionContract.isFocusedEmptySnapshot(
+                focused = false,
+                text = "",
+                hintText = "Generated test text",
+                isShowingHintText = true,
+            ),
+        )
+    }
 }

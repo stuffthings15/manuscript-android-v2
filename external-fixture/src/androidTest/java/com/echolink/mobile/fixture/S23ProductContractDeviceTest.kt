@@ -46,7 +46,12 @@ class S23ProductContractDeviceTest : FixtureDeviceSupport() {
                 waitUntil(FixtureActionContract.ACTION_COMPLETION_GATE_MS) {
                     findFixtureDescription(editorDescription).let { editor ->
                         try {
-                            editor != null && editor.isFocused && editor.text.isNullOrEmpty()
+                            editor != null && FixtureActionContract.isFocusedEmptySnapshot(
+                                focused = editor.isFocused,
+                                text = editor.text?.toString(),
+                                hintText = editor.hintText?.toString(),
+                                isShowingHintText = editor.isShowingHintText,
+                            )
                         } finally {
                             editor?.recycle()
                         }
