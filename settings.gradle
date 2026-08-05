@@ -16,4 +16,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "ManuscriptAndroidVersion2"
 include(":app")
+include(":external-fixture")
 include(":llama-runtime")

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <package android:name="com.remote.Manuscript.v2.debug" />
+    </queries>
+    <application android:theme="@style/Theme.ExternalFixture" android:label="Manuscript external field fixture">
+        <activity
+            android:name=".S23ExternalEditorFixtureActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

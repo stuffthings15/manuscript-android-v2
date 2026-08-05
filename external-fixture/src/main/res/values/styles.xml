@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.ExternalFixture" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:colorAccent">#005DB4</item>
+    </style>
+</resources>

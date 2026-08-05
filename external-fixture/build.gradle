@@ -1,0 +1,39 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.echolink.mobile.fixture"
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.remote.Manuscript.v2.fixture"
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName "1.0.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        testApplicationId "com.remote.Manuscript.v2.fixture.test"
+    }
+
+    buildTypes {
+        debug { }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    testOptions {
+        execution "ANDROIDX_TEST_ORCHESTRATOR"
+    }
+}
+
+dependencies {
+    // Align the runner's annotation transitive with the already verified app graph.
+    androidTestImplementation "androidx.annotation:annotation:1.9.1"
+    androidTestImplementation "androidx.test:runner:1.7.0"
+    androidTestImplementation "androidx.test.ext:junit:1.3.0"
+    androidTestUtil "androidx.test:orchestrator:1.6.1"
+}
