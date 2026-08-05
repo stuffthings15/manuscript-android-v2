@@ -41,3 +41,6 @@ Task 4A: fix round 5 harness green/device red (rendered exact-PTS probe; Close r
 Task 4C: local contract green (physical 300/500ms unchanged; verified emulator functional rendered ceiling 2000ms; fail-closed hardware and argument tests)
 Task 4C: exact-video and emulator gate complete (bounded three-frame decoder; reference-crop return proof; physical 300/500ms unchanged; emulator 1000/2500ms; 29 local tests; exact videos 5/5; full fixture 6/6)
 Task 4B: runtime lifecycle complete (commits 0c8f7c4, 55916f6, and 8d15dde; 1703 local tests; exact APK BBCD93A0...88F1F6B; emulator fixture 6/6; sole service bound; models preserved)
+Task 3F: local green (284 focused tests; 850 debug and 850 release tests; debug/release lint; debug/release/test APKs; no device-complete claim)
+Task 3F: review fix local green (throwing cancel preserves primary failure and delivers one Retry; 285 focused; 851 debug and 851 release; full lint/build gate)
+Task 3F: emulator gate complete (commit a80a35c; 852 debug and 852 release; exact committed APKs 55D83269...6254 and 42B7855A...F84B; 4/4 device tests; models preserved; exact V2 service bound; crash checks empty)
