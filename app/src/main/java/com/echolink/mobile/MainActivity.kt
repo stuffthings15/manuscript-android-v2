@@ -101,6 +101,8 @@ class MainActivity : Activity() {
     private var displayedDownloadAttempt: DownloadAttempt? = null
     private var downloadUiFallbackRetry = false
     private var pendingReviewAttach: Runnable? = null
+    private var pendingReviewStart: Runnable? = null
+    private var pendingReviewPreDraw: ViewTreeObserver.OnPreDrawListener? = null
     private var correctionCardOverlay: ScrollView? = null
 
     private lateinit var localTools: AndroidLocalPersonalToolsStore
@@ -120,8 +122,15 @@ class MainActivity : Activity() {
     private var startupCheckShown = false
     private var activityResumed = false
     private var startupCheckDialog: AlertDialog? = null
-    private val grammarEngine by lazy { OnDeviceGrammarEngine.get(this) }
+    private val grammarEngineDelegate = lazy { OnDeviceGrammarEngine.get(this) }
+    private val grammarEngine by grammarEngineDelegate
     private val modelRequests = RewriteRequestBatch()
+    private val reviewRequestStarter = ReviewRequestStarter()
+    private val reviewCancellationDispatcher = ReviewCancellationDispatcher(
+        onFailure = { failure ->
+            Log.w(REVIEW_LOG, "event=review-cancel-failed;error=${failure.javaClass.simpleName}")
+        },
+    )
     private var modelRequestEpoch = 0
     private var activeReviewJobId: String? = null
     private var activeReviewChangeId: String? = null
@@ -136,8 +145,22 @@ class MainActivity : Activity() {
                         if (::root.isInitialized) root.removeCallbacks(pending)
                     }
                     pendingReviewAttach = null
-                    grammarEngine.setSessionWarm(false)
-                    modelRequests.cancelAll()
+                    pendingReviewStart?.let { pending ->
+                        if (::correctionCard.isInitialized) correctionCard.removeCallbacks(pending)
+                    }
+                    pendingReviewStart = null
+                    pendingReviewPreDraw?.let { listener ->
+                        if (::correctionCard.isInitialized) {
+                            correctionCard.viewTreeObserver
+                                .takeIf(ViewTreeObserver::isAlive)
+                                ?.removeOnPreDrawListener(listener)
+                        }
+                    }
+                    pendingReviewPreDraw = null
+                    if (grammarEngineDelegate.isInitialized()) {
+                        grammarEngine.setSessionWarm(false)
+                    }
+                    cancelModelRequestsOffUi()
                     modelRequestEpoch += 1
                     activeReviewJobId = null
                 }
@@ -197,6 +220,19 @@ class MainActivity : Activity() {
                     when (state) {
                         is ReviewSurfaceState.TriggerVisible -> updateAssistantTrigger()
                         ReviewSurfaceState.Hidden -> updateAssistantTrigger()
+                        is ReviewSurfaceState.Closing -> {
+                            Log.i(
+                                REVIEW_LOG,
+                                "event=review-closing-render;elapsed_ms=${SystemClock.elapsedRealtime()}",
+                            )
+                            // The controller has already entered Closing, so
+                            // focus loss from hiding the card cannot be
+                            // mistaken for target loss. Do this before model
+                            // cancellation effects to keep Close immediate.
+                            correctionCardOrNull()?.visibility = View.GONE
+                            correctionCardOverlay?.visibility = View.GONE
+                            assistantTrigger.visibility = View.GONE
+                        }
                         else -> assistantTrigger.visibility = View.GONE
                     }
                 }
@@ -344,11 +380,13 @@ class MainActivity : Activity() {
         }
         mainKeyboardRestore.cancel()
         reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.Destroy)
+        reviewRequestStarter.close()
+        reviewCancellationDispatcher.close()
         statusHandler.removeCallbacks(draftSave)
         statusHandler.removeCallbacks(triggerRefresh)
         statusHandler.removeCallbacks(prefetchCorrections)
         stopDownloadTelemetryUpdates()
-        grammarEngine.cancelPrefetch()
+        if (grammarEngineDelegate.isInitialized()) grammarEngine.cancelPrefetch()
         speechSession?.close()
         speechSession = null
         super.onDestroy()
@@ -1717,10 +1755,7 @@ class MainActivity : Activity() {
         if (!editor.hasFocus() && editor.text?.isNotBlank() == true) {
             editor.requestFocus()
         }
-        hideSystemKeyboard(editor)
         statusHandler.removeCallbacks(prefetchCorrections)
-        grammarEngine.cancelPrefetch()
-        grammarEngine.setSessionWarm(true)
         reviewSession = WritingReviewSession.createParagraphs(
             source = editor.text.toString(),
             selectionStart = editor.selectionStart,
@@ -1787,9 +1822,74 @@ class MainActivity : Activity() {
         reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ReviewAttached)
         correctionCard.isFocusableInTouchMode = true
         correctionCard.requestFocus()
-        renderCurrentBlock()
-        correctionCard.announceForAccessibility(getString(R.string.correction_card_opened))
         correctionCard.requestLayout()
+        renderOpeningReviewBlock()
+        scheduleReviewStart()
+    }
+
+    private fun renderOpeningReviewBlock() {
+        val session = reviewSession ?: return
+        val block = session.current(selectedTone) ?: return
+        reviewCounter.text = getString(R.string.review_counter, block.index, block.total)
+        reviewSuggestion.text = block.original
+        reviewNote.text = getString(
+            R.string.local_ai_working_progress,
+            session.readyCount(selectedTone),
+            session.total,
+        )
+        replaceButton.text = getString(R.string.local_ai_working_action)
+        replaceButton.contentDescription = replaceButton.text
+        replaceButton.isEnabled = false
+        dismissButton.text = getString(R.string.writing_dismiss_action)
+        acceptChangeButton.isEnabled = false
+        rejectChangeButton.isEnabled = false
+        acceptAllButton.isEnabled = false
+        undoReviewButton.isEnabled = session.canUndo()
+        restoreOriginalButton.isEnabled = session.canUndo()
+    }
+
+    private fun scheduleReviewStart() {
+        pendingReviewStart?.let(correctionCard::removeCallbacks)
+        pendingReviewPreDraw?.let { listener ->
+            correctionCard.viewTreeObserver
+                .takeIf(ViewTreeObserver::isAlive)
+                ?.removeOnPreDrawListener(listener)
+        }
+        pendingReviewPreDraw = null
+        val session = reviewSession ?: return
+        val callbackToken = reviewSurfaceExecutor.currentCallbackToken()
+        val pending = Runnable {
+            pendingReviewStart = null
+            if (
+                !reviewSurfaceExecutor.isCurrentCallback(callbackToken) ||
+                reviewSurfaceController.state !is ReviewSurfaceState.ReviewOpen ||
+                reviewSession !== session
+            ) {
+                return@Runnable
+            }
+            hideSystemKeyboard(editor)
+            if (grammarEngineDelegate.isInitialized()) grammarEngine.cancelPrefetch()
+            renderCurrentBlock()
+            correctionCard.announceForAccessibility(getString(R.string.correction_card_opened))
+        }
+        pendingReviewStart = pending
+        val listener = object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                correctionCard.viewTreeObserver
+                    .takeIf(ViewTreeObserver::isAlive)
+                    ?.removeOnPreDrawListener(this)
+                pendingReviewPreDraw = null
+                if (pendingReviewStart === pending) {
+                    // Posting from pre-draw schedules the backend start after
+                    // this confirmed rendering traversal completes. No timer
+                    // guesses how long a busy device needs to draw the card.
+                    correctionCard.post(pending)
+                }
+                return true
+            }
+        }
+        pendingReviewPreDraw = listener
+        correctionCard.viewTreeObserver.addOnPreDrawListener(listener)
     }
 
     private fun showCorrectionOverlay() {
@@ -1885,7 +1985,7 @@ class MainActivity : Activity() {
     private fun regenerateCurrentBlock() {
         val session = reviewSession ?: return
         Log.i(REVIEW_LOG, "cancel=regenerate")
-        modelRequests.cancelAll()
+        cancelModelRequestsOffUi()
         session.clearModelReplacements(selectedTone)
         activeReviewChangeId = null
         modelRequestEpoch += 1
@@ -1917,12 +2017,29 @@ class MainActivity : Activity() {
         val correctedBuffer = StringBuilder()
         // The terminal wrapper owns timeout and once-only delivery around
         // grammarEngine.polishDocument( so surfaces cannot spin forever.
-        val request = grammarEngine.polishDocumentTerminal(
-            source = sourceAtRequest,
-            tone = toneAtRequest,
-            sourceApplication = packageName,
-            requestedJobId = jobId,
-            onParagraphCompleted = { paragraph ->
+        val deferredRequest = DeferredLocalPolishRequest()
+        modelRequests.attach(key, deferredRequest)
+        val scheduled = reviewRequestStarter.execute {
+            if (deferredRequest.isCancelled) return@execute
+            val engine = OnDeviceGrammarEngine.get(applicationContext)
+            if (deferredRequest.isCancelled) return@execute
+            engine.cancelPrefetch()
+            engine.setSessionWarm(true)
+            val request = engine.polishDocumentTerminal(
+                source = sourceAtRequest,
+                tone = toneAtRequest,
+                sourceApplication = packageName,
+                requestedJobId = jobId,
+                onRequestStarted = {
+                    if (
+                        reviewSurfaceExecutor.isCurrentCallback(callbackToken) &&
+                        reviewSession === session &&
+                        modelRequestEpoch == epoch
+                    ) {
+                        reviewProgress.tag = ACTIVE_REVIEW_REQUEST_TAG
+                    }
+                },
+                onParagraphCompleted = { paragraph ->
                 if (
                     reviewSurfaceExecutor.isCurrentCallback(callbackToken) &&
                     reviewSession === session &&
@@ -1958,8 +2075,8 @@ class MainActivity : Activity() {
                     }
                     renderCurrentBlock(requestModel = false)
                 }
-            },
-            onProgress = { completed, total ->
+                },
+                onProgress = { completed, total ->
                 if (
                     reviewSurfaceExecutor.isCurrentCallback(callbackToken) &&
                     reviewSession === session &&
@@ -1973,33 +2090,38 @@ class MainActivity : Activity() {
                     )
                     showReviewProgress(completed, total)
                 }
-            },
-        ) { terminalResult ->
-            modelRequests.complete(key)
-            hideReviewProgress()
-            if (
-                !reviewSurfaceExecutor.isCurrentCallback(callbackToken) ||
-                reviewSession !== session ||
-                modelRequestEpoch != epoch
-            ) {
-                return@polishDocumentTerminal
-            }
-            renderCurrentBlock(requestModel = false)
-            when (terminalResult) {
-                is CorrectionTerminalResult.Success -> Unit
-                is CorrectionTerminalResult.RetryableFailure -> {
-                    session.clearModelReplacements(toneAtRequest)
-                    renderCurrentBlock(requestModel = false)
-                    reviewNote.text = terminalResult.userMessage
+                },
+            ) { terminalResult ->
+                modelRequests.complete(key)
+                if (
+                    !reviewSurfaceExecutor.isCurrentCallback(callbackToken) ||
+                    reviewSession !== session ||
+                    modelRequestEpoch != epoch
+                ) {
+                    return@polishDocumentTerminal
                 }
-                CorrectionTerminalResult.ModelRequired -> {
-                    session.clearModelReplacements(toneAtRequest)
-                    renderCurrentBlock(requestModel = false)
-                    reviewNote.text = getString(R.string.local_ai_model_required)
+                hideReviewProgress()
+                renderCurrentBlock(requestModel = false)
+                when (terminalResult) {
+                    is CorrectionTerminalResult.Success -> Unit
+                    is CorrectionTerminalResult.RetryableFailure -> {
+                        session.clearModelReplacements(toneAtRequest)
+                        renderCurrentBlock(requestModel = false)
+                        reviewNote.text = terminalResult.userMessage
+                    }
+                    CorrectionTerminalResult.ModelRequired -> {
+                        session.clearModelReplacements(toneAtRequest)
+                        renderCurrentBlock(requestModel = false)
+                        reviewNote.text = getString(R.string.local_ai_model_required)
+                    }
                 }
             }
+            deferredRequest.attach(request)
         }
-        modelRequests.attach(key, request)
+        if (!scheduled) {
+            modelRequests.complete(key)
+            deferredRequest.cancel()
+        }
     }
 
     private fun replaceCurrentBlock() {
@@ -2103,6 +2225,7 @@ class MainActivity : Activity() {
     private fun hideReviewProgress() {
         if (!::reviewProgress.isInitialized) return
         statusHandler.removeCallbacks(progressTick)
+        reviewProgress.tag = null
         reviewProgress.visibility = View.GONE
         reviewProgress.isIndeterminate = false
         reviewProgress.progress = 0
@@ -2192,7 +2315,7 @@ class MainActivity : Activity() {
             session.restoreOriginal(editor.text.toString())
         }.onSuccess { updated ->
             Log.i(REVIEW_LOG, "cancel=restoreOriginal")
-            modelRequests.cancelAll()
+            cancelModelRequestsOffUi()
             modelRequestEpoch += 1
             setEditorTextFromReview(updated)
             renderCurrentBlock()
@@ -2210,6 +2333,13 @@ class MainActivity : Activity() {
     private fun closeReview() {
         Log.i(REVIEW_LOG, "cancel=closeReview")
         reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.CloseRequested)
+    }
+
+    private fun cancelModelRequestsOffUi() {
+        val detached = modelRequests.detachAll()
+        if (!reviewCancellationDispatcher.cancel(detached) && detached.isNotEmpty()) {
+            Log.w(REVIEW_LOG, "event=review-cancel-rejected;count=${detached.size}")
+        }
     }
 
     private fun invalidateMainReviewSurface(event: ReviewSurfaceEvent) {
@@ -2740,6 +2870,7 @@ class MainActivity : Activity() {
         private const val STARTUP_DIALOG_HANDOFF_DELAY_MS = 200L
         private const val DRAFT_SAVE_DELAY_MS = 400L
         private const val TRIGGER_REFRESH_DELAY_MS = 120L
+        private const val ACTIVE_REVIEW_REQUEST_TAG = "active-review-request"
         private const val REVIEW_KEYBOARD_HIDE_LIMIT_MS = 360L
         private const val REVIEW_KEYBOARD_POLL_MS = 16L
         const val PREFERENCES_NAME = "manuscript_preferences_v1"

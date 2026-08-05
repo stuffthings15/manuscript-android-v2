@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Rect
 import android.os.SystemClock
+import android.util.Log
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
@@ -26,12 +27,168 @@ class ReviewSurfaceLifecycleDeviceTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
 
     @Test
-    fun mainActivityThreeConsecutiveWarmCyclesMeetContractTimes() {
-        repeat(3) { mainActivityRealCloseRemovesCardAndReturnsTriggerWithinContractTimes() }
+    fun mainActivityTenConsecutiveWarmCyclesAcceptHostDrivenPhysicalClose() {
+        repeat(10) { cycle ->
+            runHostDrivenPhysicalClose(
+                waitForActiveRequest = false,
+                hostCycle = cycle + 1,
+            )
+        }
     }
 
     @Test
     fun mainActivityRealCloseRemovesCardAndReturnsTriggerWithinContractTimes() {
+        runCloseCycle()
+    }
+
+    @Test
+    fun mainActivityStartupPhaseAcceptsHostDrivenPhysicalClose() {
+        val delayMs = InstrumentationRegistry.getArguments()
+            .getString(HOST_CLOSE_DELAY_ARGUMENT)
+            ?.toLongOrNull()
+            ?: 0L
+        require(delayMs in HOST_CLOSE_DELAYS) { "Unsupported host close delay: $delayMs" }
+        runHostDrivenPhysicalClose(waitForActiveRequest = false, closeDelayMs = delayMs)
+    }
+
+    @Test
+    fun mainActivityActiveRequestAcceptsHostDrivenPhysicalClose() {
+        runHostDrivenPhysicalClose(waitForActiveRequest = true)
+    }
+
+    private fun runHostDrivenPhysicalClose(
+        waitForActiveRequest: Boolean,
+        closeDelayMs: Long = 0L,
+        hostCycle: Int = 1,
+    ) {
+        val targetContext = instrumentation.targetContext
+        val promptSnapshots = listOf("manuscript_ai", "manuscript_qwen3").map { name ->
+            PromptPreferenceSnapshot.capture(
+                targetContext.getSharedPreferences(name, Context.MODE_PRIVATE),
+            )
+        }
+        promptSnapshots.forEach(PromptPreferenceSnapshot::markPromptSeen)
+        val activity = instrumentation.startActivitySync(
+            Intent(targetContext, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            },
+        )
+        try {
+            dismissStartupDialogIfPresent(activity)
+            val editor = activity.findViewById<EditText>(R.id.review_editor)
+            instrumentation.runOnMainSync {
+                editor.setText("These generated sentence need correction.")
+                editor.setSelection(editor.text.length)
+                editor.requestFocus()
+            }
+            instrumentation.waitForIdleSync()
+            sendRequestedTrimMemory(targetContext.packageName)
+            val trigger = activity.findViewById<View>(R.id.writing_assist_icon)
+            assertTrue(waitUntil { fullyVisibleBounds(trigger) != null })
+            tap(trigger)
+            val card = activity.findViewById<View>(R.id.writing_suggestion_card)
+            val close = activity.findViewById<View>(R.id.writing_close_action)
+            val progress = activity.findViewById<View>(R.id.writing_progress)
+            assertTrue(waitUntil { card.visibility == View.VISIBLE })
+            if (waitForActiveRequest) {
+                assertTrue(
+                    "The request never reached active inference.",
+                    waitUntil(ACTIVE_REQUEST_LIMIT_MS) { progress.tag == ACTIVE_REQUEST_TAG },
+                )
+            } else if (closeDelayMs > 0L) {
+                SystemClock.sleep(closeDelayMs)
+            }
+            var capturedCloseBounds: Rect? = null
+            assertTrue(
+                "Close did not reach a full touch target before host input.",
+                waitUntil {
+                    fullyVisibleBounds(close)?.also { bounds ->
+                        capturedCloseBounds = bounds
+                    } != null
+                },
+            )
+            val closeBounds = requireNotNull(capturedCloseBounds)
+            val phase = if (waitForActiveRequest) "active" else "delay-${closeDelayMs}ms"
+            Log.i(
+                REVIEW_LOG_TAG,
+                "event=host-touch-ready;phase=$phase;cycle=$hostCycle;" +
+                    "x=${closeBounds.exactCenterX().toInt()};" +
+                    "y=${closeBounds.exactCenterY().toInt()};" +
+                    "elapsed_ms=${SystemClock.elapsedRealtime()}",
+            )
+
+            assertTrue(
+                "Host touch did not close the active review.",
+                waitUntil(HOST_TOUCH_LIMIT_MS) { card.visibility != View.VISIBLE },
+            )
+            assertTrue(
+                "Trigger did not return after host-driven Close.",
+                waitUntil(TRIGGER_LIMIT_MS) { fullyVisibleBounds(trigger) != null },
+            )
+        } finally {
+            instrumentation.runOnMainSync(activity::finish)
+            instrumentation.waitForIdleSync()
+            promptSnapshots.forEach(PromptPreferenceSnapshot::restore)
+        }
+    }
+
+    @Test
+    fun mainActivityDestroyDuringActiveRequestRejectsLateUiCallbacks() {
+        val targetContext = instrumentation.targetContext
+        val promptSnapshots = listOf("manuscript_ai", "manuscript_qwen3").map { name ->
+            PromptPreferenceSnapshot.capture(
+                targetContext.getSharedPreferences(name, Context.MODE_PRIVATE),
+            )
+        }
+        promptSnapshots.forEach(PromptPreferenceSnapshot::markPromptSeen)
+        val activity = instrumentation.startActivitySync(
+            Intent(targetContext, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            },
+        )
+        try {
+            dismissStartupDialogIfPresent(activity)
+            val editor = activity.findViewById<EditText>(R.id.review_editor)
+            instrumentation.runOnMainSync {
+                editor.setText("These generated sentence need correction.")
+                editor.setSelection(editor.text.length)
+                editor.requestFocus()
+            }
+            instrumentation.waitForIdleSync()
+            val trigger = activity.findViewById<View>(R.id.writing_assist_icon)
+            assertTrue(waitUntil { fullyVisibleBounds(trigger) != null })
+            tap(trigger)
+            val card = activity.findViewById<View>(R.id.writing_suggestion_card)
+            val progress = activity.findViewById<View>(R.id.writing_progress)
+            assertTrue(waitUntil { card.visibility == View.VISIBLE })
+            assertTrue(
+                "The request never reached the active worker phase.",
+                waitUntil(ACTIVE_REQUEST_LIMIT_MS) { progress.tag == ACTIVE_REQUEST_TAG },
+            )
+
+            instrumentation.runOnMainSync(activity::finish)
+            instrumentation.waitForIdleSync()
+            SystemClock.sleep(LATE_CALLBACK_GUARD_MS)
+            instrumentation.waitForIdleSync()
+
+            assertTrue(activity.isDestroyed)
+            assertTrue(!card.isAttachedToWindow)
+            assertTrue(progress.visibility != View.VISIBLE)
+            assertTrue(progress.tag == null)
+        } finally {
+            if (!activity.isDestroyed) {
+                instrumentation.runOnMainSync(activity::finish)
+                instrumentation.waitForIdleSync()
+            }
+            promptSnapshots.forEach(PromptPreferenceSnapshot::restore)
+        }
+    }
+
+    private fun runCloseCycle(
+        closeDelayMs: Long = 0L,
+        waitForActiveRequest: Boolean = false,
+    ) {
+        val phase = if (waitForActiveRequest) "active-request" else "delay-${closeDelayMs}ms"
         val targetContext = instrumentation.targetContext
         val promptSnapshots = listOf("manuscript_ai", "manuscript_qwen3").map { name ->
             PromptPreferenceSnapshot.capture(
@@ -70,29 +227,46 @@ class ReviewSurfaceLifecycleDeviceTest {
                 card.visibility == View.VISIBLE && hasGlobalVisibleBounds(close)
             }
             assertTrue(
-                "Correction card and Close were not visible within 500 ms. " +
+                "$phase: Correction card and Close were not visible within 500 ms. " +
                     "trigger=${viewChain(trigger)} card=${viewChain(card)} close=${viewChain(close)}",
                 closeVisibleAt != null,
             )
+            if (waitForActiveRequest) {
+                val progress = activity.findViewById<View>(R.id.writing_progress)
+                assertTrue(
+                    "$phase: The model request did not become active before Close. ${viewChain(progress)}",
+                    waitUntil(ACTIVE_REQUEST_LIMIT_MS) { progress.tag == ACTIVE_REQUEST_TAG },
+                )
+            } else if (closeDelayMs > 0L) {
+                SystemClock.sleep(closeDelayMs)
+            }
             val started = SystemClock.elapsedRealtime()
+            Log.i(REVIEW_LOG_TAG, "event=test-close-start;phase=$phase;elapsed_ms=$started")
+            println("CLOSE_PHASE_START phase=$phase elapsed_ms=$started")
             tap(close)
             val cardRemovedAt = waitUntilTime(
                 timeoutMs = CLOSE_LIMIT_MS,
-                failureMessage = "Close touch did not remove the card. " +
+                failureMessage = "$phase: Close touch did not remove the card. " +
                     "card=${viewChain(card)} close=${viewChain(close)}",
             ) { card.visibility != View.VISIBLE }
             val triggerReturned = waitUntil(TRIGGER_LIMIT_MS) {
                 fullyVisibleBounds(trigger) != null
             }
             assertTrue(
-                "Trigger did not return within 500 ms. " +
+                "$phase: Trigger did not return within 500 ms. " +
                     "trigger=${viewChain(trigger)} editor=${viewChain(editor)} card=${viewChain(card)}",
                 triggerReturned,
             )
             val triggerReturnedAt = SystemClock.elapsedRealtime()
 
-            assertTrue("Card remained visible past 300 ms.", cardRemovedAt - started <= CLOSE_LIMIT_MS)
-            assertTrue("Trigger did not return within 500 ms.", triggerReturnedAt - started <= TRIGGER_LIMIT_MS)
+            assertTrue(
+                "$phase: Card remained visible past 300 ms.",
+                cardRemovedAt - started <= CLOSE_LIMIT_MS,
+            )
+            assertTrue(
+                "$phase: Trigger did not return within 500 ms.",
+                triggerReturnedAt - started <= TRIGGER_LIMIT_MS,
+            )
         } finally {
             instrumentation.runOnMainSync { activity.finish() }
             instrumentation.waitForIdleSync()
@@ -263,7 +437,14 @@ class ReviewSurfaceLifecycleDeviceTest {
         private const val OPEN_CLOSE_VISIBLE_LIMIT_MS = 500L
         private const val CLOSE_LIMIT_MS = 300L
         private const val TRIGGER_LIMIT_MS = 500L
+        private const val ACTIVE_REQUEST_LIMIT_MS = 10_000L
+        private const val HOST_TOUCH_LIMIT_MS = 30_000L
+        private const val HOST_CLOSE_DELAY_ARGUMENT = "closeDelayMs"
+        private const val LATE_CALLBACK_GUARD_MS = 1_000L
+        private const val ACTIVE_REQUEST_TAG = "active-review-request"
+        private const val REVIEW_LOG_TAG = "ManuscriptReview"
         private const val TRIM_LEVEL_ARGUMENT = "trimLevel"
         private val SUPPORTED_TRIM_LEVELS = setOf("RUNNING_LOW", "RUNNING_CRITICAL")
+        private val HOST_CLOSE_DELAYS = setOf(0L, 100L, 500L, 1_000L)
     }
 }

@@ -171,10 +171,16 @@ open class FixtureDeviceSupport {
     }
 
     protected fun tapProductSurface(description: String) = tapNode(
-        requireNotNull(findProductSurface(description)) { "Missing V2 overlay node: $description" },
+        node = requireNotNull(findProductSurface(description)) {
+            "Missing V2 overlay node: $description"
+        },
+        allowUpRejectionAfterDown = description == manuscriptString("close_action"),
     )
 
-    private fun tapNode(node: AccessibilityNodeInfo): Long {
+    private fun tapNode(
+        node: AccessibilityNodeInfo,
+        allowUpRejectionAfterDown: Boolean = false,
+    ): Long {
         val bounds = Rect().also(node::getBoundsInScreen)
         node.recycle()
         assertFalse("Empty bounds", bounds.isEmpty)
@@ -185,7 +191,11 @@ open class FixtureDeviceSupport {
         try {
             assertTrue(automation.injectInputEvent(down, true))
             SystemClock.sleep(50L)
-            assertTrue(automation.injectInputEvent(up, true))
+            val upAccepted = automation.injectInputEvent(up, true)
+            assertTrue(
+                "ACTION_UP was rejected before the target could legally disappear.",
+                upAccepted || allowUpRejectionAfterDown,
+            )
         } finally { down.recycle(); up.recycle() }
         return injectedAt
     }

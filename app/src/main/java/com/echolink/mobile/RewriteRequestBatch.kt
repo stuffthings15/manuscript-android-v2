@@ -34,12 +34,13 @@ class RewriteRequestBatch {
         active.remove(key)
     }
 
-    fun cancelAll() {
-        val requests = synchronized(this) {
+    fun detachAll(): List<LocalPolishRequest> = synchronized(this) {
             val snapshot = active.values.filterNotNull()
             active.clear()
             snapshot
-        }
-        requests.forEach(LocalPolishRequest::cancel)
+    }
+
+    fun cancelAll() {
+        detachAll().forEach(LocalPolishRequest::cancel)
     }
 }

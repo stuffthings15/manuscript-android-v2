@@ -89,7 +89,7 @@ def llamaVendorSentinels = [
     "examples/llama.android/lib/src/main/cpp/ai_chat.cpp": "832C3A36F4A46DAB781376133B5A107E36C65A2E492B331ED045EDEBF4297DA2",
     "examples/llama.android/lib/src/main/cpp/logging.h": "B69C2B2DF513A041EA1EBEDE5A4DBEA81E52C8B021BBA0C2ED165DEB1B02F9FD",
     "examples/llama.android/lib/src/main/java/com/arm/aichat/InferenceEngine.kt": "B0280CEFE6C2195CCDB2612F81B8E5164275F7BC0C5FA9875C32A69B06F11C47",
-    "examples/llama.android/lib/src/main/java/com/arm/aichat/internal/InferenceEngineImpl.kt": "A72D6AE6F8EF2ACAC3B3AFE69DA5434FA64417A3F8163565D19D5D64444D2370",
+    "examples/llama.android/lib/src/main/java/com/arm/aichat/internal/InferenceEngineImpl.kt": "C4774F8B687772478D78A5CC7A1B5C2D685CB712C38D0DE0811D700607DA7B76",
 ]
 
 tasks.register("verifyManuscriptLlamaRuntime") {

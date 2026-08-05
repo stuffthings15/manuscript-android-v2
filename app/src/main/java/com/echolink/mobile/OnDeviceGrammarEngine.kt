@@ -4,6 +4,7 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import java.io.File
@@ -73,7 +74,13 @@ object RewriteInputPolicy {
 class OnDeviceGrammarEngine private constructor(context: Context) {
     private val appContext = context.applicationContext
     private val worker = Executors.newSingleThreadExecutor { task ->
-        Thread(task, "manuscript-local-grammar").apply { priority = Thread.NORM_PRIORITY }
+        Thread(
+            {
+                Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+                task.run()
+            },
+            "manuscript-local-grammar",
+        ).apply { priority = Thread.MIN_PRIORITY }
     }
     private val mainHandler = Handler(Looper.getMainLooper())
     private val correctionRouter = LocalCorrectionRouter(appContext)
@@ -114,6 +121,7 @@ class OnDeviceGrammarEngine private constructor(context: Context) {
         sourceApplication: String?,
         requestedJobId: String = "ai-${UUID.randomUUID()}",
         qualityModeOverride: QualityMode? = null,
+        onRequestStarted: () -> Unit = {},
         onParagraphCompleted: (CorrectedParagraph) -> Unit = {},
         onProgress: (completed: Int, total: Int) -> Unit = { _, _ -> },
         callback: (CorrectionTerminalResult) -> Unit,
@@ -142,6 +150,7 @@ class OnDeviceGrammarEngine private constructor(context: Context) {
                 sourceApplication = sourceApplication,
                 requestedJobId = requestedJobId,
                 qualityModeOverride = qualityModeOverride,
+                onRequestStarted = onRequestStarted,
                 onParagraphCompleted = onParagraphCompleted,
                 onProgress = onProgress,
             ) { result ->
@@ -163,6 +172,7 @@ class OnDeviceGrammarEngine private constructor(context: Context) {
         sourceApplication: String?,
         requestedJobId: String = "ai-${UUID.randomUUID()}",
         qualityModeOverride: QualityMode? = null,
+        onRequestStarted: () -> Unit = {},
         onParagraphCompleted: (CorrectedParagraph) -> Unit = {},
         onProgress: (completed: Int, total: Int) -> Unit = { _, _ -> },
         callback: (Result<DocumentCorrectionResult>) -> Unit,
@@ -225,6 +235,11 @@ class OnDeviceGrammarEngine private constructor(context: Context) {
                 )
                 activePipeline.set(pipeline)
                 val runner = PersistentDocumentCorrectionRunner(jobStore, pipeline)
+                if (!cancelled.get()) {
+                    mainHandler.post {
+                        if (!cancelled.get()) onRequestStarted()
+                    }
+                }
                 val corrected = runBlocking {
                     runner.run(
                         DocumentJobRequest(

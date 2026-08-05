@@ -3,7 +3,10 @@ package com.echolink.mobile
 import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.SystemClock
+import android.util.Log
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -70,6 +73,7 @@ class OfficialCorrectionHeader(
             glyph = CLOSE_GLYPH,
             description = closeDescription,
             action = onClose,
+            invokeOnPrimaryDown = true,
         ), LayoutParams(dp(MIN_TOUCH_TARGET_DP), dp(MIN_TOUCH_TARGET_DP)))
     }
 
@@ -82,6 +86,7 @@ class OfficialCorrectionHeader(
         glyph: String,
         description: CharSequence,
         action: (() -> Unit)?,
+        invokeOnPrimaryDown: Boolean = false,
     ): Button = Button(context).apply {
         this.id = id
         text = glyph
@@ -102,7 +107,34 @@ class OfficialCorrectionHeader(
         )
         visibility = if (action == null) View.GONE else View.VISIBLE
         isEnabled = action != null
-        setOnClickListener { action?.invoke() }
+        val pressGate = action?.let(::PrimaryPressActionGate)
+        setOnClickListener { pressGate?.onClick() }
+        if (invokeOnPrimaryDown && pressGate != null) {
+            var touchSequence = false
+            setOnTouchListener { button, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        val inside = event.x >= 0f && event.x < button.width &&
+                            event.y >= 0f && event.y < button.height
+                        Log.i(
+                            "ManuscriptReview",
+                            "event=close-touch-down;elapsed_ms=${SystemClock.elapsedRealtime()}",
+                        )
+                        touchSequence = pressGate.onPrimaryDown(button.isEnabled, inside)
+                        if (touchSequence) button.post(pressGate::endTouchGesture)
+                        touchSequence
+                    }
+                    MotionEvent.ACTION_UP,
+                    MotionEvent.ACTION_CANCEL,
+                    -> touchSequence.also {
+                        touchSequence = false
+                        pressGate.endTouchGesture()
+                    }
+                    MotionEvent.ACTION_MOVE -> touchSequence
+                    else -> false
+                }
+            }
+        }
     }
 
     private fun rounded(fill: Int, radiusDp: Float, stroke: Int): GradientDrawable =
@@ -119,5 +151,24 @@ class OfficialCorrectionHeader(
         const val MIN_TOUCH_TARGET_DP = 48
         const val CLOSE_GLYPH = "\u00d7"
         const val SETTINGS_GLYPH = "\u2699"
+    }
+}
+
+internal class PrimaryPressActionGate(private val action: () -> Unit) {
+    private var touchActionInvoked = false
+
+    fun onPrimaryDown(enabled: Boolean, inside: Boolean): Boolean {
+        if (!enabled || !inside || touchActionInvoked) return false
+        touchActionInvoked = true
+        action()
+        return true
+    }
+
+    fun onClick() {
+        if (!touchActionInvoked) action()
+    }
+
+    fun endTouchGesture() {
+        touchActionInvoked = false
     }
 }

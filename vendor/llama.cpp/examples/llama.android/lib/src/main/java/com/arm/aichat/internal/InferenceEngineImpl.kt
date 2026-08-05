@@ -8,9 +8,8 @@ import com.arm.aichat.internal.InferenceEngineImpl.Companion.getInstance
 import dalvik.annotation.optimization.FastNative
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +22,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.Executors
 
 /**
  * JNI wrapper for the llama.cpp library providing Android-friendly access to large language models.
@@ -124,8 +124,16 @@ internal class InferenceEngineImpl private constructor(
     /**
      * Single-threaded coroutine dispatcher & scope for LLama asynchronous operations
      */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val llamaDispatcher = Dispatchers.IO.limitedParallelism(1)
+    private val llamaExecutor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "manuscript-llama-runtime").apply {
+            isDaemon = true
+            // JNI model evaluation can remain inside a FastNative call for
+            // seconds. Default priority lets it reach a suspend-safe boundary
+            // before Android's ART watchdog expires during close and restart.
+            priority = Thread.NORM_PRIORITY
+        }
+    }
+    private val llamaDispatcher = llamaExecutor.asCoroutineDispatcher()
     private val llamaScope = CoroutineScope(llamaDispatcher + SupervisorJob())
 
     init {
@@ -357,5 +365,6 @@ internal class InferenceEngineImpl private constructor(
             }
         }
         llamaScope.cancel()
+        llamaDispatcher.close()
     }
 }
