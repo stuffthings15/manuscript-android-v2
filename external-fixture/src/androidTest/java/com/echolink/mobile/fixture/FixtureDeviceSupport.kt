@@ -81,17 +81,17 @@ open class FixtureDeviceSupport {
             findProductSurface(manuscriptString("close_action"))?.let { node ->
                 node.recycle()
                 tapProductSurface(manuscriptString("close_action"))
-                waitUntil { !hasV2OverlaySurface() }
             }
             if (activePackage() == fixturePackage && findFixtureDescription(S23ExternalEditorFixtureActivity.FINISH_DESCRIPTION) != null) {
                 tapFixtureDescription(S23ExternalEditorFixtureActivity.FINISH_DESCRIPTION)
                 waitUntil { activePackage() != fixturePackage }
             }
-            if (hasV2OverlaySurface()) {
+            var clean = v2OverlayClearsWithinGateAndStaysAbsent()
+            if (!clean) {
                 instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-                waitUntil { !hasV2OverlaySurface() }
+                clean = v2OverlayClearsWithinGateAndStaysAbsent()
             }
-            assertTrue("Fixture cleanup left a V2 overlay.", v2OverlayStaysAbsent())
+            assertTrue("Fixture cleanup left a V2 overlay after the 300ms removal gate.", clean)
         }
     }
 
@@ -106,8 +106,8 @@ open class FixtureDeviceSupport {
             } ?: instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
         }
         assumeTrue(
-            "STALE_V2_OVERLAY: V2 overlay remained present during the ${V2_OVERLAY_STABLE_MS}ms pre-start interval.",
-            v2OverlayStaysAbsent(),
+            "STALE_V2_OVERLAY: V2 overlay missed the 300ms removal gate or reappeared during the 750ms stable interval.",
+            v2OverlayClearsWithinGateAndStaysAbsent(),
         )
     }
 
@@ -168,20 +168,18 @@ open class FixtureDeviceSupport {
         return null
     }
 
-    private fun hasV2OverlaySurface(): Boolean = automation.windows.any { window ->
+    protected fun hasV2OverlaySurface(): Boolean = automation.windows.any { window ->
         if (window.type != AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) return@any false
         val root = window.root ?: return@any false
         try { root.packageName?.toString() == PRODUCT_PACKAGE } finally { root.recycle() }
     }
 
-    private fun v2OverlayStaysAbsent(): Boolean {
-        val deadline = SystemClock.elapsedRealtime() + V2_OVERLAY_STABLE_MS
-        do {
-            if (hasV2OverlaySurface()) return false
-            SystemClock.sleep(50L)
-        } while (SystemClock.elapsedRealtime() < deadline)
-        return !hasV2OverlaySurface()
-    }
+    private fun v2OverlayClearsWithinGateAndStaysAbsent(): Boolean =
+        FixtureCleanupTiming.awaitRemovalThenStableAbsence(
+            isOverlayPresent = ::hasV2OverlaySurface,
+            nowMs = SystemClock::elapsedRealtime,
+            pauseMs = SystemClock::sleep,
+        )
 
     protected fun v2OverlayHeightContaining(description: String): Int? = automation.windows.firstNotNullOfOrNull { window ->
         if (window.type != AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) return@firstNotNullOfOrNull null
@@ -211,13 +209,15 @@ open class FixtureDeviceSupport {
         return null
     }
 
-    protected fun productSurfaceMeetsExpectation(description: String, expected: Boolean, timeoutMs: Long = 5_000L): Boolean =
-        waitUntil(timeoutMs) {
+    protected fun productSurfaceMeetsExpectation(description: String, expected: Boolean, timeoutMs: Long = 5_000L): Boolean {
+        val sample = {
             findProductSurface(description).let { node ->
                 node?.recycle()
                 (node != null) == expected
             }
         }
+        return if (timeoutMs <= 0L) sample() else waitUntil(timeoutMs, sample)
+    }
 
     protected fun productSurfaceNeverVisible(description: String, durationMs: Long = 1_000L) {
         val deadline = SystemClock.elapsedRealtime() + durationMs
@@ -230,6 +230,12 @@ open class FixtureDeviceSupport {
     protected fun activePackage(): String = automation.rootInActiveWindow?.let { root ->
         try { root.packageName?.toString().orEmpty() } finally { root.recycle() }
     }.orEmpty()
+
+    protected fun applicationWindowPresent(packageName: String): Boolean = automation.windows.any { window ->
+        if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION) return@any false
+        val root = window.root ?: return@any false
+        try { root.packageName?.toString() == packageName } finally { root.recycle() }
+    }
 
     protected fun fixtureApplicationRoot(): AccessibilityNodeInfo? = automation.windows.firstNotNullOfOrNull { window ->
         if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION) return@firstNotNullOfOrNull null
@@ -266,9 +272,17 @@ open class FixtureDeviceSupport {
     protected fun secureSetting(key: String): String = shell("settings get secure $key")
     protected fun shell(command: String): String = automation.executeShellCommand(command).use { java.io.FileInputStream(it.fileDescriptor).bufferedReader().use { it.readText().trim() } }
     protected fun waitUntil(timeoutMs: Long = 5_000L, condition: () -> Boolean): Boolean {
-        val deadline = SystemClock.elapsedRealtime() + timeoutMs
-        do { if (condition()) return true; SystemClock.sleep(50L) } while (SystemClock.elapsedRealtime() < deadline)
-        return condition()
+        return waitUntilDeadline(SystemClock.elapsedRealtime() + timeoutMs, condition)
+    }
+
+    protected fun waitUntilDeadline(deadline: Long, condition: () -> Boolean): Boolean {
+        while (true) {
+            val conditionMet = condition()
+            val observedAt = SystemClock.elapsedRealtime()
+            if (conditionMet) return observedAt <= deadline
+            if (observedAt >= deadline) return false
+            SystemClock.sleep(minOf(50L, deadline - observedAt))
+        }
     }
 
     private fun String.section(start: String, end: String): String = substringAfter(start, "").substringBefore(end, "")
@@ -279,6 +293,5 @@ open class FixtureDeviceSupport {
         const val FIXTURE_PACKAGE = "com.remote.Manuscript.v2.fixture"
         const val SERVICE_CLASS = "com.echolink.mobile.ManuscriptAccessibilityService"
         const val SERVICE_COMPONENT = "$PRODUCT_PACKAGE/$SERVICE_CLASS"
-        const val V2_OVERLAY_STABLE_MS = 750L
     }
 }

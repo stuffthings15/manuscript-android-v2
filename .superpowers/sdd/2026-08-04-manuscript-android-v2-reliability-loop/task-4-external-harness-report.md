@@ -224,3 +224,90 @@ causes `STALE_V2_OVERLAY` JUnit assumption skips rather than contaminated
 failures. Build passed. Exact rerun: 6 run, 0 passed, 0 failed, 6 skipped.
 Every skip reported the 750 ms stale-V2 message. Post-run Manuscript remained
 Bound and `Crashed services:{}`.
+
+### One-time clean-service precondition rerun
+
+On commit `b76cfb5ce72dccd2374f7e19bf4038aee641d51c`, the V2 process alone was
+force-stopped, accessibility enabled services were toggled then reapplied to
+the exact V2 component, and global accessibility was set to 1. Before the
+suite, the exact V2 Activity ServiceRecord reported `hasBound=true`, Bound
+services contained Manuscript, and Crashed services was empty. No data or model
+was cleared.
+
+Ordered suite result: 6 run, 1 passed, 3 failed, 2 skipped.
+
+1. `triggerVisibleSettingsSwitchMeetsLifecycleTimings` — failed 300 ms
+   disappearance assertion.
+2. `panelOpenSettingsSwitchMeetsLifecycleTimings` — failed 300 ms
+   disappearance assertion.
+3. `duplicateViewIdRowsHaveDistinctStableStructuralLocators` — failed because
+   final fixture cleanup left a V2 overlay.
+4. `everyFixtureModeObservesActualManuscriptTriggerAndPanelBehavior` — skipped
+   at the 750 ms stale-V2 gate after test 3.
+5. `detachedAndTargetLossModesRemoveTheActualManuscriptSurface` — skipped at
+   the same stale-V2 gate.
+6. `generatedFieldsFollowTheLockedTriggerAndKeyboardContract` — passed.
+
+Post-run Bound and empty Crashed services were again captured. No code or Git
+write was made for this evidence rerun.
+
+### Task 4A focused cleanup and timing harness fix
+
+RED on `148c1229972330f83eff310def9a43160ce6851b`: the isolated trigger-visible
+Settings test satisfied its 300 ms disappearance and 500 ms return body, then
+failed in `FixtureDeviceSupport.withFixture` because cleanup sampled overlay
+absence immediately after Activity finish. Runtime logs showed
+`ApplicationSwitched TriggerVisible -> Hidden` at finish; the product is
+allowed 300 ms to remove the surface.
+
+Cleanup now waits up to the product's 300 ms removal gate and then requires
+750 ms continuous absence. If the real Back fallback is needed, the same
+300 ms plus 750 ms proof is repeated. Focused JVM contracts cover removal at
+the boundary, removal after the gate, and reappearance during stable absence:
+3 tests, 0 failures, 0 errors, 0 skipped. Fixture APK, test APK, and unit-test
+build completed successfully (70 tasks; 4 executed, 66 up-to-date). Only the
+two fixture packages were installed with `adb install -r -t`.
+
+Timing diagnosis found three harness issues without weakening a product gate:
+
+- `CLEAR_TOP | SINGLE_TOP` made API 36 Settings reuse
+  `SettingsHomepageActivity.onNewIntent`, which crashed. The fixture retains
+  the proven no-flags `ACTION_SETTINGS` launch.
+- Settings activation and Back navigation are recorded as OS navigation
+  latency. The 300 ms removal deadline starts at verified Settings application
+  activation; the 500 ms return deadline starts at verified fixture
+  application activation.
+- Zero-timeout surface checks are now true single samples, and deadline waits
+  reject observations completed after the absolute deadline. Settings removal
+  uses direct V2 accessibility-overlay presence rather than two expensive tree
+  traversals. Physical panel Close now independently requires trigger return
+  within 500 ms from the tap.
+
+Final isolated six-method run against the then-installed product:
+6 run, 2 passed, 4 failed, 0 skipped.
+
+1. Broad lifecycle modes: failed only the new strict Close-to-trigger return,
+   504 ms versus 500 ms.
+2. Detached and target-loss: passed, 1/1, 11.094 s.
+3. Trigger-visible Settings: passed, 1/1, 5.572 s. Recorded timings were
+   Settings activation 1033 ms, overlay removal 1 ms, Back navigation 512 ms,
+   and V2 trigger return 339 ms after verified fixture activation.
+4. Panel-open Settings: failed V2 overlay removal at 505 ms versus 300 ms.
+5. Duplicate structural locator: test body reached cleanup, then cleanup
+   failed because the V2 overlay missed the 300 ms removal plus 750 ms stable
+   absence contract.
+6. Locked product contract: failed the existing assertion at
+   `S23ProductContractDeviceTest.kt:40`.
+
+Post-run state: exact enabled component
+`com.remote.Manuscript.v2.debug/com.echolink.mobile.ManuscriptAccessibilityService`,
+`accessibility_enabled=1`, Bound services contained Manuscript, Crashed
+services was empty, and the exact Activity ServiceRecord reported
+`hasBound=true`.
+
+API 36 operational note: one earlier V2 `am force-stop` attempt cleared
+`enabled_accessibility_services` to `null` and unbound the service even without
+an explicit disable. Reapplying only the exact V2 component restored Bound and
+`hasBound=true`; V2 was not force-stopped again. No product data or model was
+cleared. A temporary Settings-only force-stop/prewarm experiment was not
+encoded in the harness.

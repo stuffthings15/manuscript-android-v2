@@ -27,8 +27,13 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
             assertTrue(productSurfaceMeetsExpectation(trigger, true))
             tapProductSurface(trigger)
             assertTrue(productSurfaceMeetsExpectation(close, true))
+            val closeTapAt = SystemClock.elapsedRealtime()
             tapProductSurface(close)
-            assertTrue(productSurfaceMeetsExpectation(trigger, true))
+            val triggerReturned = waitUntilDeadline(closeTapAt + 500L) {
+                productSurfaceMeetsExpectation(trigger, true, 0L)
+            }
+            val triggerReturnedMs = SystemClock.elapsedRealtime() - closeTapAt
+            assertTrue("V2 trigger return after Close missed 500ms; elapsed=${triggerReturnedMs}ms", triggerReturned)
         }
     }
 
@@ -74,16 +79,33 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
         withFixture(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH) {
             assertTrue(productSurfaceMeetsExpectation(trigger, true))
             if (panelOpen) { tapProductSurface(trigger); assertTrue(productSurfaceMeetsExpectation(close, true)) }
-            val departedAt = SystemClock.elapsedRealtime()
+            val settingsLaunchStartedAt = SystemClock.elapsedRealtime()
             tapFixtureDescription(S23ExternalEditorFixtureActivity.actionDescription(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH))
-            assertTrue(waitUntil(300L) { activePackage() == "com.android.settings" })
-            assertTrue(waitUntil(300L) { productSurfaceMeetsExpectation(trigger, false, 0L) && productSurfaceMeetsExpectation(close, false, 0L) })
-            assertTrue(SystemClock.elapsedRealtime() - departedAt <= 300L)
-            val returnedAt = SystemClock.elapsedRealtime()
+            val settingsActivated = waitUntil { applicationWindowPresent("com.android.settings") }
+            val settingsActivatedAt = SystemClock.elapsedRealtime()
+            val settingsActivationMs = settingsActivatedAt - settingsLaunchStartedAt
+            assertTrue("Settings did not become active; elapsed=${settingsActivationMs}ms", settingsActivated)
+            val disappearDeadline = settingsActivatedAt + 300L
+            val surfaceRemoved = waitUntilDeadline(disappearDeadline) { !hasV2OverlaySurface() }
+            val disappearedMs = SystemClock.elapsedRealtime() - settingsActivatedAt
+            assertTrue("V2 surface removal missed the total 300ms gate; elapsed=${disappearedMs}ms", surfaceRemoved)
+            assertTrue(disappearedMs <= 300L)
+            val navigationStartedAt = SystemClock.elapsedRealtime()
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-            assertTrue(waitUntil(500L) { activePackage() == fixturePackage })
-            assertTrue(productSurfaceMeetsExpectation(trigger, true, 500L))
-            assertTrue(SystemClock.elapsedRealtime() - returnedAt <= 500L)
+            val fixtureReturned = waitUntil { applicationWindowPresent(fixturePackage) }
+            val fixtureReturnedAt = SystemClock.elapsedRealtime()
+            val navigationMs = fixtureReturnedAt - navigationStartedAt
+            assertTrue("Fixture did not return after Back; elapsed=${navigationMs}ms", fixtureReturned)
+            val returnDeadline = fixtureReturnedAt + 500L
+            val triggerReturned = waitUntilDeadline(returnDeadline) { productSurfaceMeetsExpectation(trigger, true, 0L) }
+            val returnedMs = SystemClock.elapsedRealtime() - fixtureReturnedAt
+            assertTrue("V2 trigger return missed 500ms after fixture activation; elapsed=${returnedMs}ms", triggerReturned)
+            assertTrue(returnedMs <= 500L)
+            println(
+                "FIXTURE_SETTINGS_TIMING panelOpen=$panelOpen " +
+                    "settingsActivationMs=$settingsActivationMs disappearedMs=$disappearedMs " +
+                    "navigationMs=$navigationMs returnedMs=$returnedMs",
+            )
             productSurfaceNeverVisible(close, 250L)
         }
     }

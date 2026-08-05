@@ -29,3 +29,8 @@ Task 3E2: started (shared lifecycle coordinator and byte/time progress publisher
 Task 3E1: complete (commit 5e300ff, 30 store tests, independent re-audit approved)
 Task 3E2: complete (commit 1ecda97, 29 coordinator and publisher tests, independent audit approved)
 Task 3E3: complete (commit 79fed5d plus installer checkpoint, 49 focused tests, independent audits approved)
+Task 4A: fix round 1/5 (5 addressed, 0 open; commits 1a1f104..13881ca)
+Task 4A: fix round 2/5 (3 addressed, 1 open; commits 13881ca..d8c52e1)
+Task 4A: fix round 3/5 (1 addressed, 0 open; commits d8c52e1..b76cfb5)
+Task 4A: complete (dedicated external fixture harness, independent re-review approved; clean-service run: 1 passed, 3 product failures, 2 correctly blocked)
+Task 4A: focused cleanup/timing fix complete (3 cleanup contracts; strict isolated current-product run: 2 passed, 4 product failures, 0 skipped)
