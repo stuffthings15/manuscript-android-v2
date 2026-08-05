@@ -82,14 +82,15 @@ class ReviewSurfaceHostIntegrationSourceTest {
     fun verifiedApplicationEventsUseOnlyTheirScopedRoot() {
         val source = source("ManuscriptAccessibilityService.kt")
 
-        assertTrue(source.contains("verifiedApplicationEventContext(event)?.use { context ->"))
+        assertTrue(source.contains("val applicationContext = verifiedApplicationEventContext(event)"))
+        assertTrue(source.contains("applicationContext.use { context ->"))
         assertTrue(source.contains("focusedEditableNode(context.applicationRoot, context.metadata)"))
         assertTrue(source.contains("VerifiedApplicationEventPolicy.acceptsFocus("))
         assertTrue(source.contains("applicationRoot = verifiedApplicationRoot"))
         assertTrue(source.contains("if (matchingWindows.size != 1) return null"))
         assertTrue(source.contains("processFocusedEvent(eventPackage) { focusedEditableNode() }"))
-        assertTrue(source.contains("if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return"))
-        val verifiedStart = source.indexOf("verifiedApplicationEventContext(event)?.use { context ->")
+        assertTrue(source.contains("if (event.eventType.isApplicationLifecycleEvent()) return"))
+        val verifiedStart = source.indexOf("val applicationContext = verifiedApplicationEventContext(event)")
         val legacyStart = source.indexOf("processFocusedEvent(eventPackage) { focusedEditableNode() }")
         assertTrue(verifiedStart >= 0)
         assertTrue(legacyStart > verifiedStart)
@@ -105,15 +106,46 @@ class ReviewSurfaceHostIntegrationSourceTest {
     }
 
     @Test
+    fun serviceObservesVerifiedWindowAndContentLifecycleWithoutPanelBypass() {
+        val source = source("ManuscriptAccessibilityService.kt")
+        val config = File(
+            System.getProperty("user.dir"),
+            "src/main/res/xml/accessibility_service_config.xml",
+        ).readText()
+
+        assertTrue(config.contains("typeWindowContentChanged"))
+        assertTrue(config.contains("typeWindowsChanged"))
+        assertTrue(config.contains("android:notificationTimeout=\"0\""))
+        assertTrue(source.contains("verifiedActiveApplicationEventContext()"))
+        assertTrue(source.contains("if (!event.eventType.isApplicationLifecycleEvent()) return null"))
+        assertTrue(source.contains("val applicationRoot = rootInActiveWindow ?: return null"))
+        assertTrue(source.contains("window.id == applicationRoot.windowId"))
+        assertTrue(source.contains("observeRetainedTargetLifecycle(context)"))
+        assertTrue(source.contains("ReviewTargetLifecyclePolicy.action(evidence)"))
+        assertTrue(source.contains("window.type == AccessibilityWindowInfo.TYPE_APPLICATION"))
+        assertTrue(source.contains("window.isActive"))
+        assertTrue(source.contains("matchingWindows.size != 1"))
+        assertTrue(source.contains("windowManager.removeViewImmediate(panel)"))
+        assertTrue(source.contains("windowManager.removeViewImmediate(trigger)"))
+        val deferredClear = source.substring(
+            source.indexOf("private val deferredTargetClear"),
+            source.indexOf("private var triggerPressed"),
+        )
+        assertFalse(deferredClear.contains("panelView == null"))
+        assertTrue(deferredClear.contains("ReviewSurfaceEvent.TargetLost"))
+    }
+
+    @Test
     fun deviceActivePackageRecyclesTheBorrowedActiveRoot() {
-        val source = androidTestSource("ExternalEditorLifecycleFixtureDeviceTest.kt")
-        val activePackage = Regex(
-            "private fun activePackage\\(\\): String \\{[\\s\\S]*?\\n    \\}",
-        ).find(source)?.value.orEmpty()
+        val source = externalFixtureSource("FixtureDeviceSupport.kt")
+        val activePackage = source.substring(
+            source.indexOf("protected fun activePackage()"),
+            source.indexOf("protected fun fixtureApplicationRoot()"),
+        )
 
         assertTrue(activePackage.contains("try"))
         assertTrue(activePackage.contains("finally"))
-        assertTrue(activePackage.contains("recycleDeviceNode(root)"))
+        assertTrue(activePackage.contains("root.recycle()"))
     }
 
     private fun source(name: String): String = File(
@@ -121,8 +153,8 @@ class ReviewSurfaceHostIntegrationSourceTest {
         "src/main/java/com/echolink/mobile/$name",
     ).readText()
 
-    private fun androidTestSource(name: String): String = File(
+    private fun externalFixtureSource(name: String): String = File(
         System.getProperty("user.dir"),
-        "src/androidTest/java/com/echolink/mobile/$name",
+        "../external-fixture/src/androidTest/java/com/echolink/mobile/fixture/$name",
     ).readText()
 }

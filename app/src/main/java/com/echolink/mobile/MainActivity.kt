@@ -142,7 +142,7 @@ class MainActivity : Activity() {
                     activeReviewJobId = null
                 }
 
-                override fun detachReviewPanelSafely() {
+                override fun detachReviewPanelSafely(): ReviewPanelDetachOutcome {
                     clearTargetUnderline()
                     if (::correctionCard.isInitialized) {
                         // A hidden focused card can keep focus until the next
@@ -153,6 +153,13 @@ class MainActivity : Activity() {
                         correctionCard.visibility = View.GONE
                         correctionCardOverlay?.visibility = View.GONE
                     }
+                    return ReviewPanelDetachOutcome.REMOVED
+                }
+
+                override fun terminallyDetachReviewSurface() {
+                    clearTargetUnderline()
+                    if (::correctionCard.isInitialized) correctionCard.visibility = View.GONE
+                    correctionCardOverlay?.visibility = View.GONE
                 }
 
                 override fun scrubTransientTextHolders() {

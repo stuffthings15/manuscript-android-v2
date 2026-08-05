@@ -179,6 +179,11 @@ class ReviewSurfaceController(
         private fun close(state: ReviewSurfaceState): ReviewSurfaceTransition = when (state) {
             is ReviewSurfaceState.Opening -> beginClose(state.targetId)
             is ReviewSurfaceState.ReviewOpen -> beginClose(state.targetId)
+            is ReviewSurfaceState.Closing -> ReviewSurfaceTransition(
+                state,
+                listOf(ReviewSurfaceEffect.DetachReviewPanelSafely),
+            )
+            is ReviewSurfaceState.RestoringFocus -> ReviewSurfaceTransition(ReviewSurfaceState.Hidden)
             else -> ReviewSurfaceTransition(state)
         }
 
@@ -241,9 +246,10 @@ class ReviewSurfaceController(
             is ReviewSurfaceState.Opening -> beginClose(state.targetId, eligibility)
             is ReviewSurfaceState.ReviewOpen -> beginClose(state.targetId, eligibility)
             is ReviewSurfaceState.Closing -> ReviewSurfaceTransition(
-                ReviewSurfaceState.Closing(
+                state = ReviewSurfaceState.Closing(
                     state.retainedTarget.copy(eligibility = eligibility),
                 ),
+                effects = listOf(ReviewSurfaceEffect.DetachReviewPanelSafely),
             )
             is ReviewSurfaceState.RestoringFocus -> ReviewSurfaceTransition(ReviewSurfaceState.Hidden)
             else -> ReviewSurfaceTransition(state)

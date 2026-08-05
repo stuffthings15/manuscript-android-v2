@@ -27,7 +27,7 @@ class ReviewSurfaceControllerTest {
             first,
         )
         assertEquals(ReviewSurfaceState.Closing(eligibleTarget), controller.state)
-        assertTrue(repeated.isEmpty())
+        assertEquals(listOf(ReviewSurfaceEffect.DetachReviewPanelSafely), repeated)
         assertTrue(cancellation.isEmpty())
     }
 
@@ -52,6 +52,20 @@ class ReviewSurfaceControllerTest {
 
         controller.dispatch(ReviewSurfaceEvent.RestorationCompleted(eligibleTarget))
         assertEquals(ReviewSurfaceState.TriggerVisible(targetId), controller.state)
+    }
+
+    @Test
+    fun closeDuringFocusRestorationRejectsLateRestorationAndLeavesSurfaceHidden() {
+        val controller = openController()
+        controller.dispatch(ReviewSurfaceEvent.CloseRequested)
+        controller.dispatch(ReviewSurfaceEvent.PanelDetached)
+        assertEquals(ReviewSurfaceState.RestoringFocus(targetId), controller.state)
+
+        val repeatedCloseEffects = controller.dispatch(ReviewSurfaceEvent.CloseRequested)
+        controller.dispatch(ReviewSurfaceEvent.RestorationCompleted(eligibleTarget))
+
+        assertTrue(repeatedCloseEffects.isEmpty())
+        assertEquals(ReviewSurfaceState.Hidden, controller.state)
     }
 
     @Test
@@ -140,7 +154,7 @@ class ReviewSurfaceControllerTest {
             val repeated = controller.dispatch(event)
 
             assertEquals(3, first.size)
-            assertTrue(repeated.isEmpty())
+            assertEquals(listOf(ReviewSurfaceEffect.DetachReviewPanelSafely), repeated)
             controller.dispatch(ReviewSurfaceEvent.PanelDetached)
             assertEquals(ReviewSurfaceState.Hidden, controller.state)
         }

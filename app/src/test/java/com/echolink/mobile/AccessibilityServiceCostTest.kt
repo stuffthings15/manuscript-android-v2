@@ -26,18 +26,20 @@ class AccessibilityServiceCostTest {
     }
 
     @Test
-    fun serviceDoesNotSubscribeToWindowChurn() {
-        // typeWindowsChanged fires on animations, toasts, and keyboard
-        // transitions. Focus, text, and window-state events already cover
-        // every case Manuscript reacts to.
-        assertFalse(config.contains("typeWindowsChanged"))
+    fun serviceSubscribesOnlyToEventsRequiredForEditorLifecycle() {
+        // Window/content changes are required to observe a detached editor and
+        // the settled application window after a package switch. The service
+        // still excludes every-view traversal and verifies one active
+        // application root before inspecting either event.
+        assertTrue(config.contains("typeWindowsChanged"))
+        assertTrue(config.contains("typeWindowContentChanged"))
         assertTrue(config.contains("typeViewFocused"))
         assertTrue(config.contains("typeViewTextChanged"))
         assertTrue(config.contains("typeWindowStateChanged"))
     }
 
     @Test
-    fun eventDeliveryIsThrottled() {
+    fun eventDeliveryIsBoundedBelowTheLifecycleDeadline() {
         val timeout = Regex("android:notificationTimeout=\"(\\d+)\"")
             .find(config)
             ?.groupValues
@@ -45,8 +47,8 @@ class AccessibilityServiceCostTest {
             ?.toInt()
         assertTrue("notificationTimeout must be declared", timeout != null)
         assertTrue(
-            "notificationTimeout $timeout ms is too aggressive for a global service",
-            (timeout ?: 0) >= 200,
+            "notificationTimeout $timeout ms must stay between bounded delivery and the 300 ms lifecycle gate",
+            (timeout ?: -1) in 0..50,
         )
     }
 }
