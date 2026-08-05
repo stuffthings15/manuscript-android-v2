@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
-import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
@@ -30,25 +29,27 @@ class AiModelDownloadWorker(
             if (!services.isCurrent(attempt)) return@withContext Result.success()
             val manager = AiModelManager.get(applicationContext)
             val selection = DownloadTargetCatalog.selectionFor(attempt.target)
-            val allowMobileData =
-                manager.downloadNetworkPolicy() == AiDownloadNetworkPolicy.ALLOW_MOBILE_DATA
             services.networkDecision(attempt.target)
             val stopped = { isStopped || !services.isCurrent(attempt) }
             val operations = GemmaDownloadModelOperations(
                 manager = manager,
                 selection = selection,
                 progressObserver = { downloaded, total ->
-                    publishWorkerProgress(attempt, downloaded, total, allowMobileData)
+                    publishWorkerProgress(downloaded, total)
                 },
             )
+            val serviceOperations = NotifyingExactDownloadServiceOperations(
+                AndroidExactDownloadServiceOperations(services),
+            ) {
+                refreshForeground(attempt, services)
+            }
             val port = ExactManagerDownloadAttemptPort(
                 exactAttempt = attempt,
                 modelOperations = operations,
-                services = AndroidExactDownloadServiceOperations(services),
+                services = serviceOperations,
                 stopped = stopped,
             )
-            val restoredPercent = services.restoreTelemetry(attempt.target)?.percent ?: 0
-            setForeground(createForegroundInfo(attempt, restoredPercent, allowMobileData))
+            setForeground(requireNotNull(createForegroundInfo(attempt, services)))
 
             when (ExactDownloadAttemptExecutor(port).execute(attempt) { isStopped }) {
                 DownloadAttemptExecutionResult.SUCCESS -> Result.success()
@@ -63,8 +64,11 @@ class AiModelDownloadWorker(
                 WorkerSetupFailurePolicy.persistUnknown(
                     attempt,
                     WorkerSetupFailureRecorder { exactAttempt, failureCode ->
-                        (services ?: AndroidDownloadServices.get(applicationContext))
-                            .failCurrent(exactAttempt, failureCode)
+                        val currentServices =
+                            services ?: AndroidDownloadServices.get(applicationContext)
+                        currentServices.failCurrent(exactAttempt, failureCode).also { persisted ->
+                            if (persisted) refreshForeground(exactAttempt, currentServices)
+                        }
                     },
                 )
             ) {
@@ -75,10 +79,8 @@ class AiModelDownloadWorker(
     }
 
     private fun publishWorkerProgress(
-        attempt: DownloadAttempt,
         downloaded: Long,
         total: Long,
-        allowMobileData: Boolean,
     ) {
         val update = progressUpdateThrottle.next(
             downloadedBytes = downloaded,
@@ -92,14 +94,14 @@ class AiModelDownloadWorker(
                 PROGRESS_PERCENT to update.percent,
             ),
         )
-        setForegroundAsync(createForegroundInfo(attempt, update.percent, allowMobileData))
     }
 
     private fun createForegroundInfo(
         attempt: DownloadAttempt,
-        percent: Int,
-        allowMobileData: Boolean,
-    ): ForegroundInfo {
+        services: AndroidDownloadServices,
+    ): ForegroundInfo? {
+        val snapshot = services.uiSnapshot(attempt.target) ?: return null
+        val state = DownloadWorkerNotificationState.from(snapshot, attempt) ?: return null
         val notificationManager =
             applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) {
@@ -111,27 +113,16 @@ class AiModelDownloadWorker(
                 ),
             )
         }
-        val cancel = DownloadCancelReceiver.pendingIntent(applicationContext, attempt)
-        val networkLabel = if (allowMobileData) {
-            R.string.qwen_download_network_any
-        } else {
-            R.string.qwen_download_network_wifi
-        }
-        val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_manuscript)
-            .setContentTitle(applicationContext.getString(R.string.qwen_download_title, "AI"))
-            .setContentText(
-                applicationContext.getString(
-                    R.string.qwen_download_progress,
-                    percent,
-                    applicationContext.getString(networkLabel),
-                ),
+        val notification = DownloadForegroundNotificationFactory.build(
+            context = applicationContext,
+            channelId = CHANNEL_ID,
+            smallIcon = R.drawable.ic_manuscript,
+            presentation = state.presentation,
+            actionIntents = DownloadNotificationActionIntents(
+                retry = DownloadRetryReceiver.pendingIntent(applicationContext, attempt),
+                cancel = DownloadCancelReceiver.pendingIntent(applicationContext, attempt),
             )
-            .setOnlyAlertOnce(true)
-            .setOngoing(true)
-            .setProgress(100, percent, percent == 0)
-            .addAction(0, applicationContext.getString(R.string.qwen_download_cancel), cancel)
-            .build()
+        )
         return if (Build.VERSION.SDK_INT >= 29) {
             ForegroundInfo(
                 NOTIFICATION_ID,
@@ -141,6 +132,13 @@ class AiModelDownloadWorker(
         } else {
             ForegroundInfo(NOTIFICATION_ID, notification)
         }
+    }
+
+    private fun refreshForeground(
+        attempt: DownloadAttempt,
+        services: AndroidDownloadServices,
+    ) {
+        createForegroundInfo(attempt, services)?.let(::setForegroundAsync)
     }
 
     private companion object {

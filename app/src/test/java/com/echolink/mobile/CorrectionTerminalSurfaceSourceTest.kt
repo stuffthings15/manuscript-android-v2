@@ -29,4 +29,19 @@ class CorrectionTerminalSurfaceSourceTest {
             )
         }
     }
+
+    @Test
+    fun sharedTerminalEngineGuardsBackendStartupBeforeAllThreeSurfacesReceiveIt() {
+        val engine = File(sourceRoot, "OnDeviceGrammarEngine.kt").readText()
+        val terminalEntry = engine
+            .substringAfter("fun polishDocumentTerminal(")
+            .substringBefore("fun polishDocument(")
+
+        assertTrue(terminalEntry.contains("watchdog.startBackend("))
+        assertTrue(terminalEntry.contains("polishDocument("))
+        assertTrue(
+            terminalEntry.indexOf("watchdog.startBackend(") <
+                terminalEntry.indexOf("polishDocument("),
+        )
+    }
 }

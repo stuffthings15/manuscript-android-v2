@@ -29,6 +29,10 @@ object CorrectionTerminalResolver {
                     userMessage = "AI returned no correction. Tap Retry.",
                     elapsedMs = elapsedMs,
                 )
+                correctedText.contains('\u2014') -> CorrectionTerminalResult.RetryableFailure(
+                    userMessage = "AI correction needs another pass. Tap Retry.",
+                    elapsedMs = elapsedMs,
+                )
                 errorsRemain && correctedText.trim() == originalText.trim() ->
                     CorrectionTerminalResult.RetryableFailure(
                         userMessage = "Errors remain. Tap Retry.",

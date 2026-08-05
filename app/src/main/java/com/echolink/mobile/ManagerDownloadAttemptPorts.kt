@@ -81,6 +81,35 @@ internal class AndroidExactDownloadServiceOperations(
     ): Boolean = services.commitReadyIfCurrent(attempt, readyObservation, action)
 }
 
+internal class NotifyingExactDownloadServiceOperations(
+    private val delegate: ExactDownloadServiceOperations,
+    private val onPersistedChange: () -> Unit,
+) : ExactDownloadServiceOperations {
+    override fun isCurrent(attempt: DownloadAttempt): Boolean = delegate.isCurrent(attempt)
+
+    override fun restoreTelemetry(target: DownloadTargetKey): DownloadTelemetry? =
+        delegate.restoreTelemetry(target)
+
+    override fun networkDecision(target: DownloadTargetKey): DownloadNetworkDecision =
+        delegate.networkDecision(target)
+
+    override fun publish(
+        attempt: DownloadAttempt,
+        observation: DownloadObservation,
+        finalByteCount: Boolean,
+    ): DownloadPublishResult = delegate.publish(attempt, observation, finalByteCount).also {
+        if (it == DownloadPublishResult.Persisted) onPersistedChange()
+    }
+
+    override fun commitReadyIfCurrent(
+        attempt: DownloadAttempt,
+        readyObservation: DownloadObservation,
+        action: () -> Unit,
+    ): Boolean = delegate.commitReadyIfCurrent(attempt, readyObservation, action).also {
+        if (it) onPersistedChange()
+    }
+}
+
 internal class ExactManagerDownloadAttemptPort<Model : Any>(
     private val exactAttempt: DownloadAttempt,
     private val modelOperations: ExactModelDownloadOperations<Model>,

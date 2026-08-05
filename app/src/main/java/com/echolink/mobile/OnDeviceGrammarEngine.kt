@@ -131,27 +131,30 @@ class OnDeviceGrammarEngine private constructor(context: Context) {
                 mainHandler.post { callback(terminal) }
             },
         )
-        val request = polishDocument(
-            source = source,
-            tone = tone,
-            sourceApplication = sourceApplication,
-            requestedJobId = requestedJobId,
-            qualityModeOverride = qualityModeOverride,
-            onParagraphCompleted = onParagraphCompleted,
-            onProgress = onProgress,
-        ) { result ->
-            watchdog.completeBackend(
-                backendResult = result.map(DocumentCorrectionResult::text),
-                originalText = source,
-                modelId = modelId,
-                errorsRemain = errorsRemainIfUnchanged,
-            )
+        val request = watchdog.startBackend(
+            originalText = source,
+            modelId = modelId,
+            errorsRemain = errorsRemainIfUnchanged,
+        ) {
+            polishDocument(
+                source = source,
+                tone = tone,
+                sourceApplication = sourceApplication,
+                requestedJobId = requestedJobId,
+                qualityModeOverride = qualityModeOverride,
+                onParagraphCompleted = onParagraphCompleted,
+                onProgress = onProgress,
+            ) { result ->
+                watchdog.completeBackend(
+                    backendResult = result.map(DocumentCorrectionResult::text),
+                    originalText = source,
+                    modelId = modelId,
+                    errorsRemain = errorsRemainIfUnchanged,
+                )
+            }
         }
         backendRequest.set(request)
-        return LocalPolishRequest {
-            request.cancel()
-            watchdog.cancel()
-        }
+        return request
     }
 
     fun polishDocument(

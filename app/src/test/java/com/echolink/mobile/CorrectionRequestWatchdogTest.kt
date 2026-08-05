@@ -2,6 +2,7 @@ package com.echolink.mobile
 
 import java.util.concurrent.atomic.AtomicLong
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -40,6 +41,18 @@ class CorrectionRequestWatchdogTest {
             originalText = "This are wrong.",
             modelId = "gemma-test",
             errorsRemain = true,
+        )
+
+        assertTrue(harness.results.single() is CorrectionTerminalResult.RetryableFailure)
+    }
+
+    @Test
+    fun emDashOutputCannotBecomeATerminalSuccess() {
+        val harness = Harness()
+        harness.watchdog.completeBackend(
+            backendResult = Result.success("This is corrected—but forbidden."),
+            originalText = "This are wrong.",
+            modelId = "gemma-test",
         )
 
         assertTrue(harness.results.single() is CorrectionTerminalResult.RetryableFailure)
@@ -116,6 +129,59 @@ class CorrectionRequestWatchdogTest {
         }
 
         assertEquals(1, harness.results.size)
+    }
+
+    @Test
+    fun synchronousBackendStartExceptionEndsWithOneRetryableTerminalResult() {
+        val harness = Harness()
+
+        val request = harness.watchdog.startBackend(
+            originalText = "This are wrong.",
+            modelId = "gemma-test",
+            errorsRemain = true,
+        ) {
+            throw IllegalStateException("backend could not start")
+        }
+        request.cancel()
+
+        assertEquals(1, harness.results.size)
+        assertTrue(harness.results.single() is CorrectionTerminalResult.RetryableFailure)
+    }
+
+    @Test
+    fun throwingBackendCancellationStillDeliversOneRetryAndPreservesThePrimaryFailure() {
+        val backendFailure = IllegalStateException("backend cancel failed")
+        val terminalFailure = IllegalStateException("terminal observer failed")
+        val results = mutableListOf<CorrectionTerminalResult>()
+        val watchdog = CorrectionRequestWatchdog(
+            timeoutMs = 1_000,
+            scheduler = ManualScheduler(),
+            elapsedRealtime = { 1_000L },
+            onTerminal = { result ->
+                results += result
+                throw terminalFailure
+            },
+        )
+        val request = watchdog.startBackend(
+            originalText = "This are wrong.",
+            modelId = "gemma-test",
+            errorsRemain = true,
+        ) {
+            LocalPolishRequest { throw backendFailure }
+        }
+
+        val thrown = try {
+            request.cancel()
+            error("Cancellation must preserve the backend failure.")
+        } catch (failure: IllegalStateException) {
+            failure
+        }
+
+        assertSame(backendFailure, thrown)
+        assertEquals(listOf(terminalFailure), thrown.suppressed.toList())
+        assertEquals(1, results.size)
+        assertTrue(results.single() is CorrectionTerminalResult.RetryableFailure)
+        assertEquals(results.single(), watchdog.terminalResult())
     }
 
     @Test

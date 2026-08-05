@@ -77,6 +77,41 @@ class CorrectionRequestWatchdog(
         finish(result)
     }
 
+    fun startBackend(
+        originalText: String,
+        modelId: String,
+        errorsRemain: Boolean,
+        start: () -> LocalPolishRequest,
+    ): LocalPolishRequest = try {
+        val backendRequest = start()
+        LocalPolishRequest {
+            var primaryFailure: Throwable? = null
+            try {
+                backendRequest.cancel()
+            } catch (failure: Throwable) {
+                primaryFailure = failure
+            }
+            try {
+                cancel()
+            } catch (terminalFailure: Throwable) {
+                if (primaryFailure == null) {
+                    primaryFailure = terminalFailure
+                } else if (primaryFailure !== terminalFailure) {
+                    primaryFailure.addSuppressed(terminalFailure)
+                }
+            }
+            primaryFailure?.let { throw it }
+        }
+    } catch (failure: Exception) {
+        completeBackend(
+            backendResult = Result.failure(failure),
+            originalText = originalText,
+            modelId = modelId,
+            errorsRemain = errorsRemain,
+        )
+        LocalPolishRequest {}
+    }
+
     fun cancel() {
         finish(
             CorrectionTerminalResult.RetryableFailure(

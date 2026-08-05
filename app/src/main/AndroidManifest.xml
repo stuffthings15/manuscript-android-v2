@@ -52,6 +52,10 @@
             android:name=".DownloadCancelReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".DownloadRetryReceiver"
+            android:exported="false" />
+
         <activity
             android:name=".ProcessTextActivity"
             android:exported="true"
