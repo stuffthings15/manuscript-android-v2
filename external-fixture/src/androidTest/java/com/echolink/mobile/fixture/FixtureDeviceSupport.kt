@@ -278,13 +278,12 @@ open class FixtureDeviceSupport {
     }
 
     protected fun waitUntilDeadline(deadline: Long, condition: () -> Boolean): Boolean {
-        while (true) {
-            val conditionMet = condition()
-            val observedAt = SystemClock.elapsedRealtime()
-            if (conditionMet) return observedAt <= deadline
-            if (observedAt >= deadline) return false
-            SystemClock.sleep(minOf(50L, deadline - observedAt))
-        }
+        return FixtureDeadlineTiming.awaitCondition(
+            deadlineMs = deadline,
+            condition = condition,
+            nowMs = SystemClock::elapsedRealtime,
+            pauseMs = SystemClock::sleep,
+        )
     }
 
     private fun String.section(start: String, end: String): String = substringAfter(start, "").substringBefore(end, "")

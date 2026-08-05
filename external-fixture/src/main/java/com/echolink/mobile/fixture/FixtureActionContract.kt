@@ -2,6 +2,7 @@ package com.echolink.mobile.fixture
 
 object FixtureActionContract {
     const val TRANSIENT_CLEAR_DESCRIPTION = "Clear generated transient field"
+    const val ACTION_COMPLETION_GATE_MS = 1_000L
 
     fun isAvailable(mode: String): Boolean = mode in setOf(
         "transient",

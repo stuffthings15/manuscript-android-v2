@@ -10,6 +10,7 @@ class FixtureActionContractTest {
         assertTrue(FixtureActionContract.isAvailable("transient"))
         assertTrue(FixtureActionContract.clearsEditor("transient"))
         assertEquals("Clear generated transient field", FixtureActionContract.description("transient"))
+        assertEquals(1_000L, FixtureActionContract.ACTION_COMPLETION_GATE_MS)
     }
 
     @Test fun normalEditorHasNoClearAction() {

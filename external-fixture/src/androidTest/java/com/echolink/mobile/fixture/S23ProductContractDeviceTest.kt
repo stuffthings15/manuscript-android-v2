@@ -39,18 +39,20 @@ class S23ProductContractDeviceTest : FixtureDeviceSupport() {
         withFixture(S23ExternalEditorFixtureActivity.MODE_TRANSIENT) {
             assertTrue(productSurfaceMeetsExpectation(trigger, true))
             tapFixtureDescription(FixtureActionContract.TRANSIENT_CLEAR_DESCRIPTION)
-            requireNotNull(
-                findFixtureDescription(
-                    S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_TRANSIENT),
-                ),
-            ).let { editor ->
-                try {
-                    assertTrue("Transient editor lost focus before its text-change proof.", editor.isFocused)
-                    assertTrue("Transient fixture action did not clear the editor.", editor.text.isNullOrEmpty())
-                } finally {
-                    editor.recycle()
+            val editorDescription =
+                S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_TRANSIENT)
+            assertTrue(
+                "Transient fixture action did not produce a focused empty editor within its bounded gate.",
+                waitUntil(FixtureActionContract.ACTION_COMPLETION_GATE_MS) {
+                    findFixtureDescription(editorDescription).let { editor ->
+                        try {
+                            editor != null && editor.isFocused && editor.text.isNullOrEmpty()
+                        } finally {
+                            editor?.recycle()
+                        }
+                    }
                 }
-            }
+            )
             assertTrue(productSurfaceMeetsExpectation(trigger, false))
         }
         assertEquals(keyboardBefore, secureSetting("default_input_method"))

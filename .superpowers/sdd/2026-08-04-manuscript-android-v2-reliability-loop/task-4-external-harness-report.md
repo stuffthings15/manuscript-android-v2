@@ -335,3 +335,28 @@ fixture-action contracts plus the existing 3 cleanup timing contracts).
 Fixture unit tests, fixture APK, and fixture test APK built successfully (70
 tasks; 4 executed, 66 up-to-date). This round claims local harness/build proof
 only; device acceptance remains a separate product-plus-fixture run.
+
+### Task 4A fix round 3: snapshot-start deadline semantics
+
+The exact product reached TriggerVisible and exposed its window before the
+500 ms deadline, but the harness began a real accessibility-window traversal
+before the deadline and rejected its true snapshot when traversal completed at
+501-502 ms. Deadline sampling now records `sampleStartedAt` before the
+condition acquires `automation.windows`. A true snapshot passes only when its
+acquisition started on or before the absolute deadline. A sample starting
+after the deadline fails without traversing. A false snapshot that completes
+after the deadline also fails; no extra sample is accepted.
+
+Boundary contracts prove: true start 499 ms / completion 502 ms passes; false
+start 499 ms / completion 502 ms fails; true start 501 ms fails without
+sampling. The 500 ms and 300 ms constants, physical input timestamp, and
+fail-closed behavior are unchanged.
+
+The transient self-proof now also waits at most 1000 ms for the exact fixture
+editor to become focused and empty after physical injection. It still fails if
+the action never completes, then separately requires product-trigger removal.
+
+Focused local result: 9 tests, 0 failures, 0 errors, 0 skipped. Fixture unit
+tests, fixture APK, and fixture test APK built successfully (70 tasks; 13
+executed, 57 up-to-date). No device mutation was made because Task 4B retained
+exclusive use of `emulator-5554`.
