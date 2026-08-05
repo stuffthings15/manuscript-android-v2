@@ -119,14 +119,16 @@ open class FixtureDeviceSupport {
         requireNotNull(findProductSurface(description)) { "Missing V2 overlay node: $description" },
     )
 
-    private fun tapNode(node: AccessibilityNodeInfo) {
+    private fun tapNode(node: AccessibilityNodeInfo): Long {
         val bounds = Rect().also(node::getBoundsInScreen)
         node.recycle()
         assertFalse("Empty bounds", bounds.isEmpty)
         val started = SystemClock.uptimeMillis()
         val down = MotionEvent.obtain(started, started, MotionEvent.ACTION_DOWN, bounds.exactCenterX(), bounds.exactCenterY(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
         val up = MotionEvent.obtain(started, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, bounds.exactCenterX(), bounds.exactCenterY(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+        val injectedAt = SystemClock.elapsedRealtime()
         try { assertTrue(automation.injectInputEvent(down, true)); assertTrue(automation.injectInputEvent(up, true)) } finally { down.recycle(); up.recycle() }
+        return injectedAt
     }
 
     protected fun swipeUpOnProductSurface(description: String) {

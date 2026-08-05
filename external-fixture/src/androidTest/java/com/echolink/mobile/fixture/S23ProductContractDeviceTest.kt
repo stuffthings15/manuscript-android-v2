@@ -38,7 +38,19 @@ class S23ProductContractDeviceTest : FixtureDeviceSupport() {
         }
         withFixture(S23ExternalEditorFixtureActivity.MODE_TRANSIENT) {
             assertTrue(productSurfaceMeetsExpectation(trigger, true))
-            Thread.sleep(S23ExternalEditorFixtureActivity.TRANSIENT_CLEAR_DELAY_MS + 500L)
+            tapFixtureDescription(FixtureActionContract.TRANSIENT_CLEAR_DESCRIPTION)
+            requireNotNull(
+                findFixtureDescription(
+                    S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_TRANSIENT),
+                ),
+            ).let { editor ->
+                try {
+                    assertTrue("Transient editor lost focus before its text-change proof.", editor.isFocused)
+                    assertTrue("Transient fixture action did not clear the editor.", editor.text.isNullOrEmpty())
+                } finally {
+                    editor.recycle()
+                }
+            }
             assertTrue(productSurfaceMeetsExpectation(trigger, false))
         }
         assertEquals(keyboardBefore, secureSetting("default_input_method"))

@@ -32,7 +32,6 @@ public final class S23ExternalEditorFixtureActivity extends Activity {
     public static final String FIXTURE_ROOT_DESCRIPTION = "Manuscript external field fixture";
     public static final String FINISH_DESCRIPTION = "Finish external field fixture";
     public static final String EDITOR_DESCRIPTION_PREFIX = "Generated fixture editor: ";
-    public static final long TRANSIENT_CLEAR_DELAY_MS = 900L;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -58,7 +57,7 @@ public final class S23ExternalEditorFixtureActivity extends Activity {
         root.addView(heading);
         root.addView(editor, params());
         if (second != null) root.addView(second, params());
-        if (lifecycle(mode) || second != null) {
+        if (FixtureActionContract.INSTANCE.isAvailable(mode) || second != null) {
             Button action = new Button(this);
             action.setText(actionDescription(mode));
             action.setContentDescription(action.getText());
@@ -67,6 +66,10 @@ public final class S23ExternalEditorFixtureActivity extends Activity {
                 if (MODE_DETACHED.equals(mode)) ((ViewGroup) editor.getParent()).removeView(editor);
                 else if (MODE_TARGET_LOSS.equals(mode)) { editor.clearFocus(); view.requestFocus(); }
                 else if (MODE_PACKAGE_SWITCH.equals(mode)) startActivity(new Intent(Settings.ACTION_SETTINGS));
+                else if (FixtureActionContract.INSTANCE.clearsEditor(mode)) {
+                    editor.requestFocus();
+                    editor.getText().clear();
+                }
                 else if (MODE_STRUCTURAL_FIELDS.equals(mode) && secondEditor != null) {
                     editor.clearFocus(); secondEditor.requestFocus();
                 }
@@ -85,7 +88,6 @@ public final class S23ExternalEditorFixtureActivity extends Activity {
             InputMethodManager input = getSystemService(InputMethodManager.class);
             if (input != null) input.showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT);
         });
-        if (MODE_TRANSIENT.equals(mode)) editor.postDelayed(() -> editor.getText().clear(), TRANSIENT_CLEAR_DELAY_MS);
     }
 
     private EditText editorFor(String mode) {
@@ -111,17 +113,12 @@ public final class S23ExternalEditorFixtureActivity extends Activity {
     }
 
     public static String actionDescription(String mode) {
-        if (MODE_DETACHED.equals(mode)) return "Detach generated field";
-        if (MODE_TARGET_LOSS.equals(mode)) return "Move focus from generated field";
         if (MODE_STRUCTURAL_FIELDS.equals(mode)) return "Focus second generated field";
-        return "Switch from generated field";
+        return FixtureActionContract.INSTANCE.description(mode);
     }
     public static String editorDescription(String mode) {
         if (MODE_STRUCTURAL_FIELDS.equals(mode)) return STRUCTURAL_FIELD_ONE_DESCRIPTION;
         return EDITOR_DESCRIPTION_PREFIX + mode;
-    }
-    private static boolean lifecycle(String mode) {
-        return MODE_DETACHED.equals(mode) || MODE_TARGET_LOSS.equals(mode) || MODE_PACKAGE_SWITCH.equals(mode);
     }
     private int dp(int value) { return (int) (value * getResources().getDisplayMetrics().density); }
     private LinearLayout.LayoutParams params() { return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT); }

@@ -311,3 +311,27 @@ an explicit disable. Reapplying only the exact V2 component restored Bound and
 `hasBound=true`; V2 was not force-stopped again. No product data or model was
 cleared. A temporary Settings-only force-stop/prewarm experiment was not
 encoded in the harness.
+
+### Task 4A fix round 2: explicit transient action
+
+The product exposed the transient trigger for about 357 ms, but the fixture's
+900 ms `postDelayed` clear started at Activity creation. Instrumentation could
+therefore reach the transient block after the field had already cleared. The
+timer was removed. Transient mode now exposes a real button named
+`Clear generated transient field`; the test first observes the V2 trigger,
+physically taps that button, verifies the still-focused fixture editor is
+empty, and then requires trigger removal from the resulting real text-change
+event. No sleep is used for correctness and no product deadline changed.
+
+The 501 ms Close result also included harness work before the physical tap:
+the deadline timestamp was captured before locating the Close node. The node
+is now located first, lookup time is reported separately, and the unchanged
+500 ms deadline starts immediately before physical down-event injection.
+Injection and observation overhead remain inside the strict gate; a real miss
+still fails.
+
+Focused local contracts: 6 tests, 0 failures, 0 errors, 0 skipped (3 explicit
+fixture-action contracts plus the existing 3 cleanup timing contracts).
+Fixture unit tests, fixture APK, and fixture test APK built successfully (70
+tasks; 4 executed, 66 up-to-date). This round claims local harness/build proof
+only; device acceptance remains a separate product-plus-fixture run.

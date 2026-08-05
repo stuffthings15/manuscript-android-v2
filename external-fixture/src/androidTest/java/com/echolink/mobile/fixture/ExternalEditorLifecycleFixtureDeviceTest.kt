@@ -27,13 +27,18 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
             assertTrue(productSurfaceMeetsExpectation(trigger, true))
             tapProductSurface(trigger)
             assertTrue(productSurfaceMeetsExpectation(close, true))
-            val closeTapAt = SystemClock.elapsedRealtime()
-            tapProductSurface(close)
-            val triggerReturned = waitUntilDeadline(closeTapAt + 500L) {
+            val closeLookupStartedAt = SystemClock.elapsedRealtime()
+            val closeInjectedAt = tapProductSurface(close)
+            val lookupMs = closeInjectedAt - closeLookupStartedAt
+            val triggerReturned = waitUntilDeadline(closeInjectedAt + 500L) {
                 productSurfaceMeetsExpectation(trigger, true, 0L)
             }
-            val triggerReturnedMs = SystemClock.elapsedRealtime() - closeTapAt
-            assertTrue("V2 trigger return after Close missed 500ms; elapsed=${triggerReturnedMs}ms", triggerReturned)
+            val triggerReturnedMs = SystemClock.elapsedRealtime() - closeInjectedAt
+            assertTrue(
+                "V2 trigger return after physical Close missed 500ms; lookup=${lookupMs}ms elapsed=${triggerReturnedMs}ms",
+                triggerReturned,
+            )
+            println("FIXTURE_CLOSE_TIMING lookupMs=$lookupMs returnedMs=$triggerReturnedMs")
         }
     }
 
