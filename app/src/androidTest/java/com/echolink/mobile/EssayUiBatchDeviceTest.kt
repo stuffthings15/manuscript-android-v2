@@ -36,10 +36,23 @@ class EssayUiBatchDeviceTest {
     @Test
     fun correctsEveryEssayThroughTheUserInterface() {
         val context = instrumentation.targetContext
+        val arguments = InstrumentationRegistry.getArguments()
+        val roundId = requireNotNull(arguments.getString("roundId")) {
+            "The roundId instrumentation argument is required."
+        }
+        require(Regex("[a-z0-9-]{3,64}").matches(roundId)) {
+            "roundId must contain lowercase letters, digits, and hyphens only."
+        }
+        val productApkSha256 = requireNotNull(arguments.getString("apkSha256")) {
+            "The apkSha256 instrumentation argument is required."
+        }.lowercase()
+        require(Regex("[0-9a-f]{64}").matches(productApkSha256)) {
+            "apkSha256 must be 64 lowercase hexadecimal characters."
+        }
         val inbox = File(context.filesDir, "essays")
         // -e essay 05 runs one essay per invocation, which is how the review
         // loop paces itself: one document, judge it, fix, run the next.
-        val only = InstrumentationRegistry.getArguments().getString("essay").orEmpty()
+        val only = arguments.getString("essay").orEmpty()
         val essays = inbox.listFiles { file -> file.extension == "txt" }
             ?.filter { only.isEmpty() || it.name.startsWith(only) }
             ?.sortedBy(File::getName)
@@ -51,7 +64,7 @@ class EssayUiBatchDeviceTest {
 
         // -e backend legacy runs the same essays on the llama.cpp runtime so
         // the two can be compared on identical text.
-        val backend = InstrumentationRegistry.getArguments().getString("backend").orEmpty()
+        val backend = arguments.getString("backend").orEmpty()
         AiModelManager.get(context)
             .forceLegacyBackendForTesting(backend.equals("legacy", ignoreCase = true))
         context.getSharedPreferences("manuscript_preferences_v1", android.content.Context.MODE_PRIVATE)
@@ -91,6 +104,12 @@ class EssayUiBatchDeviceTest {
                 // the framework refuses the injected touch outright.
                 dismissKeyboard(activity)
                 dismissCoveringDialog(activity)
+                // Stop correct-while-typing before the real tap. This run
+                // must prove the visible request itself reached live AI, not
+                // replay an earlier silent prefetch result.
+                val grammarEngine = OnDeviceGrammarEngine.get(context)
+                grammarEngine.cancelPrefetch()
+                LocalAiAttemptEvidence.reset()
                 // Press the full-width "Correct my writing" button, which is
                 // what a person actually taps. The small in-editor assist
                 // icon is hidden whenever the editor is not focused, so a tap
@@ -135,6 +154,8 @@ class EssayUiBatchDeviceTest {
                 val suggestionsMs = SystemClock.elapsedRealtime() - startedAt
 
                 var accepted = 0
+                var sectionStartedAt = startedAt
+                val sectionDurationsMs = linkedMapOf<Int, Long>()
                 while (accepted < MAX_SECTION_TAPS && onMain { card.isShown }) {
                     val live = waitUntil(SECTION_TIMEOUT_MS) {
                         !card.isShown || acceptParagraph.isEnabled
@@ -147,6 +168,9 @@ class EssayUiBatchDeviceTest {
                         !card.isShown || counter.text?.toString().orEmpty() != before
                     }
                     accepted += 1
+                    val acceptedAt = SystemClock.elapsedRealtime()
+                    sectionDurationsMs[accepted] = acceptedAt - sectionStartedAt
+                    sectionStartedAt = acceptedAt
                     Log.i(TAG, "essay=${essay.name} accepted=$accepted counter=$label")
                     SystemClock.sleep(400L)
                 }
@@ -163,6 +187,11 @@ class EssayUiBatchDeviceTest {
                     correctedBlocks.any { it.trim() == block.trim() }
                 }
                 val aiEvidence = LocalAiAttemptEvidence.snapshot()
+                val detailedAiEvidence = LocalAiAttemptEvidence.snapshotDetails()
+                val visibleRequestEvidence = detailedAiEvidence.values
+                    .filter { details -> details.keys.containsAll((1..sourceBlocks.size).toList()) }
+                    .maxByOrNull { details -> details.values.sumOf { it.attempts } }
+                    ?: emptyMap()
                 val maximumAiSections = aiEvidence.values.maxOfOrNull { it.size } ?: 0
                 check(maximumAiSections >= sourceBlocks.size) {
                     "Only $maximumAiSections of ${sourceBlocks.size} sections recorded live AI."
@@ -180,6 +209,43 @@ class EssayUiBatchDeviceTest {
                 check(totalMs <= DOCUMENT_TIMEOUT_MS) {
                     "Document exceeded ${DOCUMENT_TIMEOUT_MS}ms: ${totalMs}ms."
                 }
+                val manager = AiModelManager.get(context)
+                val selection = manager.selectedRuntime()
+                val installed = requireNotNull(manager.installedModel(selection)) {
+                    "The selected local AI model is not installed."
+                }
+                val actualBackend = if (installed.artifact.family == AiModelFamily.LEGACY_QWEN) {
+                    BackendKind.LEGACY_LLAMA_CPU
+                } else {
+                    selection.backend
+                }
+                val evidenceReport = EssayQualityEvidenceBuilder.build(
+                    essayId = essay.nameWithoutExtension,
+                    tone = WritingTone.PROOFREAD,
+                    source = source,
+                    output = corrected,
+                    acceptedSections = accepted,
+                    sectionDurationsMs = sectionDurationsMs,
+                    liveAiDetails = visibleRequestEvidence,
+                    productPackage = context.packageName,
+                    productApkSha256 = productApkSha256,
+                    model = EssayQualityModelEvidence(
+                        identifier = installed.file.name,
+                        tier = installed.artifact.tier.name,
+                        backend = actualBackend.name,
+                        sha256 = installed.artifact.sha256,
+                    ),
+                    totalDurationMs = totalMs,
+                )
+                check(evidenceReport.getJSONArray("hard_gate_failures").length() == 0) {
+                    "Quality evidence has hard-gate failures: " +
+                        evidenceReport.getJSONArray("hard_gate_failures")
+                }
+                val evidenceLocation = DeviceTestEvidenceWriter.writePrivate(
+                    context,
+                    "essay-quality-$roundId-${essay.nameWithoutExtension}.json",
+                    evidenceReport.toString(2),
+                )
                 report.writeText(
                     buildString {
                         appendLine("STATUS: OK")
@@ -191,6 +257,7 @@ class EssayUiBatchDeviceTest {
                         appendLine("acceptedTaps: $accepted")
                         appendLine("aiDocumentGroups: ${aiEvidence.size}")
                         appendLine("maximumLiveAiSections: $maximumAiSections")
+                        appendLine("evidence: $evidenceLocation")
                         appendLine()
                         append(corrected)
                     },
@@ -198,8 +265,8 @@ class EssayUiBatchDeviceTest {
                 Log.i(
                     TAG,
                     "essay=${essay.name} STATUS=OK totalMs=$totalMs " +
-                        "suggestionsMs=$suggestionsMs accepted=$accepted blocks=${sourceBlocks.size}->" +
-                        "${correctedBlocks.size} untouched=$untouched",
+                    "suggestionsMs=$suggestionsMs accepted=$accepted blocks=${sourceBlocks.size}->" +
+                        "${correctedBlocks.size} untouched=$untouched evidence=$evidenceLocation",
                 )
             } catch (failure: Throwable) {
                 report.writeText("STATUS: FAILED\nreason: ${failure.message}\n\n$source")

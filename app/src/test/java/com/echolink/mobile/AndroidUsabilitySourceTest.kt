@@ -183,6 +183,21 @@ class AndroidUsabilitySourceTest {
     }
 
     @Test
+    fun userLikeEssayAcceptanceWritesBoundLiveModelEvidence() {
+        val deviceTest = File(
+            androidRoot,
+            "app/src/androidTest/java/com/echolink/mobile/EssayUiBatchDeviceTest.kt",
+        ).readText()
+
+        assertTrue(deviceTest.contains("getString(\"roundId\")"))
+        assertTrue(deviceTest.contains("getString(\"apkSha256\")"))
+        assertTrue(deviceTest.contains("grammarEngine.cancelPrefetch()"))
+        assertTrue(deviceTest.contains("LocalAiAttemptEvidence.snapshotDetails()"))
+        assertTrue(deviceTest.contains("EssayQualityEvidenceBuilder.build("))
+        assertTrue(deviceTest.contains("DeviceTestEvidenceWriter.writePrivate("))
+    }
+
+    @Test
     fun startupModelActionWaitsForTheReadinessDialogToReleaseWindowFocus() {
         val source = source("MainActivity.kt")
 

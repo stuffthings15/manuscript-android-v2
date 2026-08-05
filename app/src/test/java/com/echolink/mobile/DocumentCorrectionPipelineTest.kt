@@ -72,6 +72,68 @@ class DocumentCorrectionPipelineTest {
     }
 
     @Test
+    fun liveAiEvidenceCountsAttemptsAndRecordsTerminalProvenance() {
+        LocalAiAttemptEvidence.reset()
+        LocalAiAttemptEvidence.record("document-a", "document-a-p1-correct_only")
+        LocalAiAttemptEvidence.record("document-a", "document-a-p1-review")
+        LocalAiAttemptEvidence.recordTerminal(
+            "document-a",
+            1,
+            LocalAiTerminalProvenance.MODEL_PLUS_SAFE_REPAIRS,
+        )
+
+        val section = LocalAiAttemptEvidence.snapshotDetails()
+            .getValue("document-a")
+            .getValue(1)
+
+        assertEquals(2, section.attempts)
+        assertEquals(LocalAiTerminalProvenance.MODEL_PLUS_SAFE_REPAIRS, section.terminalProvenance)
+    }
+
+    @Test
+    fun pipelineRecordsWhetherTerminalTextNeededSafeRepairs() = runBlocking {
+        LocalAiAttemptEvidence.reset()
+        val accepted = DocumentCorrectionPipeline(
+            primaryBackend = ScriptedBackend { "Dogs sleep." },
+        )
+        accepted.process(
+            DocumentCorrectionRequest(
+                jobId = "model-accepted",
+                source = "Dogs sleep",
+                tone = WritingTone.PROOFREAD,
+                qualityMode = QualityMode.FAST,
+            ),
+        )
+        val repaired = DocumentCorrectionPipeline(
+            primaryBackend = ScriptedBackend { "Cats purr." },
+            deterministicSentenceRepair = { it.replace("purr.", "purr!") },
+        )
+        repaired.process(
+            DocumentCorrectionRequest(
+                jobId = "model-repaired",
+                source = "Cats purr",
+                tone = WritingTone.PROOFREAD,
+                qualityMode = QualityMode.FAST,
+            ),
+        )
+
+        assertEquals(
+            LocalAiTerminalProvenance.MODEL_ACCEPTED,
+            LocalAiAttemptEvidence.snapshotDetails()
+                .getValue("model-accepted")
+                .getValue(1)
+                .terminalProvenance,
+        )
+        assertEquals(
+            LocalAiTerminalProvenance.MODEL_PLUS_SAFE_REPAIRS,
+            LocalAiAttemptEvidence.snapshotDetails()
+                .getValue("model-repaired")
+                .getValue(1)
+                .terminalProvenance,
+        )
+    }
+
+    @Test
     fun inventedQuotationIsAProtectedSpanFailure() {
         val validation = AiSafetyValidator.validate(
             original = "A certain animal can be a pet.",

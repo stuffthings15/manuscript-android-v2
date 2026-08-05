@@ -1,22 +1,65 @@
 package com.echolink.mobile
 
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Content-free evidence that every document section reached a live AI call. */
+enum class LocalAiTerminalProvenance(val wireValue: String) {
+    MODEL_ACCEPTED("model_accepted"),
+    MODEL_PLUS_SAFE_REPAIRS("model_plus_safe_repairs"),
+    CACHE_ONLY("cache_only"),
+    KEPT_ORIGINAL("kept_original"),
+}
+
+data class LocalAiSectionAttemptEvidence(
+    val attempts: Int,
+    val terminalProvenance: LocalAiTerminalProvenance?,
+)
+
 object LocalAiAttemptEvidence {
-    private val sectionsByDocument = ConcurrentHashMap<String, MutableSet<Int>>()
+    private val attemptsByDocument =
+        ConcurrentHashMap<String, ConcurrentHashMap<Int, AtomicInteger>>()
+    private val terminalByDocument =
+        ConcurrentHashMap<String, ConcurrentHashMap<Int, LocalAiTerminalProvenance>>()
     private val paragraphNumber = Regex("-p(\\d+)-")
 
     fun record(documentJobId: String, requestJobId: String) {
         val section = paragraphNumber.find(requestJobId)?.groupValues?.get(1)?.toIntOrNull()
             ?: return
-        sectionsByDocument.computeIfAbsent(documentJobId) { ConcurrentHashMap.newKeySet() }
-            .add(section)
+        attemptsByDocument.computeIfAbsent(documentJobId) { ConcurrentHashMap() }
+            .computeIfAbsent(section) { AtomicInteger() }
+            .incrementAndGet()
     }
 
-    fun snapshot(): Map<String, Set<Int>> = sectionsByDocument.mapValues { it.value.toSet() }
+    fun recordTerminal(
+        documentJobId: String,
+        section: Int,
+        provenance: LocalAiTerminalProvenance,
+    ) {
+        terminalByDocument.computeIfAbsent(documentJobId) { ConcurrentHashMap() }
+            .put(section, provenance)
+    }
 
-    fun reset() = sectionsByDocument.clear()
+    fun snapshot(): Map<String, Set<Int>> = attemptsByDocument.mapValues { it.value.keys.toSet() }
+
+    fun snapshotDetails(): Map<String, Map<Int, LocalAiSectionAttemptEvidence>> {
+        val documentIds = attemptsByDocument.keys + terminalByDocument.keys
+        return documentIds.associateWith { documentId ->
+            val attempts = attemptsByDocument[documentId].orEmpty()
+            val terminals = terminalByDocument[documentId].orEmpty()
+            (attempts.keys + terminals.keys).associateWith { section ->
+                LocalAiSectionAttemptEvidence(
+                    attempts = attempts[section]?.get() ?: 0,
+                    terminalProvenance = terminals[section],
+                )
+            }
+        }
+    }
+
+    fun reset() {
+        attemptsByDocument.clear()
+        terminalByDocument.clear()
+    }
 }
 
 data class DocumentCorrectionRequest(
@@ -753,6 +796,11 @@ class DocumentCorrectionPipeline(
                     encodeFragment(protected, chunk.text, cachedRestored)
                 }.getOrNull()
                 if (encodedCached != null) {
+                    LocalAiAttemptEvidence.recordTerminal(
+                        request.jobId,
+                        chunk.index,
+                        LocalAiTerminalProvenance.CACHE_ONLY,
+                    )
                     val cachedParagraph = CorrectedParagraph(
                         index = chunk.index,
                         original = chunk.text,
@@ -863,6 +911,19 @@ class DocumentCorrectionPipeline(
             val encodedAfterSweep = runCatching {
                 encodeFragment(protected, paragraph.text, repairedRestored)
             }.getOrNull() ?: paragraph.text
+            val terminalProvenance = when {
+                !paragraph.validated || outcomePath == "kept-original" ->
+                    LocalAiTerminalProvenance.KEPT_ORIGINAL
+                outcomePath == "sentence-salvage" ||
+                    repairedRestored.trim() != restoredBeforeSweep.trim() ->
+                    LocalAiTerminalProvenance.MODEL_PLUS_SAFE_REPAIRS
+                else -> LocalAiTerminalProvenance.MODEL_ACCEPTED
+            }
+            LocalAiAttemptEvidence.recordTerminal(
+                request.jobId,
+                chunk.index,
+                terminalProvenance,
+            )
             paragraph = paragraph.copy(text = encodedAfterSweep)
             logParagraphOutcome(
                 "paragraph=${chunk.index}/${chunks.size};path=$outcomePath;" +
