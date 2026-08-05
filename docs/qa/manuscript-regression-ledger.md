@@ -27,3 +27,11 @@ This ledger is the durable product checklist. A row is Verified only when the au
 - One lane changes per milestone commit.
 - The product contract reruns before a lane can close.
 - Parked GPT campaign files remain unstaged until Lane A and Lane B are green.
+
+## 2026-08-05 emulator checkpoint
+
+The API 36 and API 26 lifecycle, external-editor, brand, download-control, local-AI, unit, lint, and build gates passed against product commit `20dab2325844d1f02d5b58eb146c2494e1102f25` and product APK SHA-256 `285F68E4C4311F24A180C4A1831D23D7E8D372B498D40020E3E0FDD49828986C`. Harness commits `4b2eb57` and `4e2cbfe` produced product test APK SHA-256 `C762B4F605EDA7B1A0387776B242DE9EFAF5D62134ABC29DA9EC516872D96D2F`. The matrix includes the regression that removed unsafe background priority from long native llama calls and the two-frame Close-bounds gate that removed a transient API 26 host-tap coordinate.
+
+Detailed evidence: `docs/qa/emulator-lifecycle-verification-2026-08-05.md`.
+
+This checkpoint does not change any row to Verified. The required physical S23 Plus evidence, release signer, and frozen release artifacts remain pending.
