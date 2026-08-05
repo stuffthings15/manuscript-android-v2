@@ -156,10 +156,11 @@ class MainActivity : Activity() {
                     return ReviewPanelDetachOutcome.REMOVED
                 }
 
-                override fun terminallyDetachReviewSurface() {
+                override fun terminallyDetachReviewSurface(onDetached: () -> Unit) {
                     clearTargetUnderline()
                     if (::correctionCard.isInitialized) correctionCard.visibility = View.GONE
                     correctionCardOverlay?.visibility = View.GONE
+                    onDetached()
                 }
 
                 override fun scrubTransientTextHolders() {

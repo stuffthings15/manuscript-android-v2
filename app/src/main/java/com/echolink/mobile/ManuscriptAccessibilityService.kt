@@ -65,6 +65,14 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     private val modelRequests = RewriteRequestBatch()
     private var modelRequestEpoch = 0
     private val mainHandler by lazy { Handler(mainLooper) }
+    private val targetLossDeadline = ReviewTargetLossDeadline(TARGET_CLEAR_GRACE_MS)
+    private val rawEventDiagnosticSampler = ReviewRawEventDiagnosticSampler(
+        RAW_EVENT_DIAGNOSTIC_INTERVAL_MS,
+    )
+    private val terminalDetachEventRetrySampler = ReviewRawEventDiagnosticSampler(
+        TERMINAL_DETACH_EVENT_RETRY_INTERVAL_MS,
+    )
+    private var pendingTerminalDetach: TerminalDetachOwnership? = null
     private val replacementVerificationWork by lazy {
         TrackedDelayedWork(
             object : DelayedWorkScheduler {
@@ -94,10 +102,12 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
 
                 override fun detachReviewPanelSafely(): ReviewPanelDetachOutcome {
                     val panel = panelView
-                    if (panel != null) runCatching { windowManager.removeViewImmediate(panel) }
+                    if (panel != null) {
+                        panel.visibility = View.GONE
+                        runCatching { windowManager.removeViewImmediate(panel) }
+                    }
                     if (panel != null && !panel.isAttachedToWindow) panelView = null
-                    removeTrigger()
-                    return if (panelView != null || triggerView != null) {
+                    return if (panelView != null) {
                         ReviewPanelDetachOutcome.STILL_ATTACHED
                     } else if (panel == null) {
                         ReviewPanelDetachOutcome.ALREADY_ABSENT
@@ -106,18 +116,17 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
                     }
                 }
 
-                override fun terminallyDetachReviewSurface() {
+                override fun terminallyDetachReviewSurface(onDetached: () -> Unit) {
                     val panel = panelView
                     val trigger = triggerView
                     panel?.visibility = View.GONE
                     trigger?.visibility = View.GONE
-                    panel?.let { runCatching { windowManager.removeViewImmediate(it) } }
-                    trigger?.let { runCatching { windowManager.removeViewImmediate(it) } }
-                    val serviceRestartRequired = panel?.isAttachedToWindow == true ||
-                        trigger?.isAttachedToWindow == true
-                    panelView = null
-                    triggerView = null
-                    if (serviceRestartRequired) stopSelf()
+                    val ownership = TerminalDetachOwnership(panel, trigger, onDetached)
+                    pendingTerminalDetach = ownership
+                    attemptTerminalReviewSurfaceDetach(
+                        ownership,
+                        scheduledRetriesRemaining = MAX_TERMINAL_DETACH_SCHEDULED_RETRIES,
+                    )
                 }
 
                 override fun scrubTransientTextHolders() {
@@ -154,7 +163,17 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
                     when (state) {
                         is ReviewSurfaceState.TriggerVisible -> showTriggerForReacquiredTarget(state.targetId)
                         ReviewSurfaceState.Hidden -> clearTarget()
-                        else -> removeTrigger()
+                        ReviewSurfaceState.Destroyed -> removeTrigger()
+                        is ReviewSurfaceState.Closing -> {
+                            if (
+                                state.retainedTarget.eligibility == ReviewTargetEligibility.ELIGIBLE
+                            ) {
+                                parkTriggerWindowForReview()
+                            } else {
+                                removeTrigger()
+                            }
+                        }
+                        else -> parkTriggerWindowForReview()
                     }
                 }
 
@@ -170,15 +189,18 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         }
     }
     private val deferredTargetClear = Runnable {
-        // A finger resting on the trigger steals input focus from the target
-        // field, which used to clear the trigger before its click could fire.
-        // While the trigger is pressed the clear is re-armed instead.
-        if (triggerPressed) {
+        val current = target ?: return@Runnable
+        if (
+            targetLossDeadline.consumeIfDue(
+                current.reviewTargetId,
+                android.os.SystemClock.uptimeMillis(),
+            )
+        ) {
+            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
+            clearTarget()
+        } else {
             scheduleTargetClear()
-            return@Runnable
         }
-        reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
-        clearTarget()
     }
     private var triggerPressed = false
     private val releaseTriggerPress = Runnable { triggerPressed = false }
@@ -203,7 +225,14 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || isOverlaySelfEvent(event)) return
+        pendingTerminalDetach?.let { ownership ->
+            if (terminalDetachEventRetrySampler.shouldLog(android.os.SystemClock.uptimeMillis())) {
+                attemptTerminalReviewSurfaceDetach(ownership, scheduledRetriesRemaining = 0)
+            }
+        }
+        if (invalidateDetachedRetainedNodeOnWindowsChanged(event)) return
         val eventPackage = event.packageName?.toString().orEmpty()
+        if (hideForEarlyApplicationWindowStateChange(event, eventPackage)) return
         if (hideTriggerForClearedFocusedEditor(event, eventPackage)) return
         val applicationContext = verifiedApplicationEventContext(event)
             ?: if (event.eventType.isApplicationLifecycleEvent()) {
@@ -211,17 +240,52 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             } else {
                 null
             }
-        Log.i(
-            REVIEW_LOG_TAG,
-            ReviewLifecycleDiagnostics.accessibilityEvent(
-                eventType = event.eventType,
+        val provisionalTransitionHint = target?.let { current ->
+            ExternalPackageChangePolicy.provisionalTransitionHint(
+                retainedPackage = current.packageName,
                 eventPackage = eventPackage,
                 eventWindowId = event.windowId,
-                verifiedPackage = applicationContext?.metadata?.eventPackage,
-                verifiedWindowId = applicationContext?.metadata?.eventWindowId,
-                verified = applicationContext != null,
-            ),
-        )
+                isApplicationLifecycleEvent = event.eventType.isApplicationLifecycleEvent(),
+                isInputMethodWindow = runCatching {
+                    windows.any { window ->
+                        window.id == event.windowId &&
+                            window.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD
+                    }
+                }.getOrDefault(false),
+                matchingApplicationWindowCount = runCatching {
+                    windows.count { window ->
+                        window.id == event.windowId &&
+                            window.type == AccessibilityWindowInfo.TYPE_APPLICATION
+                    }
+                }.getOrDefault(0),
+            )
+        } ?: false
+        if (rawEventDiagnosticSampler.shouldLog(android.os.SystemClock.uptimeMillis())) {
+            Log.i(
+                REVIEW_LOG_TAG,
+                ReviewLifecycleDiagnostics.accessibilityEvent(
+                    eventType = event.eventType,
+                    eventPackage = eventPackage,
+                    eventWindowId = event.windowId,
+                    verifiedPackage = applicationContext?.metadata?.eventPackage,
+                    verifiedWindowId = applicationContext?.metadata?.eventWindowId,
+                    verified = applicationContext != null,
+                ),
+            )
+        }
+        if (provisionalTransitionHint && applicationContext?.metadata?.eventPackage == target?.packageName) {
+            applicationContext?.close()
+            cancelTargetClear()
+            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
+            clearTarget()
+            return
+        }
+        if (applicationContext == null && provisionalTransitionHint) {
+            cancelTargetClear()
+            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
+            clearTarget()
+            return
+        }
         if (applicationContext != null) {
             applicationContext.use { context ->
                 if (observeRetainedTargetLifecycle(context)) return
@@ -267,51 +331,100 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         }
     }
 
+    private fun invalidateDetachedRetainedNodeOnWindowsChanged(
+        event: AccessibilityEvent,
+    ): Boolean {
+        val current = target ?: return false
+        val evidence = RetainedTargetWindowChangeInspection.inspect(
+            isWindowsChanged = event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED,
+            exactNodeStillAttached = {
+                current.node.refresh() &&
+                    current.node.packageName?.toString() == current.packageName &&
+                    current.node.windowId >= 0
+            },
+        )
+        if (evidence != RetainedTargetEvidence.VERIFIED_EXACT_TARGET_DETACHED) return false
+        cancelTargetClear()
+        reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
+        clearTarget()
+        return true
+    }
+
+    private fun hideForEarlyApplicationWindowStateChange(
+        event: AccessibilityEvent,
+        eventPackage: String,
+    ): Boolean {
+        val current = target ?: return false
+        val applicationWindows = runCatching {
+            windows.filter { window ->
+                window.type == AccessibilityWindowInfo.TYPE_APPLICATION
+            }
+        }.getOrElse { return false }
+        val exactWindowStateChange =
+            ExternalPackageChangePolicy.confirmedEarlyApplicationWindowStateChange(
+                retainedPackage = current.packageName,
+                eventPackage = eventPackage,
+                eventWindowId = event.windowId,
+                matchingApplicationWindowCount = applicationWindows.count { window ->
+                    window.id == event.windowId
+                },
+                isWindowStateChanged = event.eventType ==
+                    AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            )
+        if (!exactWindowStateChange) return false
+        cancelTargetClear()
+        reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ApplicationSwitched)
+        clearTarget()
+        return true
+    }
+
     private fun retainedTargetEvidence(
         context: VerifiedApplicationEventContext,
     ): RetainedTargetEvidence {
         val current = target ?: return RetainedTargetEvidence.UNVERIFIED_EVENT
-        if (
-            ExternalPackageChangePolicy.confirmed(
-                retainedPackage = current.packageName,
-                verifiedApplicationWindowPackage = context.metadata.eventPackage,
-            )
-        ) return RetainedTargetEvidence.VERIFIED_APPLICATION_SWITCH
+        return RetainedTargetInspectionBoundary.inspect {
+            if (
+                ExternalPackageChangePolicy.confirmed(
+                    retainedPackage = current.packageName,
+                    verifiedApplicationWindowPackage = context.metadata.eventPackage,
+                )
+            ) return@inspect RetainedTargetEvidence.VERIFIED_APPLICATION_SWITCH
 
-        val focused = context.applicationRoot.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-        if (focused != null) {
-            try {
-                if (
-                    focused !== context.applicationRoot &&
-                    VerifiedApplicationEventPolicy.acceptsFocus(
-                        context.metadata,
-                        verifiedFocusMetadata(focused),
-                    )
-                ) {
-                    if (focused.isPassword) {
-                        return RetainedTargetEvidence.VERIFIED_PASSWORD_FOCUS
+            val focused = context.applicationRoot.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            if (focused != null) {
+                try {
+                    if (
+                        focused !== context.applicationRoot &&
+                        VerifiedApplicationEventPolicy.acceptsFocus(
+                            context.metadata,
+                            verifiedFocusMetadata(focused),
+                        )
+                    ) {
+                        if (focused.isPassword) {
+                            return@inspect RetainedTargetEvidence.VERIFIED_PASSWORD_FOCUS
+                        }
+                        if (reviewTargetId(context.applicationRoot, focused) == current.reviewTargetId) {
+                            return@inspect RetainedTargetEvidence.VERIFIED_EXACT_TARGET_ELIGIBLE
+                        }
+                        return@inspect RetainedTargetEvidence.VERIFIED_DIFFERENT_ELIGIBLE_TARGET
                     }
-                    if (reviewTargetId(context.applicationRoot, focused) == current.reviewTargetId) {
-                        return RetainedTargetEvidence.VERIFIED_EXACT_TARGET_ELIGIBLE
-                    }
-                    return RetainedTargetEvidence.VERIFIED_DIFFERENT_ELIGIBLE_TARGET
+                } finally {
+                    recycleIfDetached(focused, context.applicationRoot)
                 }
-            } finally {
-                recycleIfDetached(focused, context.applicationRoot)
             }
-        }
 
-        if (
-            !current.node.refresh() ||
-            current.node.packageName?.toString() != current.packageName ||
-            current.node.windowId != context.metadata.eventWindowId ||
-            reviewTargetId(context.applicationRoot, current.node) != current.reviewTargetId
-        ) return RetainedTargetEvidence.VERIFIED_EXACT_TARGET_DETACHED
-        if (current.node.isPassword) return RetainedTargetEvidence.VERIFIED_PASSWORD_FOCUS
-        return if (current.node.isFocused && current.node.isEditable) {
-            RetainedTargetEvidence.VERIFIED_EXACT_TARGET_ELIGIBLE
-        } else {
-            RetainedTargetEvidence.VERIFIED_ELIGIBLE_FOCUS_LOST
+            if (
+                !current.node.refresh() ||
+                current.node.packageName?.toString() != current.packageName ||
+                current.node.windowId != context.metadata.eventWindowId ||
+                reviewTargetId(context.applicationRoot, current.node) != current.reviewTargetId
+            ) return@inspect RetainedTargetEvidence.VERIFIED_EXACT_TARGET_DETACHED
+            if (current.node.isPassword) return@inspect RetainedTargetEvidence.VERIFIED_PASSWORD_FOCUS
+            if (current.node.isFocused && current.node.isEditable) {
+                RetainedTargetEvidence.VERIFIED_EXACT_TARGET_ELIGIBLE
+            } else {
+                RetainedTargetEvidence.VERIFIED_ELIGIBLE_FOCUS_LOST
+            }
         }
     }
 
@@ -393,6 +506,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         if (eventPackage == packageName) {
             if (panelView != null) {
                 reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ApplicationSwitched)
+                clearTarget()
             } else scheduleTargetClear()
             return
         }
@@ -413,11 +527,15 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         if (!ExternalWritingPolicy.canOffer(snapshot, packageName)) {
             recycleIfDetached(node, target?.node)
             if (panelView != null) {
-                reviewSurfaceExecutor.dispatch(
-                    if (snapshot.password) ReviewSurfaceEvent.PasswordFocused
-                    else if (target?.packageName != snapshot.packageName) ReviewSurfaceEvent.ApplicationSwitched
-                    else ReviewSurfaceEvent.TargetLost,
-                )
+                when {
+                    snapshot.password ->
+                        reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.PasswordFocused)
+                    target?.packageName != snapshot.packageName -> {
+                        reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ApplicationSwitched)
+                        clearTarget()
+                    }
+                    else -> reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
+                }
             } else if (snapshot.password) {
                 reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.PasswordFocused)
                 clearTarget()
@@ -453,6 +571,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             } else if (candidate.packageName != current.packageName) {
                 recycleIfDetached(node, current.node)
                 reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ApplicationSwitched)
+                clearTarget()
             } else if (candidate.reviewTargetId != current.reviewTargetId) {
                 recycleIfDetached(node, current.node)
                 reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
@@ -635,33 +754,25 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
 
     private fun showTrigger(bounds: Rect) {
         rememberVisibleKeyboardFrame()
-        val metrics = resources.displayMetrics
-        val size = dp(48)
-        val x = (bounds.right - size).coerceIn(0, maxOf(0, metrics.widthPixels - size))
-        val preferredY = if (bounds.top >= size + dp(8)) {
-            bounds.top - size - dp(4)
-        } else {
-            bounds.bottom + dp(4)
-        }
-        val y = preferredY.coerceIn(0, maxOf(0, metrics.heightPixels - size))
-        val params = WindowManager.LayoutParams(
-            size,
-            size,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            android.graphics.PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            this.x = x
-            this.y = y
-        }
         val current = triggerView
         if (current != null) {
-            windowManager.updateViewLayout(current, params)
-            TriggerPulseController.applyState(current, visibleTriggerState())
+            val params = triggerWindowParams(bounds, touchable = true)
+            current.visibility = View.VISIBLE
+            current.alpha = ManuscriptTriggerPresentation.PULSE_ALPHA_FROM
+            current.isClickable = true
+            current.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            val state = visibleTriggerState()
+            TriggerPulseController.applyState(current, state)
+            current.postInvalidateOnAnimation()
+            if (runCatching { windowManager.updateViewLayout(current, params) }.isFailure) {
+                removeTrigger()
+                if (triggerView == null) showTrigger(bounds)
+                return
+            }
+            publishVisibleTriggerAccessibility(current, state)
             return
         }
+        val params = triggerWindowParams(bounds, touchable = true)
         val button = ManuscriptTriggerViewFactory.create(
             context = this,
             contentDescription = getString(R.string.external_assistant_open),
@@ -689,12 +800,119 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             }
             false
         }
+        val state = visibleTriggerState()
+        TriggerPulseController.applyState(button, state)
         triggerView = button
+        Log.i(REVIEW_LOG_TAG, "event=external-trigger-add-start")
         if (runCatching { windowManager.addView(button, params) }.isFailure) {
+            TriggerPulseController.stop(button)
             triggerView = null
         } else {
-            TriggerPulseController.applyState(button, visibleTriggerState())
+            Log.i(
+                REVIEW_LOG_TAG,
+                "event=external-trigger-add-complete;attached=${button.isAttachedToWindow}",
+            )
+            publishVisibleTriggerAccessibilityAfterLayout(button, state)
         }
+    }
+
+    private fun triggerWindowParams(
+        bounds: Rect,
+        touchable: Boolean,
+    ): WindowManager.LayoutParams {
+        val metrics = resources.displayMetrics
+        val size = dp(48)
+        val x = (bounds.right - size).coerceIn(0, maxOf(0, metrics.widthPixels - size))
+        val preferredY = if (bounds.top >= size + dp(8)) {
+            bounds.top - size - dp(4)
+        } else {
+            bounds.bottom + dp(4)
+        }
+        val y = preferredY.coerceIn(0, maxOf(0, metrics.heightPixels - size))
+        val touchabilityFlag = if (touchable) {
+            0
+        } else {
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        return WindowManager.LayoutParams(
+            size,
+            size,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                touchabilityFlag,
+            android.graphics.PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            this.x = x
+            this.y = y
+        }
+    }
+
+    private fun publishVisibleTriggerAccessibilityAfterLayout(
+        trigger: View,
+        state: ManuscriptTriggerState,
+    ) {
+        trigger.addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
+            override fun onLayoutChange(
+                view: View,
+                left: Int,
+                top: Int,
+                right: Int,
+                bottom: Int,
+                oldLeft: Int,
+                oldTop: Int,
+                oldRight: Int,
+                oldBottom: Int,
+            ) {
+                trigger.removeOnLayoutChangeListener(this)
+                Log.i(
+                    REVIEW_LOG_TAG,
+                    "event=external-trigger-first-layout;attached=${trigger.isAttachedToWindow}",
+                )
+                val observer = trigger.viewTreeObserver
+                observer.addOnDrawListener(object : android.view.ViewTreeObserver.OnDrawListener {
+                    private var recorded = false
+
+                    override fun onDraw() {
+                        if (recorded) return
+                        recorded = true
+                        Log.i(
+                            REVIEW_LOG_TAG,
+                            "event=external-trigger-first-draw;attached=${trigger.isAttachedToWindow}",
+                        )
+                        trigger.post {
+                            if (observer.isAlive) {
+                                observer.removeOnDrawListener(this)
+                            }
+                        }
+                    }
+                })
+                publishVisibleTriggerAccessibility(trigger, state)
+            }
+        })
+    }
+
+    private fun publishVisibleTriggerAccessibility(
+        trigger: View,
+        state: ManuscriptTriggerState,
+    ) {
+        val currentTarget = target
+        val surfaceState = reviewSurfaceController.state
+        val verifiedEligibleTarget =
+            currentTarget != null &&
+                surfaceState is ReviewSurfaceState.TriggerVisible &&
+                currentTarget.reviewTargetId == surfaceState.targetId
+        if (
+            !ManuscriptTriggerPolicy.shouldPublishAccessibilitySurface(
+                attached = trigger.isAttachedToWindow,
+                state = state,
+                verifiedEligibleTarget = verifiedEligibleTarget,
+            )
+        ) {
+            return
+        }
+        trigger.sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
     }
 
     private fun visibleTriggerState(): ManuscriptTriggerState =
@@ -1902,14 +2120,13 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         val currentId = currentReviewTargetId()
         if (currentId != null && currentId != candidateId) {
             val switchedApplication = target?.packageName != candidate.packageName
-            clearTargetRetaining(candidate.node)
-            reviewSurfaceExecutor.dispatch(
-                if (switchedApplication) {
-                    ReviewSurfaceEvent.ApplicationSwitched
-                } else {
-                    ReviewSurfaceEvent.TargetLost
-                },
-            )
+            if (switchedApplication) {
+                reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ApplicationSwitched)
+                clearTargetRetaining(candidate.node)
+            } else {
+                clearTargetRetaining(candidate.node)
+                reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
+            }
         }
         setTarget(candidate)
         reviewSurfaceExecutor.dispatch(
@@ -2110,12 +2327,60 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     }
 
     private fun scheduleTargetClear() {
+        val current = target ?: return
+        val remainingMillis = targetLossDeadline.arm(
+            current.reviewTargetId,
+            android.os.SystemClock.uptimeMillis(),
+        )
         mainHandler.removeCallbacks(deferredTargetClear)
-        mainHandler.postDelayed(deferredTargetClear, TARGET_CLEAR_GRACE_MS)
+        mainHandler.postDelayed(deferredTargetClear, remainingMillis)
     }
 
     private fun cancelTargetClear() {
         mainHandler.removeCallbacks(deferredTargetClear)
+        targetLossDeadline.cancel()
+    }
+
+    private fun attemptTerminalReviewSurfaceDetach(
+        ownership: TerminalDetachOwnership,
+        scheduledRetriesRemaining: Int,
+    ) {
+        if (pendingTerminalDetach !== ownership) return
+        val panelRemoval = ownership.panel?.let {
+            runCatching { windowManager.removeViewImmediate(it) }
+        }
+        val triggerRemoval = ownership.trigger?.let {
+            runCatching { windowManager.removeViewImmediate(it) }
+        }
+        if (
+            ownership.panel?.isAttachedToWindow != true &&
+            ownership.trigger?.isAttachedToWindow != true
+        ) {
+            if (panelView === ownership.panel) panelView = null
+            if (triggerView === ownership.trigger) triggerView = null
+            pendingTerminalDetach = null
+            ownership.onDetached()
+            return
+        }
+        val failureType = panelRemoval?.exceptionOrNull()?.javaClass?.simpleName
+            ?: triggerRemoval?.exceptionOrNull()?.javaClass?.simpleName
+            ?: "still-attached"
+        Log.w(
+            REVIEW_LOG_TAG,
+            "kind=surface-effect;effect=TerminalDetach;outcome=STILL_ATTACHED" +
+                ";failure=$failureType;scheduledRetriesRemaining=$scheduledRetriesRemaining",
+        )
+        if (scheduledRetriesRemaining > 0) {
+            mainHandler.postDelayed(
+                {
+                    attemptTerminalReviewSurfaceDetach(
+                        ownership,
+                        scheduledRetriesRemaining - 1,
+                    )
+                },
+                TERMINAL_DETACH_RETRY_MS,
+            )
+        }
     }
 
     private fun cancelKeyboardRestore() {
@@ -2146,6 +2411,23 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         runCatching { windowManager.removeViewImmediate(trigger) }
         if (!trigger.isAttachedToWindow) {
             triggerView = null
+        }
+    }
+
+    private fun parkTriggerWindowForReview() {
+        val trigger = triggerView ?: return
+        val params = trigger.layoutParams as? WindowManager.LayoutParams ?: run {
+            removeTrigger()
+            return
+        }
+        TriggerPulseController.stop(trigger)
+        trigger.visibility = View.VISIBLE
+        trigger.alpha = 0f
+        trigger.isClickable = false
+        trigger.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        if (runCatching { windowManager.updateViewLayout(trigger, params) }.isFailure) {
+            removeTrigger()
         }
     }
 
@@ -2213,6 +2495,12 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         val node: AccessibilityNodeInfo,
     )
 
+    private data class TerminalDetachOwnership(
+        val panel: View?,
+        val trigger: View?,
+        val onDetached: () -> Unit,
+    )
+
     private inner class VerifiedApplicationEventContext(
         val metadata: VerifiedApplicationEventMetadata,
         val applicationRoot: AccessibilityNodeInfo,
@@ -2245,6 +2533,10 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         const val REPLACEMENT_LOG_TAG = "ManuscriptReplace"
         const val REVIEW_LOG_TAG = "ManuscriptReview"
         const val TARGET_CLEAR_GRACE_MS = 800L
+        const val TERMINAL_DETACH_RETRY_MS = 16L
+        const val MAX_TERMINAL_DETACH_SCHEDULED_RETRIES = 3
+        const val TERMINAL_DETACH_EVENT_RETRY_INTERVAL_MS = 250L
+        const val RAW_EVENT_DIAGNOSTIC_INTERVAL_MS = 250L
         const val PRESS_GUARD_MS = 600L
         const val COLOR_BACKGROUND = ManuscriptPalette.BACKGROUND
         const val COLOR_SURFACE = ManuscriptPalette.SURFACE_RAISED

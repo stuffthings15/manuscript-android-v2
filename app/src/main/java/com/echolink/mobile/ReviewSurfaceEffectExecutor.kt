@@ -3,7 +3,7 @@ package com.echolink.mobile
 interface ReviewSurfaceEffectActions {
     fun cancelStaleCorrectionAndCallbackWork()
     fun detachReviewPanelSafely(): ReviewPanelDetachOutcome
-    fun terminallyDetachReviewSurface()
+    fun terminallyDetachReviewSurface(onDetached: () -> Unit)
     fun scrubTransientTextHolders()
     fun reacquireFocusedTarget(mode: ReviewTargetReacquisition): ReviewTarget
     fun restoreKeyboard(targetId: ReviewTargetId)
@@ -98,8 +98,9 @@ class ReviewSurfaceEffectExecutor(
                             raisedEvents.addLast(ReviewSurfaceEvent.CloseRequested)
                         } else {
                             detachAttemptCount = 0
-                            actions.terminallyDetachReviewSurface()
-                            raisedEvents.addLast(ReviewSurfaceEvent.Destroy)
+                            actions.terminallyDetachReviewSurface {
+                                dispatch(ReviewSurfaceEvent.PanelDetached)
+                            }
                         }
                     }
                 }

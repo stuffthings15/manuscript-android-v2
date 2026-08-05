@@ -20,6 +20,18 @@ data class TriggerFacts(
 )
 
 object ManuscriptTriggerPolicy {
+    fun shouldPublishAccessibilitySurface(
+        attached: Boolean,
+        state: ManuscriptTriggerState,
+        verifiedEligibleTarget: Boolean,
+    ): Boolean =
+        attached &&
+            verifiedEligibleTarget &&
+            (
+                state == ManuscriptTriggerState.VISIBLE_PULSING ||
+                    state == ManuscriptTriggerState.VISIBLE_STATIC_REDUCED_MOTION
+            )
+
     fun state(
         focused: Boolean,
         editable: Boolean,

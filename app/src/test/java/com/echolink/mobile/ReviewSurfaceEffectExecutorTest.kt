@@ -34,11 +34,12 @@ class ReviewSurfaceEffectExecutorTest {
     }
 
     @Test
-    fun persistentDetachFailureUsesBoundedTerminalCleanupInsteadOfEndlessClosing() {
+    fun terminalDetachRetainsOwnershipUntilConfirmedThenRestoresAndAllowsFutureTriggers() {
         val fixture = openFixture()
         repeat(3) {
             fixture.actions.detachOutcomes.addLast(ReviewPanelDetachOutcome.STILL_ATTACHED)
         }
+        fixture.actions.terminalDetachOutcome = ReviewPanelDetachOutcome.STILL_ATTACHED
 
         fixture.executor.dispatch(ReviewSurfaceEvent.CloseRequested)
 
@@ -46,7 +47,16 @@ class ReviewSurfaceEffectExecutorTest {
             listOf("cancel", "detach", "scrub", "detach", "detach", "terminal-detach"),
             fixture.actions.calls,
         )
-        assertEquals(ReviewSurfaceState.Destroyed, fixture.controller.state)
+        assertTrue(fixture.actions.ownsAttachedSurface)
+        assertTrue(fixture.controller.state is ReviewSurfaceState.Closing)
+
+        fixture.actions.confirmTerminalDetach()
+
+        assertFalse(fixture.actions.ownsAttachedSurface)
+        assertEquals(ReviewSurfaceState.TriggerVisible(TARGET_ID), fixture.controller.state)
+
+        fixture.executor.dispatch(ReviewSurfaceEvent.OpenRequested)
+        assertTrue(fixture.controller.state is ReviewSurfaceState.Opening)
     }
 
     @Test
@@ -288,6 +298,9 @@ class ReviewSurfaceEffectExecutorTest {
         val diagnostics = mutableListOf<String>()
         val detachOutcomes = ArrayDeque<ReviewPanelDetachOutcome>()
         var reacquired = ReviewTarget(TARGET_ID, ReviewTargetEligibility.ELIGIBLE)
+        var terminalDetachOutcome = ReviewPanelDetachOutcome.REMOVED
+        var ownsAttachedSurface = true
+        private var terminalDetachConfirmation: (() -> Unit)? = null
 
         override fun cancelStaleCorrectionAndCallbackWork() {
             calls += "cancel"
@@ -298,8 +311,20 @@ class ReviewSurfaceEffectExecutorTest {
             return detachOutcomes.removeFirstOrNull() ?: ReviewPanelDetachOutcome.REMOVED
         }
 
-        override fun terminallyDetachReviewSurface() {
+        override fun terminallyDetachReviewSurface(onDetached: () -> Unit) {
             calls += "terminal-detach"
+            if (terminalDetachOutcome == ReviewPanelDetachOutcome.STILL_ATTACHED) {
+                terminalDetachConfirmation = onDetached
+            } else {
+                ownsAttachedSurface = false
+                onDetached()
+            }
+        }
+
+        fun confirmTerminalDetach() {
+            ownsAttachedSurface = false
+            terminalDetachConfirmation?.invoke()
+            terminalDetachConfirmation = null
         }
 
         override fun scrubTransientTextHolders() {

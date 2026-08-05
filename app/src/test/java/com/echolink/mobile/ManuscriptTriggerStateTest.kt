@@ -1,9 +1,53 @@
 package com.echolink.mobile
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ManuscriptTriggerStateTest {
+    @Test
+    fun accessibilityPublicationRequiresAttachedVisibleVerifiedTrigger() {
+        val visibleStates = listOf(
+            ManuscriptTriggerState.VISIBLE_PULSING,
+            ManuscriptTriggerState.VISIBLE_STATIC_REDUCED_MOTION,
+        )
+        visibleStates.forEach { state ->
+            assertTrue(
+                ManuscriptTriggerPolicy.shouldPublishAccessibilitySurface(
+                    attached = true,
+                    state = state,
+                    verifiedEligibleTarget = true,
+                ),
+            )
+        }
+        ManuscriptTriggerState.entries
+            .filterNot { it in visibleStates }
+            .forEach { state ->
+                assertFalse(
+                    ManuscriptTriggerPolicy.shouldPublishAccessibilitySurface(
+                        attached = true,
+                        state = state,
+                        verifiedEligibleTarget = true,
+                    ),
+                )
+            }
+        assertFalse(
+            ManuscriptTriggerPolicy.shouldPublishAccessibilitySurface(
+                attached = false,
+                state = ManuscriptTriggerState.VISIBLE_PULSING,
+                verifiedEligibleTarget = true,
+            ),
+        )
+        assertFalse(
+            ManuscriptTriggerPolicy.shouldPublishAccessibilitySurface(
+                attached = true,
+                state = ManuscriptTriggerState.VISIBLE_PULSING,
+                verifiedEligibleTarget = false,
+            ),
+        )
+    }
+
     @Test
     fun focusedNormalFieldWithTextUsesTheSharedPulse() {
         assertEquals(

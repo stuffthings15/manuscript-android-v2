@@ -7,6 +7,18 @@ import org.junit.Test
 
 class ReviewLifecycleDiagnosticsTest {
     @Test
+    fun rawEventDiagnosticsAreRateBoundedAcrossHighChurn() {
+        val sampler = ReviewRawEventDiagnosticSampler(minimumIntervalMillis = 250L)
+
+        val decisions = (0L until 100L).map { now -> sampler.shouldLog(now) }
+
+        assertEquals(1, decisions.count { it })
+        assertTrue(sampler.shouldLog(nowMillis = 250L))
+        assertFalse(sampler.shouldLog(nowMillis = 499L))
+        assertTrue(sampler.shouldLog(nowMillis = 500L))
+    }
+
+    @Test
     fun accessibilityEventIncludesOnlyBoundedVerifiedIdentityMetadata() {
         val diagnostic = ReviewLifecycleDiagnostics.accessibilityEvent(
             eventType = 32,

@@ -10,6 +10,19 @@ enum class ReviewLifecycleEffectOutcome {
     SKIPPED,
 }
 
+class ReviewRawEventDiagnosticSampler(
+    private val minimumIntervalMillis: Long,
+) {
+    private var lastLoggedAtMillis: Long? = null
+
+    fun shouldLog(nowMillis: Long): Boolean {
+        val previous = lastLoggedAtMillis
+        if (previous != null && nowMillis - previous < minimumIntervalMillis) return false
+        lastLoggedAtMillis = nowMillis
+        return true
+    }
+}
+
 object ReviewLifecycleDiagnostics {
     const val MAX_DIAGNOSTIC_LENGTH = 320
     private const val MAX_IDENTITY_LENGTH = 96

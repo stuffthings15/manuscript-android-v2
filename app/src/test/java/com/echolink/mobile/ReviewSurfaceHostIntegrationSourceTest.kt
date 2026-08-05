@@ -8,6 +8,104 @@ import org.junit.Test
 
 class ReviewSurfaceHostIntegrationSourceTest {
     @Test
+    fun triggerCreationDiagnosticsBoundAddAttachLayoutAndDrawWithoutContent() {
+        val source = source("ManuscriptAccessibilityService.kt")
+        val showStart = source.indexOf("private fun showTrigger(bounds: Rect)")
+        val showEnd = source.indexOf("private fun visibleTriggerState", showStart)
+        val showBody = source.substring(showStart, showEnd)
+        assertTrue(showBody.contains("event=external-trigger-add-start"))
+        assertTrue(showBody.contains("event=external-trigger-add-complete"))
+        assertTrue(showBody.contains("event=external-trigger-first-layout"))
+        assertTrue(showBody.contains("event=external-trigger-first-draw"))
+        assertTrue(showBody.contains("removeOnDrawListener(this)"))
+        assertFalse(showBody.contains("snapshot.text"))
+        assertFalse(showBody.contains("workingText"))
+        assertFalse(showBody.contains("contentDescription="))
+    }
+
+    @Test
+    fun invalidatedPanelCloseRemovesTriggerBeforeDetachWhileUserCloseStillParksIt() {
+        val source = source("ManuscriptAccessibilityService.kt")
+        val renderStart = source.indexOf("override fun renderReviewSurfaceState")
+        val renderEnd = source.indexOf("override fun recordLifecycleDiagnostic", renderStart)
+        val renderBody = source.substring(renderStart, renderEnd)
+        assertTrue(renderBody.contains("is ReviewSurfaceState.Closing"))
+        assertTrue(renderBody.contains("state.retainedTarget.eligibility == ReviewTargetEligibility.ELIGIBLE"))
+        assertTrue(renderBody.contains("parkTriggerWindowForReview()"))
+        assertTrue(renderBody.contains("removeTrigger()"))
+    }
+
+    @Test
+    fun retainedTriggerWindowIsRenderedInertAndReusedWithoutInterceptingInput() {
+        val source = source("ManuscriptAccessibilityService.kt")
+        val parkStart = source.indexOf("private fun parkTriggerWindowForReview()")
+        val parkEnd = source.indexOf("private fun label", parkStart)
+        assertTrue(parkStart >= 0)
+        val parkBody = source.substring(parkStart, parkEnd)
+        assertTrue(parkBody.contains("trigger.visibility = View.VISIBLE"))
+        assertTrue(parkBody.contains("trigger.alpha = 0f"))
+        assertTrue(parkBody.contains("trigger.isClickable = false"))
+        assertTrue(
+            parkBody.contains(
+                "trigger.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS",
+            ),
+        )
+        assertTrue(parkBody.contains("WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE"))
+        assertTrue(parkBody.contains("windowManager.updateViewLayout(trigger, params)"))
+        assertTrue(parkBody.contains("removeTrigger()"))
+
+        val showStart = source.indexOf("private fun showTrigger(bounds: Rect)")
+        val showEnd = source.indexOf("private fun publishVisibleTriggerAccessibilityAfterLayout", showStart)
+        val showBody = source.substring(showStart, showEnd)
+        val retainedStart = showBody.indexOf("val current = triggerView")
+        val retainedEnd = showBody.indexOf("val button = ManuscriptTriggerViewFactory.create")
+        val retainedBody = showBody.substring(retainedStart, retainedEnd)
+        assertFalse(retainedBody.contains("addView"))
+        assertTrue(retainedBody.contains("triggerWindowParams(bounds, touchable = true)"))
+        assertTrue(retainedBody.contains("current.visibility = View.VISIBLE"))
+        assertTrue(retainedBody.contains("current.alpha = ManuscriptTriggerPresentation.PULSE_ALPHA_FROM"))
+        assertTrue(retainedBody.contains("current.isClickable = true"))
+        assertTrue(
+            retainedBody.contains(
+                "current.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES",
+            ),
+        )
+        assertTrue(retainedBody.contains("windowManager.updateViewLayout(current, params)"))
+        assertTrue(retainedBody.contains("TriggerPulseController.applyState(current, state)"))
+        assertTrue(retainedBody.contains("current.postInvalidateOnAnimation()"))
+        val restoreVisible = retainedBody.indexOf("current.visibility = View.VISIBLE")
+        val restoreAlpha = retainedBody.indexOf(
+            "current.alpha = ManuscriptTriggerPresentation.PULSE_ALPHA_FROM",
+        )
+        val restoreAccessibility = retainedBody.indexOf(
+            "current.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES",
+        )
+        val restoreClick = retainedBody.indexOf("current.isClickable = true")
+        val restorePulse = retainedBody.indexOf("TriggerPulseController.applyState(current, state)")
+        val invalidate = retainedBody.indexOf("current.postInvalidateOnAnimation()")
+        val makeTouchable = retainedBody.indexOf("windowManager.updateViewLayout(current, params)")
+        val publish = retainedBody.indexOf("publishVisibleTriggerAccessibility(current, state)")
+        listOf(
+            restoreVisible,
+            restoreAlpha,
+            restoreAccessibility,
+            restoreClick,
+            restorePulse,
+            invalidate,
+        ).forEach { restorationStep ->
+            assertTrue(restorationStep >= 0)
+            assertTrue(restorationStep < makeTouchable)
+        }
+        assertTrue(makeTouchable < publish)
+
+        val clearStart = source.indexOf("private fun clearTarget()")
+        val clearEnd = source.indexOf("private fun clearTargetRetaining", clearStart)
+        assertTrue(source.substring(clearStart, clearEnd).contains("removeTrigger()"))
+        assertTrue(source.contains("windowManager.removeViewImmediate(panel)"))
+        assertTrue(source.contains("windowManager.removeViewImmediate(trigger)"))
+    }
+
+    @Test
     fun mainActivityRoutesReviewLifecycleThroughSharedExecutor() {
         val source = source("MainActivity.kt")
 
@@ -127,6 +225,42 @@ class ReviewSurfaceHostIntegrationSourceTest {
         assertTrue(source.contains("matchingWindows.size != 1"))
         assertTrue(source.contains("windowManager.removeViewImmediate(panel)"))
         assertTrue(source.contains("windowManager.removeViewImmediate(trigger)"))
+        val detachStart = source.indexOf("override fun detachReviewPanelSafely()")
+        val terminalStart = source.indexOf("override fun terminallyDetachReviewSurface")
+        val detachBody = source.substring(detachStart, terminalStart)
+        val hidePanel = detachBody.indexOf("panel.visibility = View.GONE")
+        val detachPanel = detachBody.indexOf("windowManager.removeViewImmediate(panel)")
+        assertTrue(hidePanel >= 0)
+        assertTrue(hidePanel < detachPanel)
+        assertFalse(detachBody.contains("removeTrigger()"))
+        assertTrue(source.contains("parkTriggerWindowForReview()"))
+        assertTrue(source.contains("publishVisibleTriggerAccessibility"))
+        assertTrue(source.contains("sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)"))
+        val triggerCreationStart = source.indexOf("val button = ManuscriptTriggerViewFactory.create")
+        val triggerCreationEnd = source.indexOf("private fun publishVisibleTriggerAccessibility", triggerCreationStart)
+        val triggerCreation = source.substring(triggerCreationStart, triggerCreationEnd)
+        val visibleBeforeAttach = triggerCreation.indexOf("TriggerPulseController.applyState(button, state)")
+        val attach = triggerCreation.indexOf("windowManager.addView(button, params)")
+        assertTrue(visibleBeforeAttach >= 0)
+        assertTrue(visibleBeforeAttach < attach)
+        assertTrue(triggerCreation.contains("publishVisibleTriggerAccessibilityAfterLayout(button, state)"))
+        val afterLayoutStart = source.indexOf("private fun publishVisibleTriggerAccessibilityAfterLayout")
+        val afterLayoutEnd = source.indexOf("private fun publishVisibleTriggerAccessibility", afterLayoutStart + 1)
+        val afterLayoutBody = source.substring(afterLayoutStart, afterLayoutEnd)
+        val removeListener = afterLayoutBody.indexOf("removeOnLayoutChangeListener(this)")
+        val publishAfterLayout = afterLayoutBody.indexOf("publishVisibleTriggerAccessibility(trigger, state)")
+        assertTrue(removeListener >= 0)
+        assertTrue(removeListener < publishAfterLayout)
+        val publicationStart = source.indexOf("private fun publishVisibleTriggerAccessibility")
+        val publicationEnd = source.indexOf("private fun visibleTriggerState", publicationStart)
+        val publicationBody = source.substring(publicationStart, publicationEnd)
+        assertTrue(publicationBody.contains("trigger.sendAccessibilityEvent"))
+        assertFalse(publicationBody.contains("event.text"))
+        assertFalse(publicationBody.contains("contentDescription"))
+        assertFalse(publicationBody.contains("performClick"))
+        assertFalse(publicationBody.contains("OpenRequested"))
+        assertFalse(publicationBody.contains("FocusedTargetAvailable"))
+        assertFalse(publicationBody.contains("snapshot"))
         val deferredClear = source.substring(
             source.indexOf("private val deferredTargetClear"),
             source.indexOf("private var triggerPressed"),
