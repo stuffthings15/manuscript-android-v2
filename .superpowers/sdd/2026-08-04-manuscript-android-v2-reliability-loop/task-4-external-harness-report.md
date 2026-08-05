@@ -105,3 +105,74 @@ observation; they are no longer attributable to same-target instrumentation.
 Do not clear data or dismiss/change that user-state dialog automatically. The
 next task should capture bounded event-to-identity diagnostics with this live
 fixture and decide the production structural/overlay behavior separately.
+
+## Round 1 harness review fixes
+
+### Review fixes applied
+
+- Exact V2 health proof now requires the enabled setting to contain only
+  `com.remote.Manuscript.v2.debug/com.echolink.mobile.ManuscriptAccessibilityService`,
+  exactly one Bound accessibility service, `Crashed services:{}`, and an exact
+  `dumpsys activity services` record for that component with `hasBound=true`.
+- Trigger, Close, resize-handle, and panel assertions now search only a
+  `TYPE_ACCESSIBILITY_OVERLAY` whose root and matching node package are
+  `com.remote.Manuscript.v2.debug`. Fixture controls separately search only the
+  fixture `TYPE_APPLICATION` root.
+- `productSurfaceMeetsExpectation` now returns whether the requested visibility
+  expectation was met. The transient contract correctly requires false after
+  the clear delay.
+- Product acceptance now injects real `ACTION_DOWN`, `ACTION_MOVE`, and
+  `ACTION_UP` coordinates on the V2 `resize_review_panel` handle. It captures
+  the exact V2 overlay height and requires the first upward gesture to enlarge
+  it.
+- Product acceptance also requires an actual `TYPE_INPUT_METHOD` window and an
+  editable focused fixture field before opening the panel and after closing it.
+
+### TDD and build evidence
+
+The first Round 1 device run was RED because the stricter empty crash-section
+parser treated `Crashed services:{}` as `:{}`. The parser was corrected to
+normalize that colon. The final build passed:
+
+```text
+:external-fixture:assembleDebug
+:external-fixture:assembleDebugAndroidTest
+BUILD SUCCESSFUL (63 actionable tasks; 4 executed, 59 up-to-date)
+```
+
+Both fixture APKs were installed with `adb install -r -t` on `emulator-5554`.
+Only the V2 component was enabled before the final run.
+
+### Final Round 1 device result
+
+Exact total: 6 run, 0 passed, 6 failed, 0 skipped.
+
+The final post-run evidence had one Bound Manuscript service, an empty Crashed
+services set, and the exact V2 Activity service record with `hasBound=true`.
+The V2 overlay identity check is live: the empty/password contract failures
+reported an unexpected V2 `Open Manuscript for this text field` surface rather
+than accepting an ambiguous copied string.
+
+1. `triggerVisibleSettingsSwitchMeetsLifecycleTimings` — fixture Switch action
+   was unavailable after V2 trigger visibility.
+2. `panelOpenSettingsSwitchMeetsLifecycleTimings` — V2 Close did not satisfy
+   the panel-open assertion.
+3. `duplicateViewIdRowsHaveDistinctStableStructuralLocators` — first fixture
+   structural field was unavailable.
+4. `everyFixtureModeObservesActualManuscriptTriggerAndPanelBehavior` — V2
+   trigger was present for the empty-field absence contract.
+5. `detachedAndTargetLossModesRemoveTheActualManuscriptSurface` — V2 Close did
+   not appear after triggering the panel.
+6. `generatedFieldsFollowTheLockedTriggerAndKeyboardContract` — V2 trigger was
+   present for the empty-field absence contract before the panel/IME path.
+
+The expanded-panel swipe and IME-before/after assertions did not execute in
+this device state because the exact V2 empty-field failure stops the product
+contract first. Their source-level contract is present; live panel/IME proof
+remains blocked by the listed V2 runtime failures and is not claimed.
+
+### Commit review disposition
+
+Review Critical 4 is resolved by later explicit user authority: the user
+command `commit` authorized Task 4 commit `1a1f104`. This Round 1 change is a
+separate fix commit; the authorized Task 4 commit was not reverted.
