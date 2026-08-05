@@ -97,8 +97,9 @@ open class FixtureDeviceSupport {
         node.recycle()
         assertFalse("Empty V2 overlay bounds", bounds.isEmpty)
         val x = bounds.exactCenterX()
-        val startY = bounds.bottom - bounds.height() * 0.2f
-        val endY = bounds.top + bounds.height() * 0.2f
+        val startY = bounds.exactCenterY()
+        val upwardDistance = minOf(300f, (startY - 1f).coerceAtLeast(1f))
+        val endY = startY - upwardDistance
         val started = SystemClock.uptimeMillis()
         val down = MotionEvent.obtain(started, started, MotionEvent.ACTION_DOWN, x, startY, 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
         val move = MotionEvent.obtain(started, started + 120L, MotionEvent.ACTION_MOVE, x, endY, 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }

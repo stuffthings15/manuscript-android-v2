@@ -176,3 +176,12 @@ remains blocked by the listed V2 runtime failures and is not claimed.
 Review Critical 4 is resolved by later explicit user authority: the user
 command `commit` authorized Task 4 commit `1a1f104`. This Round 1 change is a
 separate fix commit; the authorized Task 4 commit was not reverted.
+
+### Resize-gesture correction
+
+The resize handle is only 24dp high. The gesture now starts at its exact center
+and moves upward by `min(300px, available screen space)`, then still requires
+the exact V2 overlay height to increase. The rebuilt test APK passed assembly.
+The follow-up device suite remained 6 run, 0 passed, 6 failed, 0 skipped; it
+still reaches the earlier exact V2 empty-field failures before the resize path.
+Post-run accessibility state remained Bound with `Crashed services:{}`.
