@@ -64,7 +64,156 @@ class LocalAiRuntimeArchitectureTest {
     }
 
     @Test
-    fun hardwarePolicyKeepsUnqualifiedAccelerationAndLargeModelDisabled() {
+    fun freshCapableBestQualityDeviceTargetsThoroughModelOnCpuBeforeGpuProof() {
+        val gib = 1_073_741_824L
+        val freshHighMemoryDevice = AiDeviceProfile(
+            totalRamBytes = 12L * gib,
+            availableRamBytes = 5L * gib,
+            usableStorageBytes = 20L * gib,
+            availableProcessors = 8,
+            is64Bit = true,
+            supportedAbis = setOf("arm64-v8a"),
+            androidApi = 35,
+            hasVulkanHardware = true,
+            severeThermalState = false,
+            lowMemoryDevice = false,
+            deviceFamily = AiDeviceFamily.GALAXY_S23,
+        )
+
+        assertEquals(
+            AiRuntimeSelection(
+                LegacyQwenModelCatalog.forTier(Qwen3Tier.ADVANCED),
+                BackendKind.LEGACY_LLAMA_CPU,
+            ),
+            AiHardwarePolicy.select(
+                freshHighMemoryDevice,
+                QualityMode.THOROUGH,
+                BackendQualifications(),
+            ),
+        )
+    }
+
+    @Test
+    fun installedAdvancedModelDoesNotDowngradeWhenItsDownloadConsumesFreeStorage() {
+        val gib = 1_073_741_824L
+        val highMemoryDeviceAfterDownload = AiDeviceProfile(
+            totalRamBytes = 12L * gib,
+            availableRamBytes = 5L * gib,
+            usableStorageBytes = 3L * gib,
+            availableProcessors = 8,
+            is64Bit = true,
+            supportedAbis = setOf("arm64-v8a"),
+            androidApi = 35,
+            hasVulkanHardware = true,
+            severeThermalState = false,
+            lowMemoryDevice = false,
+            deviceFamily = AiDeviceFamily.GALAXY_S23,
+        )
+
+        assertEquals(
+            AiRuntimeSelection(
+                LegacyQwenModelCatalog.forTier(Qwen3Tier.ADVANCED),
+                BackendKind.LEGACY_LLAMA_CPU,
+            ),
+            AiHardwarePolicy.select(
+                highMemoryDeviceAfterDownload,
+                QualityMode.AUTO,
+                BackendQualifications(),
+            ),
+        )
+    }
+
+    @Test
+    fun rejectedThoroughBackendFallsBackWithoutRetryingTheSameFailedTarget() {
+        val gib = 1_073_741_824L
+        val capableDevice = AiDeviceProfile(
+            totalRamBytes = 12L * gib,
+            availableRamBytes = 5L * gib,
+            usableStorageBytes = 20L * gib,
+            availableProcessors = 8,
+            is64Bit = true,
+            supportedAbis = setOf("arm64-v8a"),
+            androidApi = 35,
+            hasVulkanHardware = true,
+            severeThermalState = false,
+            lowMemoryDevice = false,
+            deviceFamily = AiDeviceFamily.GALAXY_S23,
+        )
+
+        assertEquals(
+            AiRuntimeSelection(LegacyQwenModelCatalog.forTier(Qwen3Tier.ADVANCED), BackendKind.LEGACY_LLAMA_CPU),
+            AiHardwarePolicy.select(
+                capableDevice,
+                QualityMode.THOROUGH,
+                BackendQualifications(gemmaThoroughCpuRejected = true),
+            ),
+        )
+        assertEquals(
+            AiRuntimeSelection(LegacyQwenModelCatalog.forTier(Qwen3Tier.ADVANCED), BackendKind.LEGACY_LLAMA_CPU),
+            AiHardwarePolicy.select(
+                capableDevice,
+                QualityMode.THOROUGH,
+                BackendQualifications(
+                    gemmaThoroughGpuQualified = true,
+                    gemmaThoroughGpuRejected = true,
+                ),
+            ),
+        )
+        assertEquals(
+            AiRuntimeSelection(LegacyQwenModelCatalog.forTier(Qwen3Tier.ADVANCED), BackendKind.LEGACY_LLAMA_CPU),
+            AiHardwarePolicy.select(
+                capableDevice,
+                QualityMode.THOROUGH,
+                BackendQualifications(
+                    gemmaThoroughGpuQualified = true,
+                    gemmaThoroughCpuRejected = true,
+                ),
+            ),
+        )
+        assertEquals(
+            AiRuntimeSelection(LegacyQwenModelCatalog.forTier(Qwen3Tier.ADVANCED), BackendKind.LEGACY_LLAMA_CPU),
+            AiHardwarePolicy.select(
+                capableDevice,
+                QualityMode.THOROUGH,
+                BackendQualifications(
+                    gemmaFastGpuQualified = true,
+                    gemmaThoroughGpuQualified = true,
+                    gemmaThoroughCpuRejected = true,
+                    gemmaThoroughGpuRejected = true,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun thoroughRejectionAppliesOnlyToTheExactFailedArtifactRevision() {
+        val current = GemmaModelCatalog.thorough
+
+        assertTrue(
+            GemmaAdaptiveQualificationRecords.isRejected(
+                recordedSha256 = current.sha256,
+                artifact = current,
+                backend = BackendKind.LITERT_CPU,
+            ),
+        )
+        assertFalse(
+            GemmaAdaptiveQualificationRecords.isRejected(
+                recordedSha256 = current.sha256,
+                artifact = current.copy(sha256 = "a".repeat(64)),
+                backend = BackendKind.LITERT_CPU,
+            ),
+        )
+        assertFalse(
+            GemmaAdaptiveQualificationRecords.isRejected(
+                recordedSha256 = null,
+                artifact = current,
+                backend = BackendKind.LITERT_CPU,
+            ),
+        )
+    }
+
+    @Test
+    fun hardwarePolicyKeepsUnqualifiedAccelerationDisabledAndUsesSafeCpuFirst() {
         val gib = 1_073_741_824L
         val s20 = AiDeviceProfile(
             totalRamBytes = 12 * gib,
@@ -91,29 +240,28 @@ class LocalAiRuntimeArchitectureTest {
         )
 
         assertEquals(
-            AiRuntimeSelection(GemmaModelCatalog.fast, BackendKind.LITERT_CPU),
+            AiRuntimeSelection(LegacyQwenModelCatalog.forTier(Qwen3Tier.ADVANCED), BackendKind.LEGACY_LLAMA_CPU),
             AiHardwarePolicy.select(s20, QualityMode.THOROUGH, BackendQualifications()),
         )
         assertEquals(
-            AiRuntimeSelection(GemmaModelCatalog.fast, BackendKind.LITERT_CPU),
+            AiRuntimeSelection(LegacyQwenModelCatalog.forTier(Qwen3Tier.ADVANCED), BackendKind.LEGACY_LLAMA_CPU),
             AiHardwarePolicy.select(s23, QualityMode.AUTO, BackendQualifications()),
         )
         assertEquals(
-            AiRuntimeSelection(GemmaModelCatalog.fast, BackendKind.LITERT_GPU),
+            AiRuntimeSelection(LegacyQwenModelCatalog.forTier(Qwen3Tier.BALANCED), BackendKind.LEGACY_LLAMA_CPU),
             AiHardwarePolicy.select(
                 s23,
                 QualityMode.FAST,
-                BackendQualifications(gemmaGpuQualified = true),
+                BackendQualifications(gemmaFastGpuQualified = true),
             ),
         )
         assertEquals(
-            AiRuntimeSelection(GemmaModelCatalog.thorough, BackendKind.LITERT_GPU),
+            AiRuntimeSelection(LegacyQwenModelCatalog.forTier(Qwen3Tier.ADVANCED), BackendKind.LEGACY_LLAMA_CPU),
             AiHardwarePolicy.select(
                 s23,
                 QualityMode.THOROUGH,
                 BackendQualifications(
-                    gemmaGpuQualified = true,
-                    gemmaThoroughQualified = true,
+                    gemmaThoroughGpuQualified = true,
                 ),
             ),
         )
@@ -121,13 +269,30 @@ class LocalAiRuntimeArchitectureTest {
             AiRuntimeSelection(GemmaModelCatalog.legacyCompact, BackendKind.LEGACY_LLAMA_CPU),
             AiHardwarePolicy.select(lowMemory, QualityMode.THOROUGH, BackendQualifications()),
         )
-        // An 8 GB-class phone (~7.2 GiB reported) must not carry Gemma E2B:
-        // the model working set evicts the rest of the system and the whole
-        // device lags. It runs the light legacy Qwen tiers instead.
+        // An 8 GB-class phone (~7.2 GiB reported) must not carry Gemma E2B.
+        // It still needs the balanced local model because the compact model
+        // left serious grammar errors in the real ten-section essay gate.
         val eightGbClass = s20.copy(totalRamBytes = (7.2 * gib).toLong())
         assertEquals(
-            AiRuntimeSelection(GemmaModelCatalog.legacyCompact, BackendKind.LEGACY_LLAMA_CPU),
+            AiRuntimeSelection(
+                LegacyQwenModelCatalog.forTier(Qwen3Tier.BALANCED),
+                BackendKind.LEGACY_LLAMA_CPU,
+            ),
             AiHardwarePolicy.select(eightGbClass, QualityMode.AUTO, BackendQualifications()),
+        )
+
+        val fourGbClass = s20.copy(
+            totalRamBytes = (3.7 * gib).toLong(),
+            availableRamBytes = (1.7 * gib).toLong(),
+            usableStorageBytes = 6 * gib,
+            lowMemoryDevice = false,
+        )
+        assertEquals(
+            AiRuntimeSelection(
+                LegacyQwenModelCatalog.forTier(Qwen3Tier.BALANCED),
+                BackendKind.LEGACY_LLAMA_CPU,
+            ),
+            AiHardwarePolicy.select(fourGbClass, QualityMode.AUTO, BackendQualifications()),
         )
     }
 

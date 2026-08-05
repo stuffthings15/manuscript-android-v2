@@ -20,6 +20,19 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class LegacyBackendBenchmarkDeviceTest {
     @Test
+    fun deterministicFloorRepairsResidualSpelling() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val source = SAMPLES[2]
+        val output = LocalCorrectionRouter(context).deterministicRepair(source)
+        Log.i(TAG, "deterministicOutput=$output")
+        listOf("wen", "animul", "pett", "befor", "especialy").forEach {
+            check(!Regex("(?i)\\b${Regex.escape(it)}\\b").containsMatchIn(output)) {
+                "Deterministic floor left '$it' uncorrected: $output"
+            }
+        }
+    }
+
+    @Test
     fun timesLegacyRuntimeOnRealParagraphs() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         // The hash of this file was verified off-device against the app's own
@@ -39,30 +52,45 @@ class LegacyBackendBenchmarkDeviceTest {
             val passed = Qwen3ModelSelfTester.verify(context, onDisk)
             Log.i(TAG, "selfTest=$passed")
             assumeTrue("Legacy model failed its self-test.", passed)
-            manager.markSelfTested(Qwen3Tier.BALANCED)
+            manager.markSelfTested(Qwen3Tier.BALANCED, onDisk)
         }
-        val model = manager.installedModel()
+        val model = manager.installedModel(Qwen3Tier.BALANCED)
         assumeTrue("Legacy model is not installed on this device.", model != null)
         Log.i(TAG, "model=${model?.name};bytes=${model?.length()}")
 
         val runtime = Qwen3GrammarRuntime(context)
+        runtime.bindModel(requireNotNull(model), Qwen3Tier.BALANCED)
         val ready = runtime.isReady()
         Log.i(TAG, "ready=$ready")
         assumeTrue("Legacy runtime did not become ready.", ready)
 
         SAMPLES.forEachIndexed { index, sample ->
+            val generationInput = if (index == 2) {
+                LocalCorrectionRouter(context).deterministicRepair(sample)
+            } else {
+                sample
+            }
             val startedAt = SystemClock.elapsedRealtime()
             val output = runtime.rewrite(
-                source = sample,
+                source = generationInput,
                 tone = WritingTone.PROOFREAD,
-                strict = false,
+                strict = index == 2,
             )
             val elapsed = SystemClock.elapsedRealtime() - startedAt
             Log.i(
                 TAG,
-                "sample=$index;inChars=${sample.length};" +
-                    "outChars=${output?.length ?: 0};totalMs=$elapsed",
+                "sample=$index;inChars=${generationInput.length};" +
+                    "outChars=${output?.length ?: 0};totalMs=$elapsed;output=$output",
             )
+            check(!output.isNullOrBlank()) { "Balanced AI returned no correction for sample $index." }
+            if (index == 2) {
+                val combined = LocalCorrectionRouter(context).deterministicRepair(output)
+                listOf("wen", "animul", "pett", "befor", "lernt", "especialy").forEach {
+                    check(!Regex("(?i)\\b${Regex.escape(it)}\\b").containsMatchIn(combined)) {
+                        "AI plus deterministic floor left '$it' uncorrected: $combined"
+                    }
+                }
+            }
         }
         runtime.releaseResources()
     }

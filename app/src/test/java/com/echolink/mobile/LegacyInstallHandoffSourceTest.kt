@@ -1,6 +1,7 @@
 package com.echolink.mobile
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -27,11 +28,13 @@ class LegacyInstallHandoffSourceTest {
 
     @Test
     fun legacySelectionMirrorsExistingConsentBeforeDelegating() {
-        val branch = source.substringAfter(
+        val ensure = source.substringAfter("fun ensureModelAsync() {")
+            .substringBefore("fun verifyInstalledModelAsync")
+        val branch = ensure.substringAfter(
             "if (selection.artifact.family == AiModelFamily.LEGACY_QWEN) {",
         ).substringBefore("Qwen3ModelManager.get(appContext).ensureModelAsync()")
         assertTrue(branch.contains("mirrorConsentToLegacyManager(downloadNetworkPolicy())"))
-        assertTrue(branch.contains("pruneUnselectedGemmaWeights()"))
+        assertFalse(branch.contains("pruneUnselectedGemmaWeights()"))
     }
 
     @Test

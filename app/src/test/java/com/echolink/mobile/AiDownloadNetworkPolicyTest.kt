@@ -1,8 +1,7 @@
 package com.echolink.mobile
 
-import androidx.work.NetworkType
 import java.io.File
-import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -11,31 +10,38 @@ class AiDownloadNetworkPolicyTest {
     private val sourceRoot = File(androidRoot, "app/src/main/java/com/echolink/mobile")
 
     @Test
-    fun wifiOnlyAllowsMeteredWifiButNotCellular() {
-        assertEquals(
-            NetworkType.CONNECTED,
-            AiDownloadNetworkPolicy.WIFI_ONLY.requiredNetworkType,
-        )
-
+    fun managerStoresTheChoiceButDoesNotOwnWorkConstraintsOrTransportChecks() {
         val manager = File(sourceRoot, "AiModelManager.kt").readText()
-        assertTrue(manager.contains("NetworkCapabilities.TRANSPORT_WIFI"))
-        assertTrue(manager.contains("internal fun isDownloadNetworkAllowed()"))
+
+        assertTrue(manager.contains("enum class AiDownloadNetworkPolicy"))
+        assertTrue(manager.contains("WIFI_ONLY"))
+        assertTrue(manager.contains("ALLOW_MOBILE_DATA"))
+        assertFalse(manager.contains("import androidx.work.NetworkType"))
+        assertFalse(manager.contains("requiredNetworkType"))
+        assertFalse(manager.contains("ConnectivityManager"))
+        assertFalse(manager.contains("NetworkCapabilities"))
+        assertFalse(manager.contains("isDownloadNetworkAllowed"))
     }
 
     @Test
-    fun workerChecksTheChosenNetworkBeforeAndDuringDownload() {
-        val worker = File(sourceRoot, "AiModelDownloadWorker.kt").readText()
+    fun sharedSchedulerUsesOnlyTheCoarseConnectedConstraint() {
+        val scheduler = File(sourceRoot, "WorkManagerDownloadAttemptScheduler.kt").readText()
 
-        assertTrue(worker.contains("if (!manager.isDownloadNetworkAllowed())"))
-        assertTrue(worker.contains("isStopped || !manager.isDownloadNetworkAllowed()"))
+        assertTrue(scheduler.contains("NetworkType.CONNECTED"))
+        assertFalse(scheduler.contains("NetworkType.UNMETERED"))
+        assertFalse(scheduler.contains("targetPolicy"))
+        assertFalse(scheduler.contains("DownloadSchedulingNetworkPolicy"))
     }
 
     @Test
-    fun anUpgradeReplacesTheOldUnmeteredOnlyWorkRequest() {
-        val manager = File(sourceRoot, "AiModelManager.kt").readText()
+    fun exactAttemptServicesOwnTheRuntimeTransportDecision() {
+        val services = File(sourceRoot, "AndroidDownloadServices.kt").readText()
+        val evaluator = File(sourceRoot, "DownloadNetworkPolicyEvaluator.kt").readText()
 
-        assertTrue(manager.contains("KEY_ENQUEUED_CONSTRAINT_VERSION"))
-        assertTrue(manager.contains("DOWNLOAD_CONSTRAINT_VERSION"))
-        assertTrue(manager.contains(".putInt("))
+        assertTrue(services.contains("fun networkDecision(target: DownloadTargetKey)"))
+        assertTrue(services.contains("networkReader.current()"))
+        assertTrue(services.contains("DownloadNetworkPolicyEvaluator.evaluate("))
+        assertTrue(evaluator.contains("DownloadNetwork.MOBILE"))
+        assertTrue(evaluator.contains("allowMobileData"))
     }
 }

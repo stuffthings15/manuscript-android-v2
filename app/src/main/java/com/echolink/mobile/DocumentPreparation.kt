@@ -125,6 +125,12 @@ data class ProtectedDocument(
 }
 
 object ProtectedSpanCodec {
+    private val countryNames = setOf(
+        "Australia", "Belize", "Canada", "Denmark", "England", "France", "Germany",
+        "Greece", "Japan", "Kenya", "Malta", "Mexico", "Morocco", "Netherlands",
+        "Peru", "Poland", "Spain", "Vietnam",
+    )
+
     private data class PatternSpec(
         val type: ProtectedSpanType,
         val regex: Regex,
@@ -226,8 +232,10 @@ object ProtectedSpanCodec {
         val staticCandidates = patterns.flatMapIndexed { priority, spec ->
             spec.regex.findAll(source)
                 .filter { match ->
-                    spec.type != ProtectedSpanType.NAME ||
-                        Regex("[A-Z][a-z]+").findAll(match.value).count() <= MAX_NAME_WORDS
+                    spec.type != ProtectedSpanType.NAME || (
+                        Regex("[A-Z][a-z]+").findAll(match.value).count() <= MAX_NAME_WORDS &&
+                            match.value.substringAfterLast(' ') !in countryNames
+                    )
                 }
                 .map { match ->
                 SourceMatch(
@@ -245,7 +253,8 @@ object ProtectedSpanCodec {
             .findAll(source)
             .map(MatchResult::value)
             .filter { value ->
-                Regex("[A-Z][a-z]+").findAll(value).count() <= MAX_NAME_WORDS
+                Regex("[A-Z][a-z]+").findAll(value).count() <= MAX_NAME_WORDS &&
+                    value.substringAfterLast(' ') !in countryNames
             }
             .toList()
         val nameComponents = fullNames

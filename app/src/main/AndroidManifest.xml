@@ -48,6 +48,10 @@
             android:name=".AccountActivity"
             android:exported="false" />
 
+        <receiver
+            android:name=".DownloadCancelReceiver"
+            android:exported="false" />
+
         <activity
             android:name=".ProcessTextActivity"
             android:exported="true"

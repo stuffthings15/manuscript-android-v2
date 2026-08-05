@@ -179,6 +179,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || isOverlaySelfEvent(event)) return
         val eventPackage = event.packageName?.toString().orEmpty()
+        if (hideTriggerForClearedFocusedEditor(event, eventPackage)) return
         verifiedApplicationEventContext(event)?.use { context ->
             if (
                 ExternalPackageChangePolicy.confirmed(
@@ -200,6 +201,48 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         processUnverifiedFocusedEvent(eventPackage)
     }
 
+    private fun hideTriggerForClearedFocusedEditor(
+        event: AccessibilityEvent,
+        eventPackage: String,
+    ): Boolean {
+        if (event.eventType != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) return false
+        val current = target ?: return false
+        if (eventPackage.isBlank() || eventPackage != current.packageName) return false
+        val source = runCatching { event.source }.getOrNull() ?: return false
+        return try {
+            val showingHint = source.isShowingHintText
+            val updatedTextIsEmpty = showingHint ||
+                event.text.isEmpty() ||
+                event.text.all { it.isNullOrEmpty() }
+            Log.i(
+                REVIEW_LOG_TAG,
+                "event=external-text-change" +
+                    ";editable=${source.isEditable}" +
+                    ";focused=${source.isFocused}" +
+                    ";password=${source.isPassword}" +
+                    ";showingHint=$showingHint" +
+                    ";updatedEmpty=$updatedTextIsEmpty" +
+                    ";sourceLength=${source.text?.length ?: -1}",
+            )
+            if (
+                source.packageName?.toString() != eventPackage ||
+                !source.isEditable ||
+                !source.isFocused ||
+                source.isPassword ||
+                !updatedTextIsEmpty
+            ) {
+                false
+            } else {
+                Log.i(REVIEW_LOG_TAG, "event=clear-empty-external-trigger")
+                reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
+                clearTarget()
+                true
+            }
+        } finally {
+            recycleLegacy(source)
+        }
+    }
+
     private fun processFocusedEvent(
         eventPackage: String,
         verifiedApplicationRoot: AccessibilityNodeInfo? = null,
@@ -219,7 +262,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         }
         val snapshot = ExternalWritingPolicy.metadataSnapshot(
             packageName = node.packageName?.toString().orEmpty(),
-            text = node.text,
+            text = editableText(node),
             editable = node.isEditable,
             password = node.isPassword,
             selectionStart = node.textSelectionStart,
@@ -316,6 +359,9 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         recycleIfDetached(root, found)
         return found
     }
+
+    private fun editableText(node: AccessibilityNodeInfo): CharSequence? =
+        node.text.takeUnless { node.isShowingHintText }
 
     private fun focusedEditableNode(
         applicationRoot: AccessibilityNodeInfo,
@@ -449,11 +495,15 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         val button = ManuscriptTriggerViewFactory.create(
             context = this,
             contentDescription = getString(R.string.external_assistant_open),
-            onClick = { openPanel() },
+            onClick = {
+                Log.i(REVIEW_LOG_TAG, "event=external-trigger-click")
+                openPanel()
+            },
         )
         button.setOnTouchListener { _, motionEvent ->
             when (motionEvent.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> {
+                    Log.i(REVIEW_LOG_TAG, "event=external-trigger-down")
                     triggerPressed = true
                     mainHandler.removeCallbacks(releaseTriggerPress)
                     cancelTargetClear()
@@ -461,6 +511,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
                 android.view.MotionEvent.ACTION_UP,
                 android.view.MotionEvent.ACTION_CANCEL,
                 -> {
+                    Log.i(REVIEW_LOG_TAG, "event=external-trigger-release")
                     // Keep the press guard alive briefly so the click handler
                     // and its focus fallout cannot race the trigger away.
                     mainHandler.postDelayed(releaseTriggerPress, PRESS_GUARD_MS)
@@ -508,7 +559,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             ?: focusedEditableNode()?.let { node ->
                 val snapshot = ExternalWritingPolicy.metadataSnapshot(
                     packageName = node.packageName?.toString().orEmpty(),
-                    text = node.text,
+                    text = editableText(node),
                     editable = node.isEditable,
                     password = node.isPassword,
                     selectionStart = node.textSelectionStart,
@@ -1007,6 +1058,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     }
 
     private fun openModelSetup() {
+        Log.i(REVIEW_LOG_TAG, "event=open-model-setup")
         closePanel(restoreKeyboard = false)
         startActivity(Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -1362,7 +1414,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             connection?.getSurroundingText(workingText.length, workingText.length, 0)
         } else null
         val connectionMatches = surrounding?.text?.toString() == workingText
-        val nodeMatches = node.text?.toString().orEmpty() == workingText
+        val nodeMatches = editableText(node)?.toString().orEmpty() == workingText
         val initialRoute = ReplacementRequestPolicy.initialRoute(
             nodeMatchesSource = nodeMatches,
             connectionMatchesSource = connectionMatches,
@@ -1709,7 +1761,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         val packageName = node.packageName?.toString().orEmpty()
         val snapshot = ExternalWritingPolicy.metadataSnapshot(
             packageName = packageName,
-            text = node.text,
+            text = editableText(node),
             editable = node.isEditable,
             password = node.isPassword,
             selectionStart = node.textSelectionStart,
@@ -1844,7 +1896,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         val bounds = Rect().also(node::getBoundsInScreen)
         return EditorTargetSelectionPolicy.score(
             textMatches = captured.snapshot.text.isNotEmpty() &&
-                node.text?.toString().orEmpty() == captured.snapshot.text,
+                editableText(node)?.toString().orEmpty() == captured.snapshot.text,
             focused = node.isFocused,
             horizontalDistancePx = kotlin.math.abs(bounds.centerX() - captured.bounds.centerX()),
             verticalDistancePx = kotlin.math.abs(bounds.centerY() - captured.bounds.centerY()),

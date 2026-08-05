@@ -35,6 +35,7 @@ class Qwen3GrammarRuntime(context: Context) {
     private var loadedVulkan = false
     private var cachedPromptTone: WritingTone? = null
     private var cachedPromptCompact = false
+    @Volatile private var boundModel: BoundQwenModel? = null
 
     init {
         // Before anything can touch the native engine, make sure an unproven
@@ -44,10 +45,20 @@ class Qwen3GrammarRuntime(context: Context) {
     }
 
     fun isReady(): Boolean {
-        // Any installed, verified model can serve. The selected tier only
-        // decides what gets downloaded next.
-        val installed = modelManager.installedModel() ?: return false
-        return modelManager.tierForModel(installed) != null
+        val bound = boundModel ?: return false
+        return bound.file.isFile && bound.file.length() == bound.tier.sizeBytes
+    }
+
+    /**
+     * Binds correction to the exact artifact selected by AiModelManager.
+     * Qwen3ModelManager has its own adaptive policy for legacy-only callers;
+     * consulting it again here could silently replace a balanced model with
+     * the compact fallback between document sections.
+     */
+    fun bindModel(model: File, tier: Qwen3Tier) {
+        require(model.name == tier.fileName)
+        require(model.isFile && model.length() == tier.sizeBytes)
+        boundModel = BoundQwenModel(model, tier)
     }
 
     /**
@@ -78,20 +89,13 @@ class Qwen3GrammarRuntime(context: Context) {
     }
 
     fun rewrite(source: String, tone: WritingTone, strict: Boolean = false): String? {
-        val selectedTier = modelManager.selectedTier()
-        val model = modelManager.installedModel() ?: run {
+        val bound = boundModel ?: run {
             releaseResources()
             modelManager.ensureModelAsync()
             return null
         }
-        val modelTier = modelManager.tierForModel(model) ?: modelManager.selectedTier()
-        // The installed model keeps serving even while a different selected
-        // tier is still downloading (for example after an automatic downgrade
-        // to the compact tier on a slow device). Selection controls what gets
-        // installed; it must never turn working correction off.
-        if (!Qwen3RuntimeTierPolicy.canRun(selectedTier, modelTier)) {
-            modelManager.ensureModelAsync()
-        }
+        val model = bound.file
+        val modelTier = bound.tier
         val profile = modelManager.runtimeProfile(modelTier)
         idleRelease?.cancel(false)
         return try {
@@ -243,8 +247,9 @@ class Qwen3GrammarRuntime(context: Context) {
      * a session does not pay model-load latency.
      */
     fun preload() {
-        val model = modelManager.installedModel() ?: return
-        val modelTier = modelManager.tierForModel(model) ?: return
+        val bound = boundModel ?: return
+        val model = bound.file
+        val modelTier = bound.tier
         val profile = modelManager.runtimeProfile(modelTier)
         idleRelease?.cancel(false)
         runCatching {
@@ -348,4 +353,6 @@ class Qwen3GrammarRuntime(context: Context) {
             Never output thinking tags or instructions.
         """.trimIndent()
     }
+
+    private data class BoundQwenModel(val file: File, val tier: Qwen3Tier)
 }

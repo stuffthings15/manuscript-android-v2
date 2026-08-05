@@ -557,6 +557,41 @@ class OnDeviceGrammarEngineTest {
     }
 
     @Test
+    fun proofreadPreservationBlocksCloseRealWordSemanticSubstitution() {
+        val knownWords = setOf("caring", "crying", "attention")
+        val knows: (String) -> Boolean = { it.lowercase() in knownWords }
+
+        assertFalse(
+            ProofreadPreservationPolicy.preservesWording(
+                "Caring for the rabbit can calm the owner.",
+                "Crying for the rabbit can calm the owner.",
+                knows,
+            ),
+        )
+        assertTrue(
+            ProofreadPreservationPolicy.preservesWording(
+                "Pay atenshun to the rabbit.",
+                "Pay attention to the rabbit.",
+                knows,
+            ),
+        )
+        val complete =
+            "The rabbit offers companionship routine education entertainment responsibility " +
+                "comfort structure learning stories and daily interest while requiring money " +
+                "time research cleaning and common sense."
+        val missingIdeas =
+            "The rabbit offers companionship routine education entertainment comfort structure " +
+                "learning and daily interest."
+        assertFalse(
+            ProofreadPreservationPolicy.preservesWording(
+                complete,
+                missingIdeas,
+                { true },
+            ),
+        )
+    }
+
+    @Test
     fun activeDocumentPipelineUsesRulesOnlyAsAnAiReviewedRetryProposal() {
         val source =
             "Dogs wag their tails. The amount of columns was high. We had fewer information. " +
@@ -597,7 +632,7 @@ class OnDeviceGrammarEngineTest {
         assertFalse(livePipeline.contains("AiGrammarPostEditor.edit"))
         assertTrue(
             livePipeline.contains(
-                "prepareGrammarRetryCandidate = GrammarSafetyNet::repair",
+                "prepareGrammarRetryCandidate = correctionRouter::deterministicRepair",
             ),
         )
         assertTrue(
@@ -635,6 +670,172 @@ class OnDeviceGrammarEngineTest {
         val correct = "Dogs wag their tails because it helps people understand how they feel."
 
         assertEquals(correct, GrammarSafetyNet.repair(correct))
+    }
+
+    @Test
+    fun grammarSafetyNetRepairsUnseenLongFormResiduals() {
+        val source = """
+            In Bath England, this can be true. Some are smart, and others are why does it and stuff look like that. This part don't connect much but it still counts.
+            The owner moves the room. This shows responsibility and also indicates that the pet is theirs, which are two reasons at once.
+            And bath has its own whether street noises and traditions. Watching the cat gives the owner an event so it is not a movie. It is educational, sort of too.
+            The pet does not judge the person for saying something award earlier. It mindy wants food. Although saying it understands every emotion would be exaggerating it. Etc.
+            At first the chores feel annoying, then after a while it becomes automatic. Witch is for real bad. Forgetting Ait just forgetting when another living thing depends on you.
+            The owners' daily travel matters. A plan copied, you know, from a website may fail. The animal becomes basically unhealthy. But Therefore, cats make good pets, I guess.
+            And bath has its own whether street noises and traditions, but daily life gets boring. Watching the cat move, eat, rest or investigate something gives the owner an event to watch so it is not a movie and it doesn't need batteries though equipment may need power. It is educational, sort of too, because the owner learns.
+            Feeding the cat, replacing water, cleaning its home, and checking its behavior creates a schedule. At first the chores may feel annoying, then after a while it becomes automatic except on difficult days.
+            In Bath, vets and The owner's daily travel matter. The animal becomes stressed, basically unhealthy, or destructive. She lives in Bath England, where care matters. It requires work, which is a lot of requirements. But with correct preparation, it works. It is a good choice, I guess, in this situation.
+            The reason may be two versions of the same reason and may be the same reason. The cat gives the owner an event to pay attention to so it is not a movie. The activity is educational, sort of too, because the owner learns. This part doesn't connect much but it still counts.
+            But caring for it helps. So then the owner learns. Now it suddenly sounds like instructions, and still it connects because care matters. A small event to pay attention to so it is not a movie.
+        """.trimIndent()
+
+        val repaired = GrammarSafetyNet.repair(source)
+
+        assertTrue(repaired.contains("In Bath, England"))
+        assertTrue(repaired.contains("Some questions are thoughtful, while others ask why it looks that way."))
+        assertTrue(repaired.contains("This part doesn't connect much, but it still counts."))
+        assertTrue(repaired.contains("moves around the room"))
+        assertTrue(repaired.contains("which may be two versions of the same reason"))
+        assertTrue(repaired.contains("Bath has its own weather, street noises, and traditions."))
+        assertTrue(repaired.contains("event; it is not a movie"))
+        assertTrue(repaired.contains("It is also educational."))
+        assertTrue(repaired.contains("something awkward earlier"))
+        assertTrue(repaired.contains("It mainly wants food."))
+        assertTrue(repaired.contains("However, saying it understands every emotion would be an exaggeration."))
+        assertFalse(repaired.contains("Etc."))
+        assertTrue(repaired.contains("after a while they become automatic"))
+        assertTrue(repaired.contains("This is really bad."))
+        assertTrue(repaired.contains("Forgetting has consequences"))
+        assertTrue(repaired.contains("owner's daily travel"))
+        assertTrue(repaired.contains("A plan copied from a website"))
+        assertTrue(repaired.contains("becomes unhealthy"))
+        assertTrue(repaired.contains("Therefore, cats make good pets."))
+        assertTrue(repaired.contains("Bath has its own weather, street noises, and traditions, but"))
+        assertTrue(repaired.contains("move, eat, rest, or investigate"))
+        assertTrue(repaired.contains("event to watch; it is not a movie"))
+        assertTrue(repaired.contains("batteries, though equipment"))
+        assertTrue(repaired.contains("It is also educational because"))
+        assertTrue(repaired.contains("checking its behavior create a schedule"))
+        assertTrue(repaired.contains("after a while they become automatic except"))
+        assertTrue(repaired, repaired.contains("vets and the owner's daily travel"))
+        assertTrue(repaired.contains("stressed, unhealthy, or destructive"))
+        assertTrue(repaired.contains("in Bath, England, where care matters"))
+        assertTrue(repaired.contains("requires work, which means there are many requirements"))
+        assertTrue(repaired.contains("With correct preparation, it works"))
+        assertTrue(repaired.contains("It is a good choice in this situation"))
+        assertTrue(repaired.contains("may be two versions of the same reason."))
+        assertTrue(repaired.contains("event to pay attention to; it is not a movie"))
+        assertTrue(repaired.contains("activity is also educational because"))
+        assertTrue(repaired.contains("This part doesn't connect much, but it still counts"))
+        assertTrue(repaired.contains("Caring for it helps"))
+        assertTrue(repaired.contains("Then the owner learns"))
+        assertTrue(repaired.contains("Although it sounds like instructions, it still connects because"))
+        assertTrue(repaired.contains("small event to pay attention to; it is not a movie"))
+    }
+
+    @Test
+    fun grammarSafetyNetRepairsRabbitEssayResidualFamilies() {
+        val source = """
+            Rabbits can be the best pet in Utrecht. Intentionally error-filled practice essay 3!
+            This explains why keeping one for keeping a calm indoor animal while studying could work. However, the reasons differ, but they still matter. And a rabbit gets habits, needs, and a personality.
+            It's not a to be honest movie and it doesn't need batteries although equipment may need power so the animal creates entertainment.
+            But crying for it can calm the mind. The chores make a repeating or whatever schedule. At first, the Chores may feel annoying, then after a while it becomes sort of automatic.
+            The person checks the habitat, checks the habitat. Says hello then leaves. This also shows the pet is there, which may be two versions of the same reason and maybe the same reason.
+            A plan from ANOTHRE country may fail. A pet can only be to be honest great. Without proper or whatever proper care, it suffers.
+            But this doesn't prove the argument, but it helps. And later the owner laughs. To be honest, you know, even if it was not funny.
+            Witch is a lot of requirements. So not every rabbit is suitable.
+        """.trimIndent()
+
+        val repaired = GrammarSafetyNet.repair(source)
+
+        assertTrue(repaired.contains("Rabbits can be the best pets in Utrecht."))
+        assertTrue(repaired, repaired.contains("practice essay 3."))
+        assertTrue(repaired.contains("keeping one as a calm animal indoors while studying"))
+        assertTrue(repaired.contains("However, the reasons differ, and they still matter."))
+        assertTrue(repaired.contains("A rabbit has habits"))
+        assertTrue(repaired.contains("It's not a movie, and it doesn't need batteries, although"))
+        assertTrue(repaired.contains("power. The animal creates"))
+        assertTrue(repaired.contains("Caring for it can calm the mind"))
+        assertTrue(repaired.contains("a regular routine"))
+        assertTrue(repaired.contains("At first, the chores may feel annoying; after a while, they become automatic"))
+        assertTrue(repaired.contains("checks the habitat, says hello, then leaves"))
+        assertTrue(repaired, repaired.contains("shows the pet is there"))
+        assertFalse(repaired.contains("belongs to them"))
+        assertTrue(repaired.contains("maybe the same reason"))
+        assertTrue(repaired.contains("another country"))
+        assertTrue(repaired.contains("can only be great"))
+        assertTrue(repaired.contains("Without proper care"))
+        assertTrue(repaired.contains("This doesn't prove the argument, but it helps"))
+        assertTrue(repaired.contains("Later the owner laughs"))
+        assertTrue(repaired.contains("Even if it was not funny"))
+        assertTrue(repaired.contains("This involves many requirements"))
+        assertTrue(repaired.contains("Not every rabbit is suitable"))
+    }
+
+    @Test
+    fun grammarSafetyNetRepairsRabbitRunOnsAndAgreement() {
+        val source = """
+            This is true for a rabbit This essay explains why. While studying like could work. Some disagree; However, others agree. A personality, you know--just like dogs do--only different.
+            Utrecht have its own whether streets noises and traditions but homes differ. Habitats need lights heaters filters or other equipment so the animal stays safe.
+            People need structure Feeding for real the rabbit, replacing water, cleaning were it lives and checking behavior help. The one in Utrecht could write a chart.
+            Companionship is important in every country even though it looks different depending where you lives a rabbit can help. The animal rests, The owner Says hello then leaves.
+            A pet Somewhere else so In Utrecht, housing size available vets and the ones daily travel all changes care. A pet can only be to be honest grate. Etc
+            But this does not prove the argument, but it helps. Everybody laughs Even if it was't funny Pets turns moments into stories because families runs out of stories.
+            The first reason is companionship which is important. It differs depending where you live. The morning got busy and this shows responsibility. The pet belongs to them and maybe you know the same reason.
+            The chores become automatic except on days when everything goes wrong, but the owner could use a chart. The owner should use local facts, but also this essay is mostly saying pets are good and now it suddenly sounds like instructions!
+        """.trimIndent()
+
+        val repaired = GrammarSafetyNet.repair(source)
+
+        assertTrue(repaired.contains("rabbit. This essay"))
+        assertTrue(repaired.contains("While studying could work"))
+        assertTrue(repaired.contains("disagree; however, others"))
+        assertFalse(repaired.contains("you know--"))
+        assertFalse(repaired.contains("--only"))
+        assertTrue(repaired.contains("Utrecht has its own weather, streets, noises, and traditions, but"))
+        assertTrue(repaired.contains("lights, heaters, filters, or other equipment. The animal"))
+        assertTrue(repaired.contains("structure. Feeding the rabbit"))
+        assertTrue(repaired.contains("cleaning where it lives"))
+        assertTrue(repaired.contains("The owner in Utrecht"))
+        assertTrue(repaired.contains("country. Even though"))
+        assertTrue(repaired.contains("depending on where you live, a rabbit"))
+        assertTrue(repaired.contains("The animal rests, the owner says hello, then leaves"))
+        assertTrue(repaired.contains("pet somewhere else. In Utrecht"))
+        assertTrue(repaired.contains("housing size, available vets, and the owner's daily travel all change"))
+        assertTrue(repaired.contains("can only be great"))
+        assertFalse(repaired.contains("Etc"))
+        assertTrue(repaired.contains("This does not prove the argument, but it helps"))
+        assertTrue(repaired.contains("laughs, even if it wasn't funny. Pets turn"))
+        assertTrue(repaired.contains("families run out"))
+        assertTrue(repaired.contains("companionship, which is important"))
+        assertTrue(repaired.contains("depending on where you live"))
+        assertTrue(repaired.contains("morning got busy. This shows responsibility"))
+        assertTrue(repaired.contains("The pet belongs to them."))
+        assertTrue(repaired.contains("everything goes wrong. The owner could use a chart"))
+        assertTrue(repaired.contains("local facts. Although this essay mainly argues that pets are good, it now sounds like instructions!"))
+    }
+
+    @Test
+    fun grammarSafetyNetPreservesAndStructuresLongConclusion() {
+        val source =
+            "In conclusion, a rabbit can make a great pet in Utrecht, the Netherlands and it " +
+                "offers companionship routine education entertainment and a reason to care sort " +
+                "of about something beyond or whatever yourself. So it also requires money time " +
+                "research cleaning and common sense This involves many requirements but most " +
+                "worthwhile things got requirements so not every rabbit is right for every person " +
+                "and not every person should get one just because they read a essay But wit correct " +
+                "preparation the animal could join the home Therefore rabbit makes good pets except " +
+                "when they don't fit the situation and that is why their a good choice."
+
+        val repaired = GrammarSafetyNet.repair(source)
+
+        assertTrue(repaired.contains("the Netherlands. It offers companionship, routine, education, entertainment"))
+        assertTrue(repaired.contains("a reason to care about something beyond yourself"))
+        assertTrue(repaired.contains("It also requires money, time, research, cleaning, and common sense."))
+        assertTrue(repaired.contains("This involves many requirements, as worthwhile things often do."))
+        assertTrue(repaired.contains("Not every rabbit is right for every person"))
+        assertTrue(repaired.contains("they read an essay. With correct preparation"))
+        assertTrue(repaired.contains("join the home. Therefore, rabbits make good pets"))
+        assertTrue(repaired.contains("fit the situation. That is why they are a good choice."))
     }
     @Test
     fun residualDeviceGrammarFamiliesAreRepairedAfterAi() {
@@ -761,10 +962,6 @@ class OnDeviceGrammarEngineTest {
             root,
             "app/src/main/java/com/echolink/mobile/LiteRtGemmaBackend.kt",
         ).readText()
-        val manager = File(
-            root,
-            "app/src/main/java/com/echolink/mobile/AiModelManager.kt",
-        ).readText()
 
         assertTrue(manifest.contains("android.permission.INTERNET"))
         assertTrue(build.contains("onnxruntime-android:1.27.0"))
@@ -779,7 +976,7 @@ class OnDeviceGrammarEngineTest {
             .substringBefore("fun trimMemory(")
         assertTrue(
             livePipeline.contains(
-                "prepareGrammarRetryCandidate = GrammarSafetyNet::repair",
+                "prepareGrammarRetryCandidate = correctionRouter::deterministicRepair",
             ),
         )
         assertFalse(livePipeline.contains("AiGrammarPostEditor"))
@@ -790,8 +987,6 @@ class OnDeviceGrammarEngineTest {
         assertTrue(installGate < aiRewrite)
         assertTrue(runtime.contains("SamplerConfig"))
         assertTrue(runtime.contains("seed = samplingPolicy.seed"))
-        assertTrue(manager.contains("OneTimeWorkRequestBuilder<AiModelDownloadWorker>"))
-        assertTrue(manager.contains("qualifyAndActivate"))
     }
 
     @Test

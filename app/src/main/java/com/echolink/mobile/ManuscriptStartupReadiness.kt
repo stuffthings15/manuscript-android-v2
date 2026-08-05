@@ -25,4 +25,18 @@ object ManuscriptStartupReadiness {
         !isModelReady(modelState) -> ManuscriptStartupAction.WAIT_FOR_MODEL
         else -> ManuscriptStartupAction.READY
     }
+
+    fun nextAction(
+        acrossAppsEnabled: Boolean,
+        modelReady: Boolean,
+        hasDownloadConsent: Boolean,
+        presentation: DownloadTelemetryPresentation?,
+    ): ManuscriptStartupAction = when {
+        !acrossAppsEnabled -> ManuscriptStartupAction.ENABLE_ACROSS_APPS
+        modelReady -> ManuscriptStartupAction.READY
+        !hasDownloadConsent -> ManuscriptStartupAction.INSTALL_MODEL
+        presentation?.actions?.contains(DownloadAction.RETRY) == true ->
+            ManuscriptStartupAction.RETRY_MODEL
+        else -> ManuscriptStartupAction.WAIT_FOR_MODEL
+    }
 }

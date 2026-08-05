@@ -25,8 +25,9 @@ import org.junit.runner.RunWith
  * receives the correction, because everything between the engine and the
  * editor text is exercised here too.
  *
- * Sources and reports use the same directories as the headless batch:
- * files/essays in, files/essays-ui-corrected out.
+ * Sources and reports use app-owned internal storage. This avoids Android's
+ * scoped-storage rule that can make shell-created external fixtures invisible
+ * to the target app even when adb can list them.
  */
 @RunWith(AndroidJUnit4::class)
 class EssayUiBatchDeviceTest {
@@ -35,7 +36,7 @@ class EssayUiBatchDeviceTest {
     @Test
     fun correctsEveryEssayThroughTheUserInterface() {
         val context = instrumentation.targetContext
-        val inbox = File(context.getExternalFilesDir(null), "essays")
+        val inbox = File(context.filesDir, "essays")
         // -e essay 05 runs one essay per invocation, which is how the review
         // loop paces itself: one document, judge it, fix, run the next.
         val only = InstrumentationRegistry.getArguments().getString("essay").orEmpty()
@@ -44,8 +45,9 @@ class EssayUiBatchDeviceTest {
             ?.sortedBy(File::getName)
             .orEmpty()
         assumeTrue("No essays pushed to ${inbox.absolutePath}", essays.isNotEmpty())
-        val outbox = File(context.getExternalFilesDir(null), "essays-ui-corrected")
+        val outbox = File(context.filesDir, "essays-ui-corrected")
         outbox.mkdirs()
+        val failures = mutableListOf<String>()
 
         // -e backend legacy runs the same essays on the llama.cpp runtime so
         // the two can be compared on identical text.
@@ -58,6 +60,7 @@ class EssayUiBatchDeviceTest {
             .commit()
 
         essays.forEach { essay ->
+            LocalAiAttemptEvidence.reset()
             val source = essay.readText().trim()
             val report = File(outbox, essay.nameWithoutExtension + ".out.txt")
             val activity = instrumentation.startActivitySync(
@@ -66,9 +69,7 @@ class EssayUiBatchDeviceTest {
             ) as MainActivity
             try {
                 instrumentation.waitForIdleSync()
-                SystemClock.sleep(700L)
-                instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-                instrumentation.waitForIdleSync()
+                dismissCoveringDialog(activity)
 
                 val startedAt = SystemClock.elapsedRealtime()
                 Log.i(TAG, "essay=${essay.name} STAGE=typing chars=${source.length}")
@@ -89,6 +90,7 @@ class EssayUiBatchDeviceTest {
                 // top, the app does not own the window under the finger and
                 // the framework refuses the injected touch outright.
                 dismissKeyboard(activity)
+                dismissCoveringDialog(activity)
                 // Press the full-width "Correct my writing" button, which is
                 // what a person actually taps. The small in-editor assist
                 // icon is hidden whenever the editor is not focused, so a tap
@@ -127,6 +129,7 @@ class EssayUiBatchDeviceTest {
                 if (!firstReady) {
                     report.writeText("STATUS: TIMEOUT waiting for suggestions\n\n$source")
                     Log.e(TAG, "essay=${essay.name} STATUS=TIMEOUT_SUGGESTIONS")
+                    failures += "${essay.name}: suggestions never became terminal"
                     return@forEach
                 }
                 val suggestionsMs = SystemClock.elapsedRealtime() - startedAt
@@ -136,7 +139,8 @@ class EssayUiBatchDeviceTest {
                     val live = waitUntil(SECTION_TIMEOUT_MS) {
                         !card.isShown || acceptParagraph.isEnabled
                     }
-                    if (!live || !onMain { card.isShown }) break
+                    check(live) { "Section ${accepted + 1} exceeded the terminal timeout." }
+                    if (!onMain { card.isShown }) break
                     val label = onMain { counter.text?.toString().orEmpty() }
                     val before = onMain { counter.text?.toString().orEmpty() }
                     pressUntil(acceptParagraph, "accept") {
@@ -158,6 +162,24 @@ class EssayUiBatchDeviceTest {
                 val untouched = sourceBlocks.count { block ->
                     correctedBlocks.any { it.trim() == block.trim() }
                 }
+                val aiEvidence = LocalAiAttemptEvidence.snapshot()
+                val maximumAiSections = aiEvidence.values.maxOfOrNull { it.size } ?: 0
+                check(maximumAiSections >= sourceBlocks.size) {
+                    "Only $maximumAiSections of ${sourceBlocks.size} sections recorded live AI."
+                }
+                check(accepted == sourceBlocks.size) {
+                    "Accepted $accepted of ${sourceBlocks.size} sections."
+                }
+                check(!onMain { card.isShown }) { "Review card remained open after the final section." }
+                check(correctedBlocks.size == sourceBlocks.size) {
+                    "Section count changed ${sourceBlocks.size}->${correctedBlocks.size}."
+                }
+                check(untouched == 0) { "$untouched sections were returned unchanged." }
+                check(correctedBlocks.none { it.isBlank() }) { "A corrected section was blank." }
+                check('\u2014' !in corrected) { "Correction introduced an em dash." }
+                check(totalMs <= DOCUMENT_TIMEOUT_MS) {
+                    "Document exceeded ${DOCUMENT_TIMEOUT_MS}ms: ${totalMs}ms."
+                }
                 report.writeText(
                     buildString {
                         appendLine("STATUS: OK")
@@ -167,6 +189,8 @@ class EssayUiBatchDeviceTest {
                         appendLine("correctedBlocks: ${correctedBlocks.size}")
                         appendLine("untouchedBlocks: $untouched")
                         appendLine("acceptedTaps: $accepted")
+                        appendLine("aiDocumentGroups: ${aiEvidence.size}")
+                        appendLine("maximumLiveAiSections: $maximumAiSections")
                         appendLine()
                         append(corrected)
                     },
@@ -180,12 +204,14 @@ class EssayUiBatchDeviceTest {
             } catch (failure: Throwable) {
                 report.writeText("STATUS: FAILED\nreason: ${failure.message}\n\n$source")
                 Log.e(TAG, "essay=${essay.name} STATUS=FAILED reason=${failure.message}")
+                failures += "${essay.name}: ${failure.message}"
             } finally {
                 instrumentation.runOnMainSync { activity.finish() }
                 instrumentation.waitForIdleSync()
                 SystemClock.sleep(500L)
             }
         }
+        check(failures.isEmpty()) { failures.joinToString(separator = "\n") }
     }
 
     /**
@@ -206,22 +232,38 @@ class EssayUiBatchDeviceTest {
     }
 
     /**
-     * Presses a control and proves the press landed. A real touch is tried
-     * first so the run looks and behaves like a person using the app; if the
-     * expected result does not appear the press is repeated directly, and the
-     * log records which one worked. Without this a silently missed touch
-     * stalls the whole run with the screen looking idle.
+     * The readiness dialog can arrive after the 4B preload finishes. Wait for
+     * that delayed window, then dismiss it with Back exactly as a user does.
+     * Require the activity to keep focus for a full second before touching
+     * its controls, so a dialog cannot appear between this check and the tap.
      */
+    private fun dismissCoveringDialog(activity: MainActivity) {
+        val deadline = SystemClock.elapsedRealtime() + 15_000L
+        var focusedSince = 0L
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (onMain { activity.hasWindowFocus() }) {
+                if (focusedSince == 0L) focusedSince = SystemClock.elapsedRealtime()
+                if (SystemClock.elapsedRealtime() - focusedSince >= 1_000L) return
+            } else {
+                focusedSince = 0L
+                instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+                instrumentation.waitForIdleSync()
+            }
+            SystemClock.sleep(200L)
+        }
+        check(onMain { activity.hasWindowFocus() }) {
+            "A blocking dialog still covers the editor."
+        }
+    }
+
+    /** Presses a control and fails unless that genuine touch lands. */
     private fun pressUntil(view: View, label: String, landed: () -> Boolean) {
         tap(view)
-        if (waitUntil(2_500L, landed)) {
-            Log.i(TAG, "press=$label via=touch")
-            return
+        val landedByTouch = waitUntil(2_500L, landed)
+        Log.i(TAG, "press=$label via=touch landed=$landedByTouch")
+        check(landedByTouch) {
+            "The real user touch did not activate $label."
         }
-        instrumentation.runOnMainSync { view.performClick() }
-        instrumentation.waitForIdleSync()
-        val ok = waitUntil(2_500L, landed)
-        Log.i(TAG, "press=$label via=click landed=$ok")
     }
 
     private fun tap(view: View) {
@@ -277,8 +319,9 @@ class EssayUiBatchDeviceTest {
 
     private companion object {
         const val TAG = "MANUSCRIPT_UI_BATCH"
-        const val REVIEW_TIMEOUT_MS = 15L * 60_000L
-        const val SECTION_TIMEOUT_MS = 3L * 60_000L
+        const val REVIEW_TIMEOUT_MS = 90_000L
+        const val SECTION_TIMEOUT_MS = 90_000L
+        const val DOCUMENT_TIMEOUT_MS = 12L * 60_000L
         const val MAX_SECTION_TAPS = 60
     }
 }

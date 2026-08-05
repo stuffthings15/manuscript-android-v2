@@ -14,6 +14,17 @@ class DownloadTelemetryPresentation private constructor(
     val actions: List<DownloadAction>,
 ) {
     companion object {
+        fun uiFailure(): DownloadTelemetryPresentation = DownloadTelemetryPresentation(
+            statusText = "AI download failed",
+            detailText = "The AI download status could not be loaded. Retry when ready.",
+            progressText = null,
+            networkText = "Network not detected",
+            speedText = null,
+            etaText = null,
+            percent = null,
+            actions = listOf(DownloadAction.RETRY),
+        )
+
         fun from(telemetry: DownloadTelemetry): DownloadTelemetryPresentation {
             val progressText = if (telemetry.phase == DownloadPhase.DOWNLOADING) {
                 formatProgress(telemetry.downloadedBytes, telemetry.totalBytes)
@@ -56,9 +67,16 @@ class DownloadTelemetryPresentation private constructor(
                 DownloadPhase.PAUSED -> "Download paused"
                 DownloadPhase.FAILED -> "Download failed"
             }
-            val actions = buildList {
-                if (telemetry.canRetry) add(DownloadAction.RETRY)
-                if (telemetry.canCancel) add(DownloadAction.CANCEL)
+            val actions = if (
+                telemetry.phase == DownloadPhase.WAITING &&
+                telemetry.blockReason == DownloadBlockReason.WIFI_REQUIRED
+            ) {
+                listOf(DownloadAction.RETRY, DownloadAction.CANCEL)
+            } else {
+                buildList {
+                    if (telemetry.canRetry) add(DownloadAction.RETRY)
+                    if (telemetry.canCancel) add(DownloadAction.CANCEL)
+                }
             }
 
             return DownloadTelemetryPresentation(

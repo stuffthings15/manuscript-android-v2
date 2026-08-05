@@ -2,29 +2,14 @@ package com.echolink.mobile
 
 import android.app.ActivityManager
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
-import android.util.Log
-import androidx.work.Constraints
-import androidx.work.BackoffPolicy
-import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.workDataOf
 import java.io.File
-import java.io.FileOutputStream
-import java.io.InterruptedIOException
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
-import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
+import java.io.InterruptedIOException
 import java.util.concurrent.atomic.AtomicBoolean
 
 data class Qwen3DeviceCapability(
@@ -87,9 +72,9 @@ enum class Qwen3UserMode(val displayName: String) {
     BEST_QUALITY("Best Quality"),
 }
 
-enum class Qwen3DownloadNetworkPolicy(val requiredNetworkType: NetworkType) {
-    WIFI_ONLY(NetworkType.UNMETERED),
-    ALLOW_MOBILE_DATA(NetworkType.CONNECTED),
+enum class Qwen3DownloadNetworkPolicy {
+    WIFI_ONLY,
+    ALLOW_MOBILE_DATA,
 }
 
 data class Qwen3InferenceBenchmark(
@@ -211,7 +196,11 @@ class Qwen3ModelManager private constructor(context: Context) {
     private val appContext = context.applicationContext
     private val preferences =
         appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+    private val downloadCommands by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ModelDownloadCommandCore(AndroidDownloadServices.get(appContext))
+    }
     private val modelDirectory = File(appContext.noBackupFilesDir, MODEL_DIRECTORY)
+    private val installer = AiModelInstaller(modelDirectory)
     @Volatile private var sessionTier: Qwen3Tier? = null
     private val startupReadinessRunning = AtomicBoolean(false)
 
@@ -276,7 +265,8 @@ class Qwen3ModelManager private constructor(context: Context) {
     }
 
     fun requiredStorageBytes(tier: Qwen3Tier): Long =
-        tier.sizeBytes + DOWNLOAD_HEADROOM_BYTES
+        installer.remainingBytes(LegacyQwenModelCatalog.forTier(tier)) +
+            DOWNLOAD_HEADROOM_BYTES
 
     fun downloadNetworkPolicy(): Qwen3DownloadNetworkPolicy =
         preferences.getString(KEY_DOWNLOAD_NETWORK_POLICY, null)
@@ -293,6 +283,16 @@ class Qwen3ModelManager private constructor(context: Context) {
             .putString(KEY_DOWNLOAD_NETWORK_POLICY, networkPolicy.name)
             .apply()
         sessionTier = null
+        val tier = selectedTier()
+        val selection = AiRuntimeSelection(
+            LegacyQwenModelCatalog.forTier(tier),
+            BackendKind.LEGACY_LLAMA_CPU,
+        )
+        val target = DownloadTargetCatalog.targetFor(selection)
+        if (downloadCommands.retryTerminal(target) != null) {
+            state = Qwen3ModelState.NotInstalled(tier)
+            return
+        }
         ensureModelAsync()
     }
 
@@ -307,6 +307,8 @@ class Qwen3ModelManager private constructor(context: Context) {
 
     fun installedModel(tier: Qwen3Tier): File? {
         if (!isSelfTested(tier)) return null
+        if (verifiedSha(tier) != tier.sha256) return null
+        if (!activeProofMatches(tier)) return null
         return downloadedModel(tier)
     }
 
@@ -314,22 +316,18 @@ class Qwen3ModelManager private constructor(context: Context) {
         val file = File(modelDirectory, tier.fileName)
         return file.takeIf {
             it.isFile &&
-                it.length() == tier.sizeBytes &&
-                verifiedSha(tier) == tier.sha256
+                it.length() == tier.sizeBytes
         }
     }
 
     internal fun candidateModel(tier: Qwen3Tier): File? {
-        val file = File(modelDirectory, "${tier.fileName}.candidate")
-        return file.takeIf {
-            it.isFile &&
-                it.length() == tier.sizeBytes &&
-                preferences.getString(candidateShaKey(tier), null) == tier.sha256
+        val artifact = LegacyQwenModelCatalog.forTier(tier)
+        return installer.candidateFile(artifact).takeIf {
+            it.isFile && it.length() == artifact.sizeBytes
         }
     }
 
-    fun ensureModelAsync() {
-        val tier = selectedTier()
+    fun ensureModelAsync(tier: Qwen3Tier = selectedTier()) {
         installedModel(tier)?.let {
             state = Qwen3ModelState.Ready(tier, it)
             return
@@ -339,6 +337,18 @@ class Qwen3ModelManager private constructor(context: Context) {
             return
         }
         enqueueDownload(tier)
+    }
+
+    fun retryModelDownload(): DownloadAttempt? {
+        val tier = selectedTier()
+        val selection = AiRuntimeSelection(
+            LegacyQwenModelCatalog.forTier(tier),
+            BackendKind.LEGACY_LLAMA_CPU,
+        )
+        val target = DownloadTargetCatalog.targetFor(selection)
+        val retried = downloadCommands.retryTerminal(target) ?: return null
+        state = Qwen3ModelState.NotInstalled(tier)
+        return retried
     }
 
     fun verifyInstalledModelAsync(onFinished: () -> Unit) {
@@ -352,19 +362,38 @@ class Qwen3ModelManager private constructor(context: Context) {
         if (!startupReadinessRunning.compareAndSet(false, true)) return
         state = Qwen3ModelState.Checking(tier)
         Thread({
-            val passed = Qwen3ModelSelfTester.verify(appContext, model)
-            state = if (passed) {
-                Qwen3ModelState.Ready(tier, model)
-            } else {
+            try {
+                val passed = Qwen3ModelSelfTester.verify(
+                    appContext,
+                    model,
+                    stopped = { false },
+                )
+                state = if (passed) {
+                    Qwen3ModelState.Ready(tier, model)
+                } else {
+                    preferences.edit().remove(selfTestedShaKey(tier)).apply()
+                    Qwen3ModelState.Failed(tier, "AI readiness check failed.")
+                }
+            } catch (_: Exception) {
+                state = Qwen3ModelState.Failed(tier, "AI readiness check failed.")
                 preferences.edit().remove(selfTestedShaKey(tier)).apply()
-                Qwen3ModelState.Failed(tier, "AI readiness check failed.")
+            } finally {
+                startupReadinessRunning.set(false)
+                android.os.Handler(appContext.mainLooper).post(onFinished)
             }
-            startupReadinessRunning.set(false)
-            android.os.Handler(appContext.mainLooper).post(onFinished)
         }, "Manuscript-Qwen3-readiness").start()
     }
 
     fun removeAllModels() {
+        if (!downloadCommands.cancelActiveBeforeRemoval(
+                DownloadTargetCatalog.targetsFor(AiModelFamily.LEGACY_QWEN),
+            )
+        ) {
+            return
+        }
+        AndroidDownloadServices.get(appContext).clearRecords(
+            DownloadTargetCatalog.targetsFor(AiModelFamily.LEGACY_QWEN),
+        )
         if (modelDirectory.isDirectory) {
             modelDirectory.listFiles()?.forEach { file ->
                 if (file.parentFile == modelDirectory && file.isFile) file.delete()
@@ -374,16 +403,17 @@ class Qwen3ModelManager private constructor(context: Context) {
             Qwen3Tier.entries.forEach { remove(verifiedShaKey(it)) }
             Qwen3Tier.entries.forEach { remove(selfTestedShaKey(it)) }
             Qwen3Tier.entries.forEach { remove(candidateShaKey(it)) }
+            Qwen3Tier.entries.forEach { remove(activeProofSizeKey(it)) }
+            Qwen3Tier.entries.forEach { remove(activeProofModifiedKey(it)) }
+            Qwen3Tier.entries.forEach { remove(activeProofFileKeyKey(it)) }
+            Qwen3Tier.entries.forEach { remove(activeProofFingerprintKey(it)) }
             remove(KEY_LEGACY_VERIFIED_SHA)
             remove(KEY_BENCHMARK_TIER)
             remove(KEY_BENCHMARK_DURATION)
             remove(KEY_BENCHMARK_SUCCEEDED)
-            remove(KEY_ENQUEUED_TIER)
-            remove(KEY_ENQUEUED_NETWORK_POLICY)
             remove(KEY_DOWNLOAD_CONSENT)
             remove(KEY_DOWNLOAD_NETWORK_POLICY)
         }.apply()
-        WorkManager.getInstance(appContext).cancelUniqueWork(MODEL_DOWNLOAD_WORK)
         sessionTier = null
         state = Qwen3ModelState.ConsentRequired(selectedTier())
     }
@@ -418,29 +448,48 @@ class Qwen3ModelManager private constructor(context: Context) {
         progress: (Long, Long) -> Unit,
     ): File {
         require(hasDownloadConsent()) { "AI download consent is required." }
-        state = Qwen3ModelState.Downloading(tier, 0L, tier.sizeBytes)
-        return installModel(tier, stopped, progress)
+        require(modelDirectory.exists() || modelDirectory.mkdirs()) {
+            "Cannot create the local AI folder."
+        }
+        val artifact = LegacyQwenModelCatalog.forTier(tier)
+        val bytesRemaining = installer.remainingBytes(artifact)
+        if (modelDirectory.usableSpace < bytesRemaining + DOWNLOAD_HEADROOM_BYTES) {
+            state = Qwen3ModelState.InsufficientStorage(tier)
+            throw AiModelStorageException("Not enough free storage for AI.")
+        }
+        state = Qwen3ModelState.Downloading(
+            tier,
+            installer.partialBytes(artifact),
+            artifact.sizeBytes,
+        )
+        return installer.stage(artifact, stopped) { downloaded, total ->
+            state = Qwen3ModelState.Downloading(tier, downloaded, total)
+            progress(downloaded, total)
+        }
+    }
+
+    internal fun partialBytes(tier: Qwen3Tier): Long {
+        val artifact = LegacyQwenModelCatalog.forTier(tier)
+        val completeLocalModel = candidateModel(tier) ?: downloadedModel(tier)
+        return if (completeLocalModel != null) artifact.sizeBytes else installer.partialBytes(artifact)
     }
 
     internal fun onDownloadWaiting(tier: Qwen3Tier) {
         state = Qwen3ModelState.WaitingForWifi(tier)
     }
 
-    internal fun onDownloadFailed(tier: Qwen3Tier, error: Throwable) {
-        Log.e(LOG_TAG, "Qwen3 model installation failed", error)
+    internal fun onDownloadFailed(tier: Qwen3Tier, failure: Throwable) {
         state = Qwen3ModelState.Failed(
             tier,
-            error.message ?: "AI installation failed.",
+            safeAiModelDownloadFailure(failure).userMessage,
         )
     }
 
+    internal fun onDownloadFailed(tier: Qwen3Tier, failureCode: DownloadFailureCode) {
+        state = Qwen3ModelState.Failed(tier, SafeDownloadFailure.from(failureCode).userMessage)
+    }
+
     internal fun onDownloadReady(tier: Qwen3Tier, file: File) {
-        clearDownloadRegistration(tier)
-        if (tier == Qwen3Tier.BALANCED) {
-            File(modelDirectory, LEGACY_BALANCED_FILE).takeIf {
-                it.name != file.name && it.isFile
-            }?.delete()
-        }
         state = if (tier == selectedTier()) {
             Qwen3ModelState.Ready(tier, file)
         } else {
@@ -448,149 +497,114 @@ class Qwen3ModelManager private constructor(context: Context) {
         }
     }
 
-    internal fun markSelfTested(tier: Qwen3Tier) {
-        preferences.edit().putString(selfTestedShaKey(tier), tier.sha256).apply()
-    }
-
-    internal fun clearDownloadRegistration(tier: Qwen3Tier) {
-        if (preferences.getString(KEY_ENQUEUED_TIER, null) == tier.name) {
-            preferences.edit()
-                .remove(KEY_ENQUEUED_TIER)
-                .remove(KEY_ENQUEUED_NETWORK_POLICY)
-                .apply()
+    internal fun markSelfTested(tier: Qwen3Tier, activeFile: File) {
+        require(activeFile == File(modelDirectory, tier.fileName)) {
+            "The active proof must use the canonical model file."
         }
-    }
-
-    internal fun activateCandidate(tier: Qwen3Tier, candidate: File): File {
-        require(candidate.parentFile == modelDirectory && candidate.name == "${tier.fileName}.candidate") {
-            "Invalid AI candidate path."
+        val artifact = LegacyQwenModelCatalog.forTier(tier)
+        val proof = checkNotNull(installer.activeProof(artifact)) {
+            "The active AI proof could not be recorded."
         }
-        val finalFile = File(modelDirectory, tier.fileName)
-        val previousFile = File(modelDirectory, "${tier.fileName}.previous")
-        if (previousFile.exists()) previousFile.delete()
-        val hadPrevious = finalFile.exists()
-        if (hadPrevious) {
-            require(finalFile.renameTo(previousFile)) {
-                "Cannot preserve the previous AI."
-            }
-        }
-        if (!candidate.renameTo(finalFile)) {
-            if (hadPrevious) previousFile.renameTo(finalFile)
-            throw IOException("Cannot activate the tested AI.")
-        }
-        preferences.edit()
+        val editor = preferences.edit()
             .putString(verifiedShaKey(tier), tier.sha256)
+            .putString(selfTestedShaKey(tier), tier.sha256)
             .remove(candidateShaKey(tier))
-            .apply()
-        if (previousFile.exists()) previousFile.delete()
-        return finalFile
+            .putLong(activeProofSizeKey(tier), proof.sizeBytes)
+            .putLong(activeProofModifiedKey(tier), proof.modifiedMillis)
+            .putString(activeProofFingerprintKey(tier), proof.fingerprint)
+        if (proof.fileKey == null) {
+            editor.remove(activeProofFileKeyKey(tier))
+        } else {
+            editor.putString(activeProofFileKeyKey(tier), proof.fileKey)
+        }
+        check(editor.commit()) { "The active AI proof could not be persisted." }
+    }
+
+    internal fun qualifyCandidate(
+        tier: Qwen3Tier,
+        candidate: File,
+        stopped: () -> Boolean = { false },
+    ): AiModelQualifiedCandidate? {
+        val artifact = LegacyQwenModelCatalog.forTier(tier)
+        val qualification = installer.qualifyCandidate(
+            artifact = artifact,
+            candidate = candidate,
+            stopped = stopped,
+            selfTest = { file -> Qwen3ModelSelfTester.verify(appContext, file, stopped) },
+        )
+        if (qualification == null) {
+            if (stopped()) throw InterruptedIOException("AI qualification stopped.")
+            installer.discardRejectedModel(artifact, candidate)
+            clearTierProof(tier)
+        }
+        return qualification
+    }
+
+    internal fun qualifyActiveModel(
+        tier: Qwen3Tier,
+        active: File,
+        stopped: () -> Boolean = { false },
+    ): AiModelQualifiedActive? {
+        val artifact = LegacyQwenModelCatalog.forTier(tier)
+        val qualification = installer.qualifyActive(
+            artifact = artifact,
+            active = active,
+            stopped = stopped,
+            selfTest = { file -> Qwen3ModelSelfTester.verify(appContext, file, stopped) },
+        )
+        if (qualification == null) {
+            if (stopped()) throw InterruptedIOException("AI qualification stopped.")
+            installer.discardRejectedModel(artifact, active)
+            clearTierProof(tier)
+        }
+        return qualification
+    }
+
+    internal fun activateQualifiedCandidate(
+        tier: Qwen3Tier,
+        qualification: AiModelQualifiedCandidate,
+    ): File {
+        val artifact = LegacyQwenModelCatalog.forTier(tier)
+        require(qualification.artifact == artifact) {
+            "The qualified AI does not match the selected model."
+        }
+        val activation = installer.activateQualifiedCandidate(qualification)
+        check(activation.activated) { "The qualified AI was not activated." }
+        markSelfTested(tier, activation.activeFile)
+        return activation.activeFile
+    }
+
+    internal fun acceptQualifiedActive(
+        tier: Qwen3Tier,
+        qualification: AiModelQualifiedActive,
+    ): File {
+        val artifact = LegacyQwenModelCatalog.forTier(tier)
+        require(qualification.artifact == artifact) {
+            "The qualified AI does not match the selected model."
+        }
+        val active = installer.acceptQualifiedActive(qualification)
+        markSelfTested(tier, active)
+        return active
+    }
+
+    internal fun activateCandidate(
+        tier: Qwen3Tier,
+        candidate: File,
+        stopped: () -> Boolean = { false },
+    ): File {
+        val qualification = qualifyCandidate(tier, candidate, stopped)
+            ?: throw AiModelIntegrityException("AI candidate failed its local check.")
+        return activateQualifiedCandidate(tier, qualification)
     }
 
     private fun enqueueDownload(tier: Qwen3Tier) {
-        val networkPolicy = downloadNetworkPolicy()
-        if (
-            networkPolicy == Qwen3DownloadNetworkPolicy.WIFI_ONLY &&
-            !isUnmeteredNetwork()
-        ) {
-            state = Qwen3ModelState.WaitingForWifi(tier)
-        } else {
-            state = Qwen3ModelState.NotInstalled(tier)
-        }
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(networkPolicy.requiredNetworkType)
-            .setRequiresStorageNotLow(true)
-            .build()
-        val request = OneTimeWorkRequestBuilder<Qwen3ModelDownloadWorker>()
-            .setConstraints(constraints)
-            .setInputData(workDataOf(Qwen3ModelDownloadWorker.KEY_TIER to tier.name))
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
-            .addTag(MODEL_DOWNLOAD_TAG)
-            .build()
-        val alreadyEnqueued =
-            preferences.getString(KEY_ENQUEUED_TIER, null) == tier.name &&
-                preferences.getString(KEY_ENQUEUED_NETWORK_POLICY, null) == networkPolicy.name
-        if (!alreadyEnqueued) {
-            preferences.edit()
-                .putString(KEY_ENQUEUED_TIER, tier.name)
-                .putString(KEY_ENQUEUED_NETWORK_POLICY, networkPolicy.name)
-                .apply()
-        }
-        WorkManager.getInstance(appContext).enqueueUniqueWork(
-            MODEL_DOWNLOAD_WORK,
-            if (alreadyEnqueued) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.REPLACE,
-            request,
+        state = Qwen3ModelState.NotInstalled(tier)
+        val selection = AiRuntimeSelection(
+            LegacyQwenModelCatalog.forTier(tier),
+            BackendKind.LEGACY_LLAMA_CPU,
         )
-    }
-
-    private fun installModel(
-        tier: Qwen3Tier,
-        stopped: () -> Boolean,
-        progress: (Long, Long) -> Unit,
-    ): File {
-        require(modelDirectory.exists() || modelDirectory.mkdirs()) {
-            "Cannot create the local AI folder."
-        }
-        candidateModel(tier)?.let { return it }
-        val candidateFile = File(modelDirectory, "${tier.fileName}.candidate")
-        val partialFile = File(modelDirectory, "${tier.fileName}.part")
-        if (partialFile.length() > tier.sizeBytes) partialFile.delete()
-        val bytesRemaining = (tier.sizeBytes - partialFile.length()).coerceAtLeast(0L)
-        if (modelDirectory.usableSpace < bytesRemaining + DOWNLOAD_HEADROOM_BYTES) {
-            state = Qwen3ModelState.InsufficientStorage(tier)
-            throw IOException("Not enough free storage for ${tier.displayName}.")
-        }
-
-        if (partialFile.length() < tier.sizeBytes) {
-            val connection = (URL(tier.downloadUrl).openConnection() as HttpURLConnection).apply {
-                connectTimeout = CONNECT_TIMEOUT_MS
-                readTimeout = READ_TIMEOUT_MS
-                instanceFollowRedirects = true
-                setRequestProperty("User-Agent", "Manuscript-Android-Qwen3")
-                if (partialFile.length() > 0L) {
-                    setRequestProperty("Range", "bytes=${partialFile.length()}-")
-                }
-            }
-            try {
-                val response = connection.responseCode
-                if (response != HttpURLConnection.HTTP_OK && response != HTTP_PARTIAL) {
-                    throw IOException("AI download failed with HTTP $response.")
-                }
-                val append = response == HTTP_PARTIAL && partialFile.length() > 0L
-                val startingBytes = if (append) partialFile.length() else 0L
-                connection.inputStream.use { input ->
-                    FileOutputStream(partialFile, append).use { output ->
-                        val buffer = ByteArray(DOWNLOAD_BUFFER_BYTES)
-                        var downloaded = startingBytes
-                        while (true) {
-                            if (stopped()) throw InterruptedIOException("AI download stopped.")
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            output.write(buffer, 0, count)
-                            downloaded += count
-                            state = Qwen3ModelState.Downloading(tier, downloaded, tier.sizeBytes)
-                            progress(downloaded, tier.sizeBytes)
-                        }
-                        output.fd.sync()
-                    }
-                }
-            } finally {
-                connection.disconnect()
-            }
-        }
-
-        if (partialFile.length() != tier.sizeBytes) {
-            throw IOException("AI download was incomplete.")
-        }
-        if (sha256(partialFile, stopped) != tier.sha256) {
-            partialFile.delete()
-            throw IOException("AI download failed its security check.")
-        }
-        if (candidateFile.exists()) candidateFile.delete()
-        if (!partialFile.renameTo(candidateFile)) {
-            throw IOException("Cannot stage the downloaded AI.")
-        }
-        preferences.edit().putString(candidateShaKey(tier), tier.sha256).apply()
-        return candidateFile
+        val target = DownloadTargetCatalog.targetFor(selection)
+        downloadCommands.ensure(target)
     }
 
     private fun readCapability(): Qwen3DeviceCapability {
@@ -691,32 +705,44 @@ class Qwen3ModelManager private constructor(context: Context) {
     private fun isSelfTested(tier: Qwen3Tier): Boolean =
         preferences.getString(selfTestedShaKey(tier), null) == tier.sha256
 
-    private fun isUnmeteredNetwork(): Boolean {
-        val manager =
-            appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val capabilities = manager.getNetworkCapabilities(manager.activeNetwork) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+    private fun activeProofMatches(tier: Qwen3Tier): Boolean {
+        if (!preferences.contains(activeProofFingerprintKey(tier))) return false
+        val artifact = LegacyQwenModelCatalog.forTier(tier)
+        val current = installer.activeProof(artifact) ?: return false
+        return current.sizeBytes == preferences.getLong(activeProofSizeKey(tier), -1L) &&
+            current.modifiedMillis == preferences.getLong(activeProofModifiedKey(tier), -1L) &&
+            current.fileKey == preferences.getString(activeProofFileKeyKey(tier), null) &&
+            current.fingerprint == preferences.getString(activeProofFingerprintKey(tier), null)
+    }
+
+    private fun activeProofSizeKey(tier: Qwen3Tier): String =
+        "${selfTestedShaKey(tier)}_active_size"
+
+    private fun activeProofModifiedKey(tier: Qwen3Tier): String =
+        "${selfTestedShaKey(tier)}_active_modified"
+
+    private fun activeProofFileKeyKey(tier: Qwen3Tier): String =
+        "${selfTestedShaKey(tier)}_active_file_key"
+
+    private fun activeProofFingerprintKey(tier: Qwen3Tier): String =
+        "${selfTestedShaKey(tier)}_active_fingerprint"
+
+    private fun clearTierProof(tier: Qwen3Tier) {
+        preferences.edit()
+            .remove(verifiedShaKey(tier))
+            .remove(selfTestedShaKey(tier))
+            .remove(candidateShaKey(tier))
+            .remove(activeProofSizeKey(tier))
+            .remove(activeProofModifiedKey(tier))
+            .remove(activeProofFileKeyKey(tier))
+            .remove(activeProofFingerprintKey(tier))
+            .apply()
     }
 
     private fun fallbackOrder(selected: Qwen3Tier): List<Qwen3Tier> = when (selected) {
         Qwen3Tier.ADVANCED -> listOf(Qwen3Tier.BALANCED, Qwen3Tier.BASIC)
         Qwen3Tier.BALANCED -> listOf(Qwen3Tier.BASIC, Qwen3Tier.ADVANCED)
         Qwen3Tier.BASIC -> listOf(Qwen3Tier.BALANCED, Qwen3Tier.ADVANCED)
-    }
-
-    private fun sha256(file: File, stopped: () -> Boolean): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().buffered().use { input ->
-            val buffer = ByteArray(DOWNLOAD_BUFFER_BYTES)
-            while (true) {
-                if (stopped()) throw InterruptedIOException("AI verification stopped.")
-                val count = input.read(buffer)
-                if (count < 0) break
-                digest.update(buffer, 0, count)
-            }
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     companion object {
@@ -733,18 +759,8 @@ class Qwen3ModelManager private constructor(context: Context) {
         private const val KEY_BENCHMARK_TIER = "benchmark_tier"
         private const val KEY_BENCHMARK_DURATION = "benchmark_duration_ms"
         private const val KEY_BENCHMARK_SUCCEEDED = "benchmark_succeeded"
-        private const val KEY_ENQUEUED_TIER = "enqueued_tier"
-        private const val KEY_ENQUEUED_NETWORK_POLICY = "enqueued_network_policy"
         private const val MODEL_DIRECTORY = "qwen3_models"
-        private const val MODEL_DOWNLOAD_WORK = "manuscript-qwen3-model-download"
-        private const val MODEL_DOWNLOAD_TAG = "manuscript-qwen3"
-        private const val LEGACY_BALANCED_FILE = "Qwen3-1.7B-Q8_0.gguf"
-        private const val CONNECT_TIMEOUT_MS = 20_000
-        private const val READ_TIMEOUT_MS = 60_000
-        private const val DOWNLOAD_BUFFER_BYTES = 256 * 1024
         private const val DOWNLOAD_HEADROOM_BYTES = 536_870_912L
-        private const val HTTP_PARTIAL = 206
-        private const val LOG_TAG = "ManuscriptQwen3"
 
         @Volatile private var instance: Qwen3ModelManager? = null
 

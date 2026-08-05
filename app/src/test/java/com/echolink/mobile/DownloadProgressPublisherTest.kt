@@ -266,6 +266,64 @@ class DownloadProgressPublisherTest {
     }
 
     @Test
+    fun exactZeroByteRestartResetsOnlyTheCurrentAttemptSampleBaseline() {
+        val publisher = publisher(minimumByteDelta = 1L, minimumTimeIntervalMillis = 10_000L)
+        val attempt = attempt()
+        publisher.offer(
+            attempt,
+            observation(attempt, downloadedBytes = 700L, totalBytes = 1_000L),
+            timestampMillis = 1_000L,
+        )
+
+        assertNull(
+            publisher.offer(
+                attempt,
+                observation(attempt, downloadedBytes = 699L, totalBytes = 1_000L),
+                timestampMillis = 1_100L,
+            ),
+        )
+        assertNull(
+            publisher.offer(
+                attempt,
+                observation(attempt, downloadedBytes = 0L, totalBytes = 999L),
+                timestampMillis = 1_200L,
+            ),
+        )
+        assertNull(
+            publisher.offer(
+                attempt,
+                observation(
+                    attempt,
+                    downloadedBytes = 0L,
+                    totalBytes = 1_000L,
+                    phase = DownloadPhase.PREPARING,
+                ),
+                timestampMillis = 1_300L,
+            ),
+        )
+
+        val restarted = publisher.offer(
+            attempt,
+            observation(attempt, downloadedBytes = 0L, totalBytes = 1_000L),
+            timestampMillis = 1_400L,
+        )
+        val resumed = publisher.offer(
+            attempt,
+            observation(attempt, downloadedBytes = 25L, totalBytes = 1_000L),
+            timestampMillis = 1_500L,
+        )
+
+        assertEquals(
+            listOf(DownloadSample(attempt.generation, 1_400L, 0L)),
+            restarted?.telemetry?.samples,
+        )
+        assertEquals(
+            listOf(0L, 25L),
+            resumed?.telemetry?.samples?.map { it.downloadedBytes },
+        )
+    }
+
+    @Test
     fun attemptGenerationMustMatchObservationGeneration() {
         val publisher = publisher()
         val attempt = attempt(generation = 2L)
@@ -299,6 +357,24 @@ class DownloadProgressPublisherTest {
         assertNotNull(restarted)
         assertEquals(listOf(1L), restarted?.telemetry?.samples?.map { it.downloadedBytes })
         assertEquals(2, publisher.trackedAttemptCount)
+    }
+
+    @Test
+    fun resetRemovesOnlyTheExactAttemptAndAllowsTheSameObservationAgain() {
+        val publisher = publisher(
+            minimumByteDelta = 100L,
+            minimumTimeIntervalMillis = 10_000L,
+        )
+        val rejected = attempt(work = DownloadWorkIdentity(1L, 1L))
+        val unaffected = attempt(work = DownloadWorkIdentity(2L, 2L))
+        publisher.offer(rejected, observation(rejected, 100L), 1_000L)
+        publisher.offer(unaffected, observation(unaffected, 100L), 1_000L)
+
+        publisher.reset(rejected)
+
+        assertEquals(1, publisher.trackedAttemptCount)
+        assertNotNull(publisher.offer(rejected, observation(rejected, 100L), 1_001L))
+        assertNull(publisher.offer(unaffected, observation(unaffected, 101L), 1_001L))
     }
 
     @Test

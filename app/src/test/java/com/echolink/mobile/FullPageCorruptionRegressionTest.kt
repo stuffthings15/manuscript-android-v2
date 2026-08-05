@@ -7,6 +7,11 @@ import org.junit.Test
 
 class FullPageCorruptionRegressionTest {
     @Test
+    fun missingDoubleLetterIsNotMisclassifiedAsRegionalSpelling() {
+        assertFalse(SymSpellWordPolicy.isRegionalVariant("especialy", "especially"))
+    }
+
+    @Test
     fun validInflectedWordsAreNotOfferedToSymSpell() {
         val dictionary = setOf("rake", "pesticide", "shovel", "committee")
 

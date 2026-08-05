@@ -2,6 +2,7 @@ package com.echolink.mobile
 
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
 import java.util.ArrayDeque
 import java.util.UUID
 import java.util.concurrent.CancellationException
@@ -125,6 +126,406 @@ class DownloadLifecycleCoordinatorTest {
     }
 
     @Test
+    fun isCurrentRequiresExactLiveTargetGenerationAndWorkIdentity() {
+        val harness = harness("is-current")
+        val current = harness.coordinator.ensure(target)
+
+        assertTrue(harness.coordinator.isCurrent(current))
+        assertFalse(
+            harness.coordinator.isCurrent(
+                current.copy(generation = DownloadGeneration(2L)),
+            ),
+        )
+        assertFalse(
+            harness.coordinator.isCurrent(current.copy(workIdentity = secondWork)),
+        )
+        assertFalse(
+            harness.coordinator.isCurrent(current.copy(target = otherTarget)),
+        )
+
+        nowMillis += 1L
+        assertTrue(harness.coordinator.cancel(current))
+        assertFalse(harness.coordinator.isCurrent(current))
+    }
+
+    @Test
+    fun coordinatorExposesNoNonIdempotentCommitMethod() {
+        assertFalse(
+            DownloadLifecycleCoordinator::class.java.declaredMethods.any {
+                it.name == "commitIfCurrent"
+            },
+        )
+    }
+
+    @Test
+    fun commitReadyRequiresExactVerifyingAttemptAndValidReadyObservation() {
+        val harness = harness("commit-ready-contract")
+        val attempt = harness.coordinator.ensure(target)
+        val ready = observation(
+            generation = attempt.generation,
+            phase = DownloadPhase.READY,
+            downloadedBytes = 1_000L,
+        )
+        var actionRuns = 0
+
+        assertThrows(IllegalArgumentException::class.java) {
+            harness.coordinator.commitReadyIfCurrent(
+                attempt,
+                ready.copy(generation = DownloadGeneration(2L)),
+            ) {
+                actionRuns += 1
+            }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            harness.coordinator.commitReadyIfCurrent(
+                attempt,
+                observation(
+                    generation = attempt.generation,
+                    phase = DownloadPhase.VERIFYING,
+                    downloadedBytes = 1_000L,
+                ),
+            ) {
+                actionRuns += 1
+            }
+        }
+        assertFalse(
+            harness.coordinator.commitReadyIfCurrent(attempt, ready) {
+                actionRuns += 1
+            },
+        )
+
+        assertEquals(0, actionRuns)
+        assertEquals(DownloadPhase.PREPARING, harness.store.read(target)?.telemetry?.phase)
+    }
+
+    @Test
+    fun commitReadyRunsActionAndPersistsReadyBeforeCancelCanEnter() {
+        val harness = harness("commit-ready-cancel-race")
+        val attempt = harness.coordinator.ensure(target)
+        nowMillis += 1L
+        assertTrue(
+            harness.coordinator.publish(
+                attempt,
+                observation(
+                    generation = attempt.generation,
+                    phase = DownloadPhase.VERIFYING,
+                    downloadedBytes = 1_000L,
+                ),
+            ),
+        )
+        nowMillis += 1L
+        val ready = observation(
+            generation = attempt.generation,
+            phase = DownloadPhase.READY,
+            downloadedBytes = 1_000L,
+        )
+        val actionEntered = CountDownLatch(1)
+        val releaseAction = CountDownLatch(1)
+        val cancelCallStarted = CountDownLatch(1)
+        var actionRuns = 0
+        val pool = Executors.newFixedThreadPool(2)
+        val commit = pool.submit<Boolean> {
+            harness.coordinator.commitReadyIfCurrent(attempt, ready) {
+                actionRuns += 1
+                harness.readyReconciler.activeAndSelfTested = true
+                actionEntered.countDown()
+                check(releaseAction.await(10L, TimeUnit.SECONDS))
+            }
+        }
+        assertTrue(actionEntered.await(10L, TimeUnit.SECONDS))
+        val cancel = pool.submit<Boolean> {
+            cancelCallStarted.countDown()
+            harness.coordinator.cancel(attempt)
+        }
+        assertTrue(cancelCallStarted.await(10L, TimeUnit.SECONDS))
+        assertFalse(cancel.isDone)
+
+        releaseAction.countDown()
+        assertTrue(commit.get(10L, TimeUnit.SECONDS))
+        assertFalse(cancel.get(10L, TimeUnit.SECONDS))
+        pool.shutdown()
+        assertTrue(pool.awaitTermination(10L, TimeUnit.SECONDS))
+
+        assertEquals(1, actionRuns)
+        assertTrue(harness.scheduler.cancelled.isEmpty())
+        val stored = harness.store.read(target)?.telemetry
+        assertEquals(DownloadPhase.READY, stored?.phase)
+        assertTrue(stored?.verificationSucceeded == true)
+    }
+
+    @Test
+    fun cancelThatOwnsTheLockPreventsLaterReadyCommitAction() {
+        val harness = harness("cancel-before-commit")
+        val attempt = harness.coordinator.ensure(target)
+        nowMillis += 1L
+        assertTrue(
+            harness.coordinator.publish(
+                attempt,
+                observation(
+                    generation = attempt.generation,
+                    phase = DownloadPhase.VERIFYING,
+                    downloadedBytes = 1_000L,
+                ),
+            ),
+        )
+        val ready = observation(
+            generation = attempt.generation,
+            phase = DownloadPhase.READY,
+            downloadedBytes = 1_000L,
+        )
+        val cancelInsideLock = CountDownLatch(1)
+        val releaseCancel = CountDownLatch(1)
+        val commitCallStarted = CountDownLatch(1)
+        var actionRuns = 0
+        harness.scheduler.beforeCancel = {
+            cancelInsideLock.countDown()
+            check(releaseCancel.await(10L, TimeUnit.SECONDS))
+        }
+        val pool = Executors.newFixedThreadPool(2)
+        val cancel = pool.submit<Boolean> { harness.coordinator.cancel(attempt) }
+        assertTrue(cancelInsideLock.await(10L, TimeUnit.SECONDS))
+        val commit = pool.submit<Boolean> {
+            commitCallStarted.countDown()
+            harness.coordinator.commitReadyIfCurrent(attempt, ready) {
+                actionRuns += 1
+            }
+        }
+        assertTrue(commitCallStarted.await(10L, TimeUnit.SECONDS))
+        assertFalse(commit.isDone)
+
+        releaseCancel.countDown()
+        assertTrue(cancel.get(10L, TimeUnit.SECONDS))
+        assertFalse(commit.get(10L, TimeUnit.SECONDS))
+        pool.shutdown()
+        assertTrue(pool.awaitTermination(10L, TimeUnit.SECONDS))
+
+        assertEquals(0, actionRuns)
+        assertEquals(DownloadPhase.PAUSED, harness.store.read(target)?.telemetry?.phase)
+    }
+
+    @Test
+    fun reentrantCancelInsideReadyActionSealsPausedAndRejectsReadyOverwrite() {
+        val harness = harness("reentrant-cancel-ready")
+        val attempt = harness.coordinator.ensure(target)
+        nowMillis += 1L
+        assertTrue(
+            harness.coordinator.publish(
+                attempt,
+                observation(
+                    generation = attempt.generation,
+                    phase = DownloadPhase.VERIFYING,
+                    downloadedBytes = 1_000L,
+                ),
+            ),
+        )
+        nowMillis += 1L
+        var actionRuns = 0
+
+        assertThrows(IllegalStateException::class.java) {
+            harness.coordinator.commitReadyIfCurrent(
+                attempt,
+                observation(
+                    generation = attempt.generation,
+                    phase = DownloadPhase.READY,
+                    downloadedBytes = 1_000L,
+                ),
+            ) {
+                actionRuns += 1
+                assertTrue(harness.coordinator.cancel(attempt))
+            }
+        }
+
+        assertEquals(1, actionRuns)
+        assertEquals(listOf(firstWork), harness.scheduler.cancelled)
+        val paused = harness.store.read(target)?.telemetry
+        assertEquals(DownloadPhase.PAUSED, paused?.phase)
+        assertEquals(DownloadBlockReason.USER_PAUSED, paused?.blockReason)
+    }
+
+    @Test
+    fun retryThatOwnsTheLockPreventsPredecessorReadyCommitAction() {
+        val harness = harness("retry-before-commit")
+        val original = harness.coordinator.ensure(target)
+        nowMillis += 1L
+        assertTrue(
+            harness.coordinator.publish(
+                original,
+                observation(
+                    generation = original.generation,
+                    phase = DownloadPhase.VERIFYING,
+                    downloadedBytes = 1_000L,
+                ),
+            ),
+        )
+        val ready = observation(
+            generation = original.generation,
+            phase = DownloadPhase.READY,
+            downloadedBytes = 1_000L,
+        )
+        nowMillis += 1L
+        assertTrue(harness.coordinator.cancel(original))
+        val retryInsideLock = CountDownLatch(1)
+        val releaseRetry = CountDownLatch(1)
+        val commitCallStarted = CountDownLatch(1)
+        var actionRuns = 0
+        harness.scheduler.beforeEnsure = { attempt ->
+            if (attempt.generation == DownloadGeneration(2L)) {
+                retryInsideLock.countDown()
+                check(releaseRetry.await(10L, TimeUnit.SECONDS))
+            }
+        }
+        val pool = Executors.newFixedThreadPool(2)
+        val retry = pool.submit<DownloadAttempt?> {
+            harness.coordinator.retry(original)
+        }
+        assertTrue(retryInsideLock.await(10L, TimeUnit.SECONDS))
+        val commit = pool.submit<Boolean> {
+            commitCallStarted.countDown()
+            harness.coordinator.commitReadyIfCurrent(original, ready) {
+                actionRuns += 1
+            }
+        }
+        assertTrue(commitCallStarted.await(10L, TimeUnit.SECONDS))
+        assertFalse(commit.isDone)
+
+        releaseRetry.countDown()
+        val retried = retry.get(10L, TimeUnit.SECONDS)
+        assertFalse(commit.get(10L, TimeUnit.SECONDS))
+        pool.shutdown()
+        assertTrue(pool.awaitTermination(10L, TimeUnit.SECONDS))
+
+        assertEquals(0, actionRuns)
+        assertEquals(DownloadGeneration(2L), retried?.generation)
+        assertTrue(retried?.let(harness.coordinator::isCurrent) == true)
+    }
+
+    @Test
+    fun commitReadyActionFailureLeavesVerifyingTelemetryUnchanged() {
+        val harness = harness("commit-ready-action-failure")
+        val attempt = harness.coordinator.ensure(target)
+        nowMillis += 1L
+        assertTrue(
+            harness.coordinator.publish(
+                attempt,
+                observation(
+                    generation = attempt.generation,
+                    phase = DownloadPhase.VERIFYING,
+                    downloadedBytes = 1_000L,
+                ),
+            ),
+        )
+        val before = harness.store.read(target)?.telemetry
+        nowMillis += 1L
+        val failure = IOException("marker commit failed")
+
+        val thrown = assertThrows(IOException::class.java) {
+            harness.coordinator.commitReadyIfCurrent(
+                attempt,
+                observation(
+                    generation = attempt.generation,
+                    phase = DownloadPhase.READY,
+                    downloadedBytes = 1_000L,
+                ),
+            ) {
+                throw failure
+            }
+        }
+
+        assertTrue(thrown === failure)
+        assertEquals(before, harness.store.read(target)?.telemetry)
+    }
+
+    @Test
+    fun commitReadyPersistenceFailureRecoversDurablyWithoutRepeatingAction() {
+        val directory = temporaryFolder.newFolder("commit-ready-persistence-failure")
+        val readyReconciler = MutableReadyReconciler()
+        val durableStore = store(directory, readyReconciler)
+        val scheduler = RecordingScheduler()
+        val partials = MutablePartialSnapshotProvider().apply {
+            snapshots[target] = DownloadPartialSnapshot(0L, 1_000L, DownloadNetwork.WIFI)
+        }
+        val initial = coordinator(
+            store = durableStore,
+            scheduler = scheduler,
+            identities = ArrayDeque(listOf(firstWork)),
+            partials = partials,
+        )
+        val attempt = initial.ensure(target)
+        nowMillis += 1L
+        assertTrue(
+            initial.publish(
+                attempt,
+                observation(
+                    generation = attempt.generation,
+                    phase = DownloadPhase.VERIFYING,
+                    downloadedBytes = 1_000L,
+                ),
+            ),
+        )
+        val failingStore = DownloadTelemetryStore(
+            directory = directory,
+            clock = { nowMillis },
+            readyReconciler = readyReconciler,
+            committer = AtomicSnapshotCommitter { _, _ ->
+                throw IOException("ready commit failed")
+            },
+        )
+        val coordinator = coordinator(
+            store = failingStore,
+            scheduler = scheduler,
+            identities = ArrayDeque(listOf(secondWork)),
+            partials = partials,
+        )
+        var actionRuns = 0
+        nowMillis += 1L
+
+        assertThrows(IOException::class.java) {
+            coordinator.commitReadyIfCurrent(
+                attempt,
+                observation(
+                    generation = attempt.generation,
+                    phase = DownloadPhase.READY,
+                    downloadedBytes = 1_000L,
+                ),
+            ) {
+                actionRuns += 1
+                readyReconciler.activeAndSelfTested = true
+            }
+        }
+
+        assertEquals(1, actionRuns)
+        val unreconciled = store(
+            directory,
+            DownloadReadyReconciler { _, _ -> false },
+        ).read(target)
+        assertEquals(DownloadPhase.VERIFYING, unreconciled?.telemetry?.phase)
+
+        val recoveredStore = store(directory, readyReconciler)
+        val recovered = recoveredStore.read(target)
+        assertEquals(DownloadPhase.READY, recovered?.telemetry?.phase)
+        assertTrue(recovered?.telemetry?.verificationSucceeded == true)
+        val recoveredCoordinator = coordinator(
+            store = recoveredStore,
+            scheduler = scheduler,
+            identities = ArrayDeque(listOf(secondWork)),
+            partials = partials,
+        )
+        assertFalse(
+            recoveredCoordinator.commitReadyIfCurrent(
+                attempt,
+                observation(
+                    generation = attempt.generation,
+                    phase = DownloadPhase.READY,
+                    downloadedBytes = 1_000L,
+                ),
+            ) {
+                actionRuns += 1
+            },
+        )
+        assertEquals(1, actionRuns)
+    }
+
+    @Test
     fun cancelPersistsUserPausedBeforeCancellingExactUuidAndSealsAttempt() {
         val harness = harness("cancel")
         val attempt = harness.coordinator.ensure(target)
@@ -214,6 +615,46 @@ class DownloadLifecycleCoordinatorTest {
         assertEquals(listOf(target), harness.partials.requestedTargets)
         assertEquals(listOf(firstWork, firstWork), harness.scheduler.cancelled)
         assertNull(harness.coordinator.retry(original))
+    }
+
+    @Test
+    fun retryAcceptsExactWifiWaitingAttemptAndStartsFreshWorkImmediately() {
+        val harness = harness("retry-wifi-waiting")
+        val original = harness.coordinator.ensure(target)
+        nowMillis += 1L
+        assertTrue(
+            harness.coordinator.publish(
+                original,
+                DownloadObservation(
+                    generation = original.generation,
+                    phase = DownloadPhase.WAITING,
+                    downloadedBytes = 400L,
+                    totalBytes = 1_000L,
+                    network = DownloadNetwork.MOBILE,
+                    blockReason = DownloadBlockReason.WIFI_REQUIRED,
+                    cancellationAllowed = true,
+                    retryAllowed = false,
+                ),
+            ),
+        )
+        harness.partials.snapshots[target] = DownloadPartialSnapshot(
+            downloadedBytes = 400L,
+            totalBytes = 1_000L,
+            network = DownloadNetwork.MOBILE,
+        )
+        nowMillis += 1L
+
+        assertEquals(original, harness.coordinator.terminalAttempt(target))
+        val retried = harness.coordinator.retry(original)
+
+        assertEquals(DownloadGeneration(2L), retried?.generation)
+        assertEquals(secondWork, retried?.workIdentity)
+        assertEquals(listOf(firstWork), harness.scheduler.cancelled)
+        assertEquals(listOf(original, retried), harness.scheduler.scheduled)
+        val restored = requireNotNull(harness.store.read(target))
+        assertEquals(DownloadPhase.PREPARING, restored.telemetry.phase)
+        assertEquals(400L, restored.telemetry.downloadedBytes)
+        assertEquals(DownloadNetwork.MOBILE, restored.telemetry.network)
     }
 
     @Test
@@ -508,9 +949,152 @@ class DownloadLifecycleCoordinatorTest {
         assertEquals(1, freshScheduler.ensureCalls)
     }
 
+    @Test
+    fun uiSnapshotReadsOneDurableRecordAndBindsItsExactActionableAttemptAtomically() {
+        val actionablePhases = setOf(
+            DownloadPhase.PREPARING,
+            DownloadPhase.DOWNLOADING,
+            DownloadPhase.VERIFYING,
+            DownloadPhase.WAITING,
+            DownloadPhase.PAUSED,
+            DownloadPhase.FAILED,
+        )
+        DownloadPhase.entries.forEachIndexed { index, phase ->
+            val directory = temporaryFolder.newFolder("ui-snapshot-$phase")
+            val readyReconciler = MutableReadyReconciler()
+            val seedStore = store(directory, readyReconciler)
+            val identity = work(
+                "00000000-0000-0000-0000-${(index + 1).toString().padStart(12, '0')}",
+            )
+            val expected = if (phase == DownloadPhase.READY) {
+                val verifying = seedRecord(
+                    store = seedStore,
+                    target = target,
+                    workIdentity = identity,
+                    phase = DownloadPhase.VERIFYING,
+                )
+                nowMillis += 1L
+                val seedingCoordinator = coordinator(
+                    store = seedStore,
+                    scheduler = RecordingScheduler(),
+                    identities = ArrayDeque(listOf(secondWork)),
+                    partials = MutablePartialSnapshotProvider(),
+                )
+                check(
+                    seedingCoordinator.commitReadyIfCurrent(
+                        DownloadAttempt.from(verifying),
+                        observation(
+                            generation = verifying.telemetry.generation,
+                            phase = DownloadPhase.READY,
+                            downloadedBytes = 1_000L,
+                        ),
+                    ) {},
+                ) { "Could not seed a valid VERIFYING to READY transition." }
+                readyReconciler.activeAndSelfTested = true
+                requireNotNull(seedStore.read(target))
+            } else {
+                seedRecord(
+                    store = seedStore,
+                    target = target,
+                    workIdentity = identity,
+                    phase = phase,
+                )
+            }
+            val exactRecordFile = DownloadTelemetryStore.recordFile(directory, target).canonicalFile
+            var exactRecordReads = 0
+            val countingStore = DownloadTelemetryStore(
+                directory = directory,
+                clock = { nowMillis },
+                readyReconciler = readyReconciler,
+                snapshotReader = SnapshotReader { file ->
+                    if (file.canonicalFile == exactRecordFile) exactRecordReads += 1
+                    Files.readAllBytes(file.toPath())
+                },
+            )
+            val coordinator = coordinator(
+                store = countingStore,
+                scheduler = RecordingScheduler(),
+                identities = ArrayDeque(listOf(secondWork)),
+                partials = MutablePartialSnapshotProvider(),
+            )
+
+            val snapshot = requireNotNull(coordinator.uiSnapshot(target))
+
+            assertEquals("$phase must read one durable record", 1, exactRecordReads)
+            assertEquals(target, snapshot.target)
+            assertEquals(expected.telemetry, snapshot.telemetry)
+            assertEquals(
+                DownloadAttempt.from(expected).takeIf { phase in actionablePhases },
+                snapshot.actionableAttempt,
+            )
+        }
+    }
+
+    @Test
+    fun failCurrentSealsOnlyTheExactTargetGenerationAndWorkIdentity() {
+        val harness = harness("fail-current-exact-identity")
+        val current = harness.coordinator.ensure(target)
+        nowMillis += 1_000L
+        assertTrue(
+            harness.coordinator.publish(
+                current,
+                observation(
+                    generation = current.generation,
+                    phase = DownloadPhase.DOWNLOADING,
+                    downloadedBytes = 375L,
+                ),
+            ),
+        )
+
+        assertFalse(
+            harness.coordinator.failCurrent(
+                current.copy(target = otherTarget),
+                DownloadFailureCode.STORAGE_UNAVAILABLE,
+            ),
+        )
+        assertFalse(
+            harness.coordinator.failCurrent(
+                current.copy(generation = DownloadGeneration(current.generation.value + 1L)),
+                DownloadFailureCode.STORAGE_UNAVAILABLE,
+            ),
+        )
+        assertFalse(
+            harness.coordinator.failCurrent(
+                current.copy(workIdentity = secondWork),
+                DownloadFailureCode.STORAGE_UNAVAILABLE,
+            ),
+        )
+        assertEquals(DownloadPhase.DOWNLOADING, harness.store.read(target)?.telemetry?.phase)
+
+        assertTrue(
+            harness.coordinator.failCurrent(
+                current,
+                DownloadFailureCode.STORAGE_UNAVAILABLE,
+            ),
+        )
+        val failed = requireNotNull(harness.store.read(target))
+        assertEquals(current.target, failed.target)
+        assertEquals(current.generation, failed.telemetry.generation)
+        assertEquals(current.workIdentity, failed.workIdentity)
+        assertEquals(DownloadPhase.FAILED, failed.telemetry.phase)
+        assertEquals(375L, failed.telemetry.downloadedBytes)
+        assertEquals(SafeDownloadFailure.STORAGE_UNAVAILABLE, failed.telemetry.failure)
+        assertTrue(failed.telemetry.canRetry)
+        assertFalse(failed.telemetry.canCancel)
+
+        assertTrue(
+            harness.coordinator.failCurrent(
+                current,
+                DownloadFailureCode.UNKNOWN,
+            ),
+        )
+        assertEquals(failed, harness.store.read(target))
+    }
+
     private fun harness(name: String): Harness {
         val directory = temporaryFolder.newFolder(name)
-        val store = store(directory)
+        val readyReconciler = MutableReadyReconciler()
+        val store = store(directory, readyReconciler)
         val scheduler = RecordingScheduler()
         val partials = MutablePartialSnapshotProvider().apply {
             snapshots[target] = DownloadPartialSnapshot(0L, 1_000L, DownloadNetwork.WIFI)
@@ -521,6 +1105,7 @@ class DownloadLifecycleCoordinatorTest {
             store = store,
             scheduler = scheduler,
             partials = partials,
+            readyReconciler = readyReconciler,
             coordinator = coordinator(
                 store,
                 scheduler,
@@ -543,10 +1128,13 @@ class DownloadLifecycleCoordinatorTest {
         telemetryCalculator = DownloadTelemetryCalculator(clock = { nowMillis }),
     )
 
-    private fun store(directory: File): DownloadTelemetryStore = DownloadTelemetryStore(
+    private fun store(
+        directory: File,
+        readyReconciler: DownloadReadyReconciler = DownloadReadyReconciler { _, _ -> false },
+    ): DownloadTelemetryStore = DownloadTelemetryStore(
         directory = directory,
         clock = { nowMillis },
-        readyReconciler = DownloadReadyReconciler { _, _ -> true },
+        readyReconciler = readyReconciler,
     )
 
     private fun seedRecord(
@@ -636,8 +1224,19 @@ class DownloadLifecycleCoordinatorTest {
         val store: DownloadTelemetryStore,
         val scheduler: RecordingScheduler,
         val partials: MutablePartialSnapshotProvider,
+        val readyReconciler: MutableReadyReconciler,
         val coordinator: DownloadLifecycleCoordinator,
     )
+
+    private class MutableReadyReconciler : DownloadReadyReconciler {
+        @Volatile
+        var activeAndSelfTested: Boolean = false
+
+        override fun isActiveAndSelfTested(
+            target: DownloadTargetKey,
+            generation: DownloadGeneration,
+        ): Boolean = activeAndSelfTested
+    }
 
     private class MutablePartialSnapshotProvider : DownloadPartialSnapshotProvider {
         val snapshots = mutableMapOf<DownloadTargetKey, DownloadPartialSnapshot>()
@@ -655,11 +1254,13 @@ class DownloadLifecycleCoordinatorTest {
         var ensureCalls = 0
         var scheduleFailure: RuntimeException? = null
         var cancelFailure: RuntimeException? = null
+        var beforeEnsure: ((DownloadAttempt) -> Unit)? = null
         var beforeCancel: ((DownloadWorkIdentity) -> Unit)? = null
 
         @Synchronized
         override fun ensureScheduled(attempt: DownloadAttempt) {
             ensureCalls += 1
+            beforeEnsure?.invoke(attempt)
             if (attempt !in scheduled) scheduled += attempt
             scheduleFailure?.let { throw it }
         }

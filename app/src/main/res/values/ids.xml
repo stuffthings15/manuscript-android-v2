@@ -5,6 +5,11 @@
     <item name="app_slogan" type="id" />
     <item name="privacy_summary" type="id" />
     <item name="local_ai_install_action" type="id" />
+    <item name="local_ai_download_status" type="id" />
+    <item name="local_ai_download_detail" type="id" />
+    <item name="local_ai_download_progress" type="id" />
+    <item name="local_ai_retry_action" type="id" />
+    <item name="local_ai_cancel_action" type="id" />
     <item name="page_host" type="id" />
     <item name="main_scroll" type="id" />
     <item name="editor_frame" type="id" />

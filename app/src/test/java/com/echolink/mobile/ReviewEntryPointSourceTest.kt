@@ -40,10 +40,13 @@ class ReviewEntryPointSourceTest {
     }
 
     @Test
-    fun openingReviewScrollsTheCardIntoView() {
+    fun openingReviewPinsTheCardOutsideScrollingContent() {
         assertTrue(
-            activity.contains("mainScroll?.smoothScrollTo(0, correctionCard.top.coerceAtLeast(0))"),
+            activity.contains("pageHost.addView(reviewOverlay, FrameLayout.LayoutParams("),
         )
+        assertTrue(activity.contains("correctionCardOverlay?.apply"))
+        assertTrue(activity.contains("scrollTo(0, 0)"))
+        assertTrue(!activity.contains("content.addView(correctionCard"))
     }
 
     @Test

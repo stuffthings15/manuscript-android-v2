@@ -45,14 +45,22 @@ internal class DownloadProgressPublisher(
         }
         require(timestampMillis >= 0L) { "Progress time cannot be negative." }
 
-        val previous = attempts[attempt]
+        val tracked = attempts[attempt]
+        val exactZeroByteRestart = tracked != null && isExactZeroByteRestart(
+            previous = tracked,
+            observation = observation,
+            timestampMillis = timestampMillis,
+            isFinalByteCount = isFinalByteCount,
+        )
         if (
-            previous != null &&
-            (observation.downloadedBytes < previous.lastSeenBytes ||
-                timestampMillis < previous.lastSeenTimestampMillis)
+            tracked != null &&
+            !exactZeroByteRestart &&
+            (observation.downloadedBytes < tracked.lastSeenBytes ||
+                timestampMillis < tracked.lastSeenTimestampMillis)
         ) {
             return null
         }
+        val previous = tracked.takeUnless { exactZeroByteRestart }
 
         val knownCompletion = observation.totalBytes?.let { total ->
             observation.downloadedBytes >= total
@@ -125,6 +133,26 @@ internal class DownloadProgressPublisher(
     internal val trackedAttemptCount: Int
         @Synchronized get() = attempts.size
 
+    @Synchronized
+    fun reset(attempt: DownloadAttempt) {
+        attempts.remove(attempt)
+    }
+
+    private fun isExactZeroByteRestart(
+        previous: AttemptState,
+        observation: DownloadObservation,
+        timestampMillis: Long,
+        isFinalByteCount: Boolean,
+    ): Boolean =
+        !isFinalByteCount &&
+            previous.lastPublishedPhase in RESTARTABLE_PHASES &&
+            previous.lastSeenBytes > 0L &&
+            timestampMillis >= previous.lastSeenTimestampMillis &&
+            observation.phase == DownloadPhase.DOWNLOADING &&
+            observation.downloadedBytes == 0L &&
+            observation.totalBytes != null &&
+            observation.totalBytes == previous.telemetry.totalBytes
+
     private fun trimOldestAttempts() {
         while (attempts.size > maxTrackedAttempts) {
             val iterator = attempts.entries.iterator()
@@ -149,5 +177,10 @@ internal class DownloadProgressPublisher(
         const val DEFAULT_MINIMUM_TIME_INTERVAL_MILLIS: Long = 1_000L
         const val DEFAULT_MAX_TRACKED_ATTEMPTS: Int = 16
         private const val LOAD_FACTOR = 0.75f
+        private val RESTARTABLE_PHASES = setOf(
+            DownloadPhase.PREPARING,
+            DownloadPhase.DOWNLOADING,
+            DownloadPhase.WAITING,
+        )
     }
 }

@@ -169,6 +169,20 @@ class AndroidUsabilitySourceTest {
     }
 
     @Test
+    fun userLikeEssayAcceptanceCannotHideAMissedTouchWithDirectClick() {
+        val deviceTest = File(
+            androidRoot,
+            "app/src/androidTest/java/com/echolink/mobile/EssayUiBatchDeviceTest.kt",
+        ).readText()
+        val pressUntil = deviceTest
+            .substringAfter("private fun pressUntil(")
+            .substringBefore("private fun tap(")
+
+        assertFalse(pressUntil.contains("performClick()"))
+        assertTrue(pressUntil.contains("check(landedByTouch)"))
+    }
+
+    @Test
     fun startupModelActionWaitsForTheReadinessDialogToReleaseWindowFocus() {
         val source = source("MainActivity.kt")
 
@@ -188,10 +202,10 @@ class AndroidUsabilitySourceTest {
             .substringBefore("private fun showModelSettings()")
 
         assertTrue(
-            installAction.contains("manager.installedModel(manager.selectedRuntime()) != null"),
+            installAction.contains("manager.exactInstalledModel(manager.selectedRuntime()) != null"),
         )
         assertTrue(
-            installPrompt.contains("manager.installedModel(manager.selectedRuntime()) != null"),
+            installPrompt.contains("manager.exactInstalledModel(manager.selectedRuntime()) != null"),
         )
     }
 

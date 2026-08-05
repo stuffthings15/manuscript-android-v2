@@ -1,14 +1,15 @@
 package com.echolink.mobile
 
+import android.app.UiAutomation
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.graphics.Rect
 import android.os.Build
 import android.os.SystemClock
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
-import android.view.accessibility.AccessibilityWindowInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -22,7 +23,15 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ExternalEditorLifecycleFixtureDeviceTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val uiAutomation = instrumentation.getUiAutomation(
+        UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES,
+    ).apply {
+        serviceInfo = serviceInfo.apply {
+            flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        }
+    }
     private val targetContext = instrumentation.targetContext
+    private val fixturePackage = instrumentation.context.packageName
     private val triggerDescription = targetContext.getString(R.string.external_assistant_open)
     private val panelCloseDescription = targetContext.getString(R.string.close_action)
 
@@ -56,13 +65,11 @@ class ExternalEditorLifecycleFixtureDeviceTest {
             S23ExternalEditorFixtureActivity.MODE_DETACHED,
             S23ExternalEditorFixtureActivity.MODE_TARGET_LOSS,
         ).forEach { mode ->
-            withFixture(mode) { activity ->
+            withFixture(mode) {
                 assertTrue(waitForDescription(triggerDescription, expected = true))
                 tapDescription(triggerDescription)
                 assertTrue(waitForDescription(panelCloseDescription, expected = true))
-                tap(activity.window.decorView.findViewWithTag(
-                    S23ExternalEditorFixtureActivity.LIFECYCLE_ACTION_TAG,
-                ))
+                tapDescription(S23ExternalEditorFixtureActivity.lifecycleActionDescription(mode))
                 assertDescriptionNeverAppears(panelCloseDescription, observationMs = 1_000L)
                 assertDescriptionNeverAppears(triggerDescription, observationMs = 1_000L)
             }
@@ -111,31 +118,19 @@ class ExternalEditorLifecycleFixtureDeviceTest {
     }
 
     private fun focusedFieldProof(expectedDescription: String): FocusedFieldProof? {
-        val candidates = instrumentation.uiAutomation.windows.mapNotNull { window ->
-            if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION) return@mapNotNull null
-            val root = window.root ?: return@mapNotNull null
-            val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-            if (
-                focused == null ||
-                !focused.isFocused ||
-                !focused.isEditable ||
-                focused.contentDescription?.toString() != expectedDescription ||
-                focused.packageName?.toString() != root.packageName?.toString()
-            ) {
-                focused?.recycle()
-                root.recycle()
-                return@mapNotNull null
-            }
-            root to focused
-        }
-        if (candidates.size != 1) {
-            candidates.forEach { (root, focused) ->
-                focused.recycle()
-                root.recycle()
-            }
+        val applicationRoot = uiAutomation.rootInActiveWindow ?: return null
+        val focusedNode = applicationRoot.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (
+            focusedNode == null ||
+            !focusedNode.isFocused ||
+            !focusedNode.isEditable ||
+            focusedNode.contentDescription?.toString() != expectedDescription ||
+            focusedNode.packageName?.toString() != applicationRoot.packageName?.toString()
+        ) {
+            focusedNode?.recycle()
+            applicationRoot.recycle()
             return null
         }
-        val (applicationRoot, focusedNode) = candidates.single()
         return try {
             val viewId = focusedNode.viewIdResourceName?.takeIf(String::isNotBlank) ?: return null
             val locator = AccessibilityNodeStructuralLocator.from(applicationRoot, focusedNode)
@@ -149,20 +144,21 @@ class ExternalEditorLifecycleFixtureDeviceTest {
 
     private fun assertSettingsSwitch(panelOpen: Boolean) {
         requireEnabledManuscriptService()
-        withFixture(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH) { activity ->
+        withFixture(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH) {
             assertTrue(waitForDescription(triggerDescription, expected = true))
             if (panelOpen) {
                 tapDescription(triggerDescription)
                 assertTrue(waitForDescription(panelCloseDescription, expected = true))
                 assertEquals(0, countDescription(triggerDescription))
             }
-            val resumesBeforeSwitch = activity.resumeCount
             val disappearStartedAt = SystemClock.elapsedRealtime()
             val disappearDeadline = disappearStartedAt + SURFACE_DISAPPEAR_MS
 
-            tap(activity.window.decorView.findViewWithTag(
-                S23ExternalEditorFixtureActivity.LIFECYCLE_ACTION_TAG,
-            ))
+            tapDescription(
+                S23ExternalEditorFixtureActivity.lifecycleActionDescription(
+                    S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH,
+                ),
+            )
 
             assertTrue(waitUntilDeadline(disappearDeadline) { activePackage() == SETTINGS_PACKAGE })
             assertEquals(SETTINGS_PACKAGE, activePackage())
@@ -173,14 +169,13 @@ class ExternalEditorLifecycleFixtureDeviceTest {
                 },
             )
             assertTrue(SystemClock.elapsedRealtime() - disappearStartedAt <= SURFACE_DISAPPEAR_MS)
-            assertTrue(waitUntil { activity.stopCount >= 1 })
             assertDescriptionCountStable(triggerDescription, expectedCount = 0)
             assertDescriptionCountStable(panelCloseDescription, expectedCount = 0)
 
             val returnStartedAt = SystemClock.elapsedRealtime()
             val returnDeadline = returnStartedAt + TRIGGER_RETURN_MS
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-            assertTrue(waitUntilDeadline(returnDeadline) { activity.resumeCount > resumesBeforeSwitch })
+            assertTrue(waitUntilDeadline(returnDeadline) { activePackage() == fixturePackage })
             assertTrue(
                 waitUntilDeadline(returnDeadline) {
                     countDescription(triggerDescription) == 1
@@ -211,19 +206,21 @@ class ExternalEditorLifecycleFixtureDeviceTest {
         assumeTrue("Explicit prerequisite receipt: ${receipt.absolutePath}", false)
     }
 
-    private fun withFixture(mode: String, block: (S23ExternalEditorFixtureActivity) -> Unit) {
-        val activity = instrumentation.startActivitySync(
+    private fun withFixture(mode: String, block: () -> Unit) {
+        instrumentation.context.startActivity(
             Intent(instrumentation.context, S23ExternalEditorFixtureActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra(S23ExternalEditorFixtureActivity.EXTRA_MODE, mode)
             },
-        ) as S23ExternalEditorFixtureActivity
+        )
         try {
-            instrumentation.waitForIdleSync()
-            block(activity)
+            assertTrue(
+                "External fixture package did not become active.",
+                waitUntil { activePackage() == fixturePackage },
+            )
+            block()
         } finally {
-            instrumentation.runOnMainSync { activity.finish() }
-            instrumentation.waitForIdleSync()
+            shell("am force-stop $fixturePackage")
         }
     }
 
@@ -235,19 +232,26 @@ class ExternalEditorLifecycleFixtureDeviceTest {
         tap(bounds.centerX().toFloat(), bounds.centerY().toFloat())
     }
 
-    private fun tap(view: View) {
-        val location = IntArray(2).also(view::getLocationOnScreen)
-        tap(location[0] + view.width / 2f, location[1] + view.height / 2f)
-    }
-
     private fun tap(x: Float, y: Float) {
         val downAt = SystemClock.uptimeMillis()
-        instrumentation.sendPointerSync(
-            MotionEvent.obtain(downAt, downAt, MotionEvent.ACTION_DOWN, x, y, 0),
-        )
-        instrumentation.sendPointerSync(
-            MotionEvent.obtain(downAt, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0),
-        )
+        val down = MotionEvent.obtain(downAt, downAt, MotionEvent.ACTION_DOWN, x, y, 0).apply {
+            source = InputDevice.SOURCE_TOUCHSCREEN
+        }
+        val up = MotionEvent.obtain(
+            downAt,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_UP,
+            x,
+            y,
+            0,
+        ).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+        try {
+            assertTrue(uiAutomation.injectInputEvent(down, true))
+            assertTrue(uiAutomation.injectInputEvent(up, true))
+        } finally {
+            down.recycle()
+            up.recycle()
+        }
     }
 
     private fun waitForDescription(
@@ -289,14 +293,20 @@ class ExternalEditorLifecycleFixtureDeviceTest {
     }
 
     private fun countDescription(description: String): Int =
-        instrumentation.uiAutomation.windows.sumOf { window ->
+        uiAutomation.windows.sumOf { window ->
             val root = window.root ?: return@sumOf 0
             try {
                 countDescription(root, description)
             } finally {
                 root.recycle()
             }
-        }
+        }.takeIf { it > 0 } ?: uiAutomation.rootInActiveWindow?.let { root ->
+            try {
+                countDescription(root, description)
+            } finally {
+                root.recycle()
+            }
+        } ?: 0
 
     private fun countDescription(node: AccessibilityNodeInfo, description: String): Int {
         var count = if (node.contentDescription?.toString() == description) 1 else 0
@@ -312,15 +322,17 @@ class ExternalEditorLifecycleFixtureDeviceTest {
     }
 
     private fun findDescription(description: String): AccessibilityNodeInfo? {
-        instrumentation.uiAutomation.windows.forEach { window ->
+        uiAutomation.windows.forEach { window ->
             val root = window.root ?: return@forEach
-            try {
-                findDescription(root, description)?.let { return it }
-            } finally {
-                root.recycle()
-            }
+            try { findDescription(root, description)?.let { return it } }
+            finally { root.recycle() }
         }
-        return null
+        val root = uiAutomation.rootInActiveWindow ?: return null
+        return try {
+            findDescription(root, description)
+        } finally {
+            root.recycle()
+        }
     }
 
     private fun findDescription(
@@ -342,7 +354,7 @@ class ExternalEditorLifecycleFixtureDeviceTest {
     }
 
     private fun activePackage(): String {
-        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return ""
+        val root = uiAutomation.rootInActiveWindow ?: return ""
         return try {
             root.packageName?.toString().orEmpty()
         } finally {
@@ -355,8 +367,16 @@ class ExternalEditorLifecycleFixtureDeviceTest {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) node.recycle()
     }
 
-    private fun secureSetting(key: String): String = instrumentation.uiAutomation
+    private fun secureSetting(key: String): String = uiAutomation
         .executeShellCommand("settings get secure $key")
+        .use { descriptor ->
+            java.io.FileInputStream(descriptor.fileDescriptor)
+                .bufferedReader()
+                .use { it.readText().trim() }
+        }
+
+    private fun shell(command: String): String = uiAutomation
+        .executeShellCommand(command)
         .use { descriptor ->
             java.io.FileInputStream(descriptor.fileDescriptor)
                 .bufferedReader()

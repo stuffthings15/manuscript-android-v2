@@ -72,8 +72,14 @@ data class AiDeviceProfile(
 )
 
 data class BackendQualifications(
-    val gemmaGpuQualified: Boolean = false,
-    val gemmaThoroughQualified: Boolean = false,
+    val gemmaFastCpuQualified: Boolean = false,
+    val gemmaFastGpuQualified: Boolean = false,
+    val gemmaFastCpuRejected: Boolean = false,
+    val gemmaFastGpuRejected: Boolean = false,
+    val gemmaThoroughCpuQualified: Boolean = false,
+    val gemmaThoroughGpuQualified: Boolean = false,
+    val gemmaThoroughCpuRejected: Boolean = false,
+    val gemmaThoroughGpuRejected: Boolean = false,
 )
 
 data class AiRuntimeSelection(
@@ -87,51 +93,53 @@ object AiHardwarePolicy {
     fun select(
         device: AiDeviceProfile,
         qualityMode: QualityMode,
-        qualifications: BackendQualifications,
+        @Suppress("UNUSED_PARAMETER") qualifications: BackendQualifications,
     ): AiRuntimeSelection {
         // Gemma E2B needs roughly 3 GiB resident while generating. On an
         // 8 GB-class phone (reports ~7.2 GiB total, ~3 GiB available) that
         // evicts most of the system and the whole device lags, then the
         // 2.4 GB reload after idle release lags again. Marketed 12 GB
         // devices report ~10.3 GiB, so 9 GiB keeps Gemma exclusive to them;
-        // everything below runs the light legacy Qwen tiers that
-        // Qwen3CapabilitySelector sizes to the device.
+        // everything below runs a legacy Qwen tier sized here. The compact
+        // 0.6B model is reserved for true low-memory hardware: a real
+        // ten-section UI run proved it fast but unable to finish proofreading.
         if (
             !device.is64Bit ||
             device.lowMemoryDevice ||
-            device.totalRamBytes < 9L * GIB ||
-            device.usableStorageBytes < 4L * GIB
+            device.totalRamBytes < 3_500_000_000L ||
+            device.usableStorageBytes < 2L * GIB
         ) {
             return AiRuntimeSelection(
                 GemmaModelCatalog.legacyCompact,
                 BackendKind.LEGACY_LLAMA_CPU,
             )
         }
+        if (
+            device.totalRamBytes < 9L * GIB
+        ) {
+            return AiRuntimeSelection(
+                LegacyQwenModelCatalog.forTier(Qwen3Tier.BALANCED),
+                BackendKind.LEGACY_LLAMA_CPU,
+            )
+        }
 
-        // Qualification is a capability proof, not a device whitelist: the
-        // flags are set only after the same device passed a live self-test on
-        // that backend or model, so any OEM that proves itself gets the
-        // faster path.
-        val canUseGpu =
-            qualifications.gemmaGpuQualified &&
-                device.hasVulkanHardware &&
-                !device.severeThermalState
-        val canUseThorough =
-            qualityMode == QualityMode.THOROUGH &&
-                qualifications.gemmaThoroughQualified &&
-                device.totalRamBytes >= 8L * GIB &&
-                device.availableRamBytes >= 3L * GIB &&
-                device.availableProcessors >= 8 &&
-                device.androidApi >= 31 &&
-                !device.severeThermalState
-
+        // Product decision: Qwen3 is the correction family on every device.
+        // High-memory hardware receives the 4B artifact unless the user asks
+        // for Faster mode. Free storage is enforced before a download, not
+        // here: downloading a model reduces free space and must never make a
+        // capable device silently switch back to a smaller installed model.
+        // Gemma qualification records remain readable for migration, but
+        // they no longer choose the active correction model.
         return AiRuntimeSelection(
-            artifact = if (canUseThorough) {
-                GemmaModelCatalog.thorough
-            } else {
-                GemmaModelCatalog.fast
-            },
-            backend = if (canUseGpu) BackendKind.LITERT_GPU else BackendKind.LITERT_CPU,
+            LegacyQwenModelCatalog.forTier(
+                if (qualityMode == QualityMode.FAST) {
+                    Qwen3Tier.BALANCED
+                } else {
+                    Qwen3Tier.ADVANCED
+                },
+            ),
+            BackendKind.LEGACY_LLAMA_CPU,
         )
+
     }
 }

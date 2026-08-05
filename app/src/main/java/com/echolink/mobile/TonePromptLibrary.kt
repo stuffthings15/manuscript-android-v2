@@ -32,6 +32,8 @@ object TonePromptLibrary {
             "Do not strengthen, weaken, add, or remove any of them."
     private val commonMust = listOf(
         "Correct every grammar, spelling, punctuation, capitalization, and sentence-structure error.",
+        "Use standard American English. Correct nonstandard slang, phonetic spellings, wrong homophones, malformed words, and imprecise vocabulary unless they appear inside a quotation.",
+        "Rewrite a broken sentence completely when small edits cannot make it grammatical and natural.",
         "Preserve the exact meaning, facts, names, numbers, dates, links, quotations, and formatting.",
         "Preserve the writer's point of view and make every pronoun referent unambiguous.",
         SENTENCE_AUDIT,
@@ -51,8 +53,8 @@ object TonePromptLibrary {
     private val specs = listOf(
         TonePromptSpec(
             WritingTone.PROOFREAD,
-            "Proofread the text. Make only corrections required for flawless English while keeping the writer's wording and tone.",
-            listOf("Keep edits minimal and preserve the writer's voice."),
+            "Proofread the text until every sentence is flawless, natural standard English. The source may contain deliberate errors throughout, so inspect every word and sentence.",
+            listOf("Preserve the writer's meaning and voice, but never preserve an error merely because it appears intentional or informal."),
             listOf("Do not paraphrase text that is already correct."),
         ),
         TonePromptSpec(
@@ -239,6 +241,8 @@ object TonePromptLibrary {
             append(' ')
             append(commonMust[1])
             append(' ')
+            append(commonMust[3])
+            append(' ')
             append(spec.must.first())
             append(' ')
             append(spec.avoid.first())
@@ -270,6 +274,8 @@ object TonePromptLibrary {
             append(commonMust[0])
             append(' ')
             append(commonMust[1])
+            append(' ')
+            append(commonMust[3])
             append(' ')
             append(spec.must.first())
             append(' ')

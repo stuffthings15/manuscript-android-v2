@@ -92,7 +92,16 @@ class MainActivity : Activity() {
     private var externalAccessStatus: TextView? = null
     private var externalAccessButton: Button? = null
     private lateinit var qwenStatus: TextView
+    private lateinit var qwenDownloadDetail: TextView
+    private lateinit var qwenDownloadProgress: TextView
+    private lateinit var qwenRetryButton: Button
+    private lateinit var qwenCancelButton: Button
     private lateinit var qwenInstallButton: Button
+    private var displayedDownloadTarget: DownloadTargetKey? = null
+    private var displayedDownloadAttempt: DownloadAttempt? = null
+    private var downloadUiFallbackRetry = false
+    private var pendingReviewAttach: Runnable? = null
+    private var correctionCardOverlay: ScrollView? = null
 
     private lateinit var localTools: AndroidLocalPersonalToolsStore
     private lateinit var draftStore: EncryptedEditorDraftStore
@@ -123,6 +132,10 @@ class MainActivity : Activity() {
             object : ReviewSurfaceEffectActions {
                 override fun cancelStaleCorrectionAndCallbackWork() {
                     mainKeyboardRestore.cancel()
+                    pendingReviewAttach?.let { pending ->
+                        if (::root.isInitialized) root.removeCallbacks(pending)
+                    }
+                    pendingReviewAttach = null
                     grammarEngine.setSessionWarm(false)
                     modelRequests.cancelAll()
                     modelRequestEpoch += 1
@@ -131,7 +144,15 @@ class MainActivity : Activity() {
 
                 override fun detachReviewPanelSafely() {
                     clearTargetUnderline()
-                    if (::correctionCard.isInitialized) correctionCard.visibility = View.GONE
+                    if (::correctionCard.isInitialized) {
+                        // A hidden focused card can keep focus until the next
+                        // traversal, which strands the trigger after Close.
+                        // Release focus before detaching so the retained editor
+                        // can be reacquired in this same close transaction.
+                        correctionCard.clearFocus()
+                        correctionCard.visibility = View.GONE
+                        correctionCardOverlay?.visibility = View.GONE
+                    }
                 }
 
                 override fun scrubTransientTextHolders() {
@@ -217,7 +238,7 @@ class MainActivity : Activity() {
     private val qwenStatusRefresh = object : Runnable {
         override fun run() {
             if (!::qwenStatus.isInitialized) return
-            updateQwenStatus()
+            refreshDownloadTelemetry()
             refreshStartupReadinessDialog()
             if (activityResumed) {
                 statusHandler.postDelayed(this, 1_000L)
@@ -227,6 +248,16 @@ class MainActivity : Activity() {
 
     private val focusListener = ViewTreeObserver.OnGlobalFocusChangeListener { _, newFocus ->
         if (currentPage != Page.WRITE || !::editor.isInitialized) return@OnGlobalFocusChangeListener
+        val state = reviewSurfaceController.state
+        if (
+            newFocus == null &&
+            (state is ReviewSurfaceState.Closing || state is ReviewSurfaceState.RestoringFocus)
+        ) {
+            // Detaching the focused card briefly reports no focused view.
+            // This is the expected handoff to the retained editor, not target
+            // loss. Invalidating here strands the trigger in Hidden.
+            return@OnGlobalFocusChangeListener
+        }
         val insideCard = newFocus != null && isDescendant(newFocus, correctionCard)
         val insideToneMenu = newFocus != null &&
             ::mainToneMenu.isInitialized &&
@@ -251,6 +282,7 @@ class MainActivity : Activity() {
                 .getString(TONE_KEY, WritingTone.PROOFREAD.label).orEmpty(),
         )
         buildShell()
+        refreshDownloadTelemetry()
         val openModelSetup = intent.getBooleanExtra(EXTRA_OPEN_MODEL_SETUP, false)
         if (intent.getBooleanExtra(EXTRA_OPEN_PERSONALIZE, false)) {
             showPersonalizePage()
@@ -306,6 +338,7 @@ class MainActivity : Activity() {
         statusHandler.removeCallbacks(draftSave)
         statusHandler.removeCallbacks(triggerRefresh)
         statusHandler.removeCallbacks(prefetchCorrections)
+        stopDownloadTelemetryUpdates()
         grammarEngine.cancelPrefetch()
         speechSession?.close()
         speechSession = null
@@ -333,8 +366,8 @@ class MainActivity : Activity() {
         super.onResume()
         activityResumed = true
         updateExternalAccessStatus()
-        statusHandler.removeCallbacks(qwenStatusRefresh)
-        statusHandler.post(qwenStatusRefresh)
+        refreshDownloadTelemetry()
+        startDownloadTelemetryUpdates()
         if (::root.isInitialized) {
             root.postDelayed({ showStartupReadinessCheckIfNeeded() }, 500L)
         }
@@ -342,7 +375,7 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         activityResumed = false
-        statusHandler.removeCallbacks(qwenStatusRefresh)
+        stopDownloadTelemetryUpdates()
         persistDraftNow()
         speechSession?.stop()
         super.onPause()
@@ -414,6 +447,7 @@ class MainActivity : Activity() {
             setPadding(dp(20), 0, dp(20), dp(10))
         }
         qwenStatus = TextView(this).apply {
+            id = R.id.local_ai_download_status
             textSize = 12f
             setTextColor(COLOR_ACCENT)
             setPadding(dp(20), 0, dp(20), dp(8))
@@ -421,12 +455,43 @@ class MainActivity : Activity() {
             isFocusable = true
             setOnClickListener {
                 val manager = AiModelManager.get(this@MainActivity)
-                if (manager.installedModel(manager.selectedRuntime()) == null) {
+                if (manager.exactInstalledModel(manager.selectedRuntime()) == null) {
                     showModelInstallPromptIfNeeded(force = true)
                 } else {
                     showModelSettings()
                 }
             }
+        }
+        qwenDownloadDetail = TextView(this).apply {
+            id = R.id.local_ai_download_detail
+            textSize = 12f
+            setTextColor(COLOR_TEXT_MUTED)
+            setPadding(dp(20), 0, dp(20), dp(4))
+        }
+        qwenDownloadProgress = TextView(this).apply {
+            id = R.id.local_ai_download_progress
+            textSize = 12f
+            setTextColor(COLOR_TEXT_MUTED)
+            setPadding(dp(20), 0, dp(20), dp(8))
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        }
+        qwenRetryButton = primaryButton(R.string.qwen_model_retry_action) {
+            performDownloadAction(DownloadAction.RETRY)
+        }.apply {
+            id = R.id.local_ai_retry_action
+            visibility = View.GONE
+        }
+        qwenCancelButton = primaryButton(R.string.qwen_download_cancel) {
+            performDownloadAction(DownloadAction.CANCEL)
+        }.apply {
+            id = R.id.local_ai_cancel_action
+            visibility = View.GONE
+        }
+        val qwenDownloadActions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(20), 0, dp(20), dp(8))
+            addView(qwenRetryButton, weightedParams(endMargin = 6))
+            addView(qwenCancelButton, weightedParams(startMargin = 6))
         }
         qwenInstallButton = primaryButton(R.string.qwen_model_install_action) {
             requestModelInstallation()
@@ -448,6 +513,9 @@ class MainActivity : Activity() {
         root.addView(header)
         root.addView(privacy)
         root.addView(qwenStatus)
+        root.addView(qwenDownloadDetail)
+        root.addView(qwenDownloadProgress)
+        root.addView(qwenDownloadActions)
         root.addView(qwenInstallButton, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -467,73 +535,183 @@ class MainActivity : Activity() {
     }
 
     private fun updateQwenStatus() {
+        val presentation = currentDownloadPresentation()
+        renderDownloadTelemetry(presentation)
+    }
+
+    private fun currentDownloadPresentation(): DownloadTelemetryPresentation? {
+        displayedDownloadTarget = null
+        displayedDownloadAttempt = null
+        return try {
+            val manager = AiModelManager.get(this)
+            val target = DownloadTargetCatalog.targetFor(manager.selectedRuntime())
+            val services = AndroidDownloadServices.get(this)
+            displayedDownloadTarget = target
+            val snapshot = services.uiSnapshot(target)
+            downloadUiFallbackRetry = false
+            if (snapshot == null) {
+                null
+            } else {
+                displayedDownloadAttempt = snapshot.actionableAttempt
+                DownloadTelemetryPresentation.from(snapshot.telemetry)
+            }
+        } catch (failure: Exception) {
+            Log.e(DOWNLOAD_LOG, "Could not load durable AI download status.", failure)
+            displayedDownloadAttempt = null
+            downloadUiFallbackRetry = true
+            DownloadTelemetryPresentation.uiFailure()
+        }
+    }
+
+    private fun renderDownloadTelemetry(
+        presentation: DownloadTelemetryPresentation?,
+    ) {
+        if (!::qwenStatus.isInitialized) return
         val manager = AiModelManager.get(this)
-        val current = manager.state
-        qwenStatus.text = when (current) {
-            is AiModelState.Ready ->
+        if (!manager.hasDownloadConsent()) {
+            displayedDownloadAttempt = null
+            downloadUiFallbackRetry = false
+            qwenStatus.text = getString(R.string.qwen_model_consent_required)
+            qwenDownloadDetail.text = ""
+            qwenDownloadProgress.text = ""
+            qwenRetryButton.visibility = View.GONE
+            qwenCancelButton.visibility = View.GONE
+            qwenInstallButton.visibility = View.VISIBLE
+            qwenInstallButton.isEnabled = true
+            return
+        }
+        if (presentation == null) {
+            val selection = manager.selectedRuntime()
+            val installed = manager.exactInstalledModel(selection)
+            qwenStatus.text = if (installed != null) {
                 getString(
                     R.string.qwen_model_ready,
-                    // Report the model actually installed. The nominal
-                    // selection can name a different tier than the one on
-                    // disk, which made the status claim 609.8 MB while a
-                    // 1.28 GB model was loaded.
-                    formatModelSize(current.installed.artifact.sizeBytes),
+                    formatModelSize(installed.artifact.sizeBytes),
                     manager.userMode().displayName,
                 )
-            is AiModelState.Downloading -> {
-                val percent = if (current.total <= 0L) 0
-                else ((current.downloaded * 100L) / current.total).toInt().coerceIn(0, 100)
-                getString(R.string.qwen_model_downloading, "AI", percent)
+            } else {
+                getString(R.string.local_ai_model_required)
             }
-            is AiModelState.Checking ->
-                getString(R.string.qwen_model_checking, "AI")
-            is AiModelState.WaitingForWifi ->
-                getString(R.string.qwen_model_waiting_wifi, "AI")
-            is AiModelState.ConsentRequired ->
-                getString(R.string.qwen_model_consent_required)
-            is AiModelState.InsufficientStorage ->
-                getString(R.string.qwen_model_storage, "AI")
-            is AiModelState.Failed ->
-                getString(R.string.qwen_model_failed, "AI")
-            is AiModelState.NotInstalled ->
-                getString(R.string.qwen_model_preparing, "AI")
+            qwenDownloadDetail.text = ""
+            qwenDownloadProgress.text = ""
+            qwenRetryButton.visibility = View.GONE
+            qwenCancelButton.visibility = View.GONE
+            qwenInstallButton.visibility = if (installed == null) View.VISIBLE else View.GONE
+            qwenInstallButton.isEnabled = installed == null
+            return
         }
-        if (::qwenInstallButton.isInitialized) {
-            qwenInstallButton.apply {
-                visibility = if (current is AiModelState.Ready) View.GONE else View.VISIBLE
-                text = getString(
-                    when (current) {
-                        is AiModelState.Downloading, is AiModelState.Checking ->
-                            R.string.qwen_model_installing_action
-                        is AiModelState.Failed, is AiModelState.InsufficientStorage ->
-                            R.string.qwen_model_retry_action
-                        else -> R.string.qwen_model_install_action
-                    },
-                )
-                contentDescription = text
-                isEnabled = current !is AiModelState.Downloading &&
-                    current !is AiModelState.Checking
+
+        qwenStatus.text = presentation.statusText
+        qwenDownloadDetail.text = ""
+        qwenDownloadProgress.text = presentation.progressText?.let {
+            listOfNotNull(
+                it,
+                presentation.percent?.let { percent -> "$percent%" },
+                presentation.speedText,
+                presentation.etaText,
+                presentation.networkText,
+            ).distinct().joinToString(" | ")
+        } ?: presentation.detailText
+        qwenRetryButton.visibility = if (
+            DownloadAction.RETRY in presentation.actions
+        ) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        qwenCancelButton.visibility = if (
+            DownloadAction.CANCEL in presentation.actions
+        ) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        qwenInstallButton.visibility = View.GONE
+    }
+
+    private fun refreshDownloadTelemetry() {
+        val presentation = currentDownloadPresentation()
+        renderDownloadTelemetry(presentation)
+    }
+
+    private fun stopDownloadTelemetryUpdates() {
+        statusHandler.removeCallbacks(qwenStatusRefresh)
+    }
+
+    private fun startDownloadTelemetryUpdates() {
+        statusHandler.removeCallbacks(qwenStatusRefresh)
+        if (activityResumed) statusHandler.post(qwenStatusRefresh)
+    }
+
+    private fun runDownloadUiOperation(
+        operation: String,
+        action: () -> Unit,
+    ): Boolean = try {
+        action()
+        true
+    } catch (failure: Exception) {
+        Log.e(DOWNLOAD_LOG, "$operation failed safely.", failure)
+        displayedDownloadAttempt = null
+        downloadUiFallbackRetry = true
+        renderDownloadTelemetry(DownloadTelemetryPresentation.uiFailure())
+        false
+    }
+
+    private fun performDownloadAction(action: DownloadAction) {
+        val target = displayedDownloadTarget
+        if (target == null) {
+            if (action == DownloadAction.RETRY && downloadUiFallbackRetry) {
+                refreshDownloadTelemetry()
+                startDownloadTelemetryUpdates()
             }
+            return
         }
+        try {
+            val services = AndroidDownloadServices.get(this)
+            val attempt = displayedDownloadAttempt
+            if (attempt == null) {
+                if (action != DownloadAction.RETRY || !downloadUiFallbackRetry) return
+                services.retryOrEnsure(target)
+            } else {
+                if (attempt.target != target) return
+                when (action) {
+                    DownloadAction.RETRY -> services.retry(attempt)
+                    DownloadAction.CANCEL -> services.cancel(attempt)
+                }
+            }
+        } catch (failure: Exception) {
+            Log.e(DOWNLOAD_LOG, "AI download action failed safely: $action", failure)
+            displayedDownloadAttempt = null
+            downloadUiFallbackRetry = true
+            renderDownloadTelemetry(DownloadTelemetryPresentation.uiFailure())
+            return
+        }
+        refreshDownloadTelemetry()
+        startDownloadTelemetryUpdates()
     }
 
     private fun requestModelInstallation() {
         val manager = AiModelManager.get(this)
-        if (manager.installedModel(manager.selectedRuntime()) != null) {
+        if (manager.exactInstalledModel(manager.selectedRuntime()) != null) {
             showModelSettings()
             return
         }
-        if (
-            !manager.hasDownloadConsent() ||
-            manager.state is AiModelState.WaitingForWifi
-        ) {
+        if (!manager.hasDownloadConsent()) {
             showModelInstallPromptIfNeeded(force = true)
             return
         }
-        manager.ensureModelAsync()
+        val presentation = currentDownloadPresentation()
+        if (presentation?.actions?.contains(DownloadAction.RETRY) == true) {
+            performDownloadAction(DownloadAction.RETRY)
+        } else if (presentation?.actions?.contains(DownloadAction.CANCEL) == true) {
+            renderDownloadTelemetry(presentation)
+        } else {
+            runDownloadUiOperation("Start AI download") {
+                manager.ensureModelAsync()
+            }
+        }
         updateQwenStatus()
-        statusHandler.removeCallbacks(qwenStatusRefresh)
-        statusHandler.post(qwenStatusRefresh)
+        startDownloadTelemetryUpdates()
     }
 
     private fun showWritePage() {
@@ -654,11 +832,6 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ))
-        editorFrame.addView(assistantTrigger, FrameLayout.LayoutParams(
-            dp(WritingAssistUiPolicy.ICON_TOUCH_TARGET_DP),
-            dp(WritingAssistUiPolicy.ICON_TOUCH_TARGET_DP),
-            Gravity.END or Gravity.TOP,
-        ).apply { setMargins(0, dp(10), dp(10), 0) })
         content.addView(editorFrame, matchWidth(bottomMargin = 10))
 
         // Primary way in. The small icon inside the editor sits at the text
@@ -676,7 +849,6 @@ class MainActivity : Activity() {
         content.addView(buildDictationRow(), matchWidth(bottomMargin = 10))
 
         correctionCard = buildCorrectionCard()
-        content.addView(correctionCard, matchWidth(bottomMargin = 10))
 
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         actions.addView(secondaryButton(R.string.new_document_action) {
@@ -700,7 +872,35 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ))
         pageHost.removeAllViews()
-        pageHost.addView(scroll)
+        pageHost.addView(scroll, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        // Keep the editor trigger inside the visible writing viewport. When
+        // the keyboard scrolls a long editor to its cursor, a trigger inside
+        // the editor can be clipped while still reporting itself as shown.
+        pageHost.addView(assistantTrigger, FrameLayout.LayoutParams(
+            dp(WritingAssistUiPolicy.ICON_TOUCH_TARGET_DP),
+            dp(WritingAssistUiPolicy.ICON_TOUCH_TARGET_DP),
+            Gravity.END or Gravity.TOP,
+        ).apply { setMargins(0, dp(10), dp(10), 0) })
+        val reviewOverlay = ScrollView(this).apply {
+            isFillViewport = false
+            isVerticalScrollBarEnabled = true
+            visibility = View.GONE
+            addView(correctionCard, ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ))
+        }
+        correctionCardOverlay = reviewOverlay
+        pageHost.addView(reviewOverlay, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            Gravity.TOP,
+        ).apply {
+            setMargins(dp(16), dp(8), dp(16), dp(8))
+        })
         mainScroll = scroll
         restoredDraft?.let { draft ->
             scroll.post { scroll.scrollTo(0, draft.scrollY) }
@@ -982,23 +1182,20 @@ class MainActivity : Activity() {
         val dialog = startupCheckDialog?.takeIf { it.isShowing } ?: return
         val manager = AiModelManager.get(this)
         val acrossAppsEnabled = isExternalAccessEnabled()
-        val modelState = manager.state
+        val selection = manager.selectedRuntime()
+        val modelReady = manager.exactInstalledModel(selection) != null
+        val presentation: DownloadTelemetryPresentation? = currentDownloadPresentation()
         val action = ManuscriptStartupReadiness.nextAction(
             acrossAppsEnabled = acrossAppsEnabled,
-            modelState = modelState,
+            modelReady = modelReady,
+            hasDownloadConsent = manager.hasDownloadConsent(),
+            presentation = presentation,
         )
-        val modelStatus = when (modelState) {
-            is AiModelState.Ready -> getString(R.string.startup_check_ready)
-            is AiModelState.Checking -> getString(R.string.startup_check_model_checking)
-            is AiModelState.ConsentRequired ->
-                getString(R.string.startup_check_model_install)
-            is AiModelState.Downloading,
-            is AiModelState.NotInstalled,
-            is AiModelState.WaitingForWifi,
-            -> getString(R.string.startup_check_model_installing)
-            is AiModelState.Failed,
-            is AiModelState.InsufficientStorage,
-            -> getString(R.string.startup_check_model_failed)
+        val modelStatus = when {
+            modelReady -> getString(R.string.startup_check_ready)
+            presentation != null -> "${presentation.statusText}. ${presentation.detailText}"
+            !manager.hasDownloadConsent() -> getString(R.string.startup_check_model_install)
+            else -> getString(R.string.startup_check_model_installing)
         }
         dialog.setMessage(
             getString(
@@ -1031,9 +1228,13 @@ class MainActivity : Activity() {
 
     private fun performCurrentStartupAction() {
         val manager = AiModelManager.get(this)
+        val selection = manager.selectedRuntime()
+        val presentation = currentDownloadPresentation()
         val action = ManuscriptStartupReadiness.nextAction(
             acrossAppsEnabled = isExternalAccessEnabled(),
-            modelState = manager.state,
+            modelReady = manager.exactInstalledModel(selection) != null,
+            hasDownloadConsent = manager.hasDownloadConsent(),
+            presentation = presentation,
         )
         startupCheckDialog?.dismiss()
         when (action) {
@@ -1047,13 +1248,15 @@ class MainActivity : Activity() {
             }
             ManuscriptStartupAction.RETRY_MODEL -> {
                 startupCheckShown = false
-                manager.ensureModelAsync()
+                performDownloadAction(DownloadAction.RETRY)
                 updateQwenStatus()
-                statusHandler.post(qwenStatusRefresh)
+                startDownloadTelemetryUpdates()
             }
             ManuscriptStartupAction.WAIT_FOR_MODEL -> {
-                manager.ensureModelAsync()
-                statusHandler.post(qwenStatusRefresh)
+                runDownloadUiOperation("Resume AI download") {
+                    manager.ensureModelAsync()
+                }
+                startDownloadTelemetryUpdates()
             }
             ManuscriptStartupAction.READY -> Unit
         }
@@ -1080,7 +1283,9 @@ class MainActivity : Activity() {
             return
         }
         val manager = AiModelManager.get(this)
-        if (manager.installedModel(manager.selectedRuntime()) != null) return
+        val presentation = currentDownloadPresentation()
+        renderDownloadTelemetry(presentation)
+        if (manager.exactInstalledModel(manager.selectedRuntime()) != null) return
         if (manager.hasDownloadConsent() && !force) return
         modelPromptShown = true
         manager.markDownloadPromptSeen()
@@ -1096,14 +1301,18 @@ class MainActivity : Activity() {
             )
             .setNegativeButton(R.string.qwen_model_not_now, null)
             .setNeutralButton(R.string.qwen_model_wifi_only) { _, _ ->
-                manager.grantDownloadConsent(AiDownloadNetworkPolicy.WIFI_ONLY)
+                runDownloadUiOperation("Grant Wi-Fi AI download consent") {
+                    manager.grantDownloadConsent(AiDownloadNetworkPolicy.WIFI_ONLY)
+                }
                 updateQwenStatus()
-                statusHandler.post(qwenStatusRefresh)
+                startDownloadTelemetryUpdates()
             }
             .setPositiveButton(R.string.qwen_model_allow_mobile_data) { _, _ ->
-                manager.grantDownloadConsent(AiDownloadNetworkPolicy.ALLOW_MOBILE_DATA)
+                runDownloadUiOperation("Grant mobile AI download consent") {
+                    manager.grantDownloadConsent(AiDownloadNetworkPolicy.ALLOW_MOBILE_DATA)
+                }
                 updateQwenStatus()
-                statusHandler.post(qwenStatusRefresh)
+                startDownloadTelemetryUpdates()
             }
             .create()
         dialog.setOnDismissListener { modelPromptShown = false }
@@ -1125,14 +1334,18 @@ class MainActivity : Activity() {
                 OnDeviceGrammarEngine.trimIfCreated(
                     android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE,
                 )
-                manager.removeAllModels()
+                runDownloadUiOperation("Remove local AI") {
+                    manager.removeAllModels()
+                }
                 updateQwenStatus()
             }
             .setPositiveButton(R.string.qwen_model_settings_apply) { _, _ ->
                 manager.setUserMode(modes[selected])
                 if (manager.hasDownloadConsent()) {
-                    manager.ensureModelAsync()
-                    statusHandler.post(qwenStatusRefresh)
+                    runDownloadUiOperation("Apply AI model mode") {
+                        manager.ensureModelAsync()
+                    }
+                    startDownloadTelemetryUpdates()
                 } else {
                     modelPromptShown = false
                     root.post { showModelInstallPromptIfNeeded(force = true) }
@@ -1467,7 +1680,15 @@ class MainActivity : Activity() {
     }
 
     private fun openReview() {
-        if (!beginMainReviewSurface()) return
+        Log.i(REVIEW_LOG, "event=open-review-request state=${reviewSurfaceController.state.javaClass.simpleName}")
+        if (!beginMainReviewSurface()) {
+            Log.i(REVIEW_LOG, "event=open-review-rejected state=${reviewSurfaceController.state.javaClass.simpleName}")
+            return
+        }
+        // A user who has already opened correction must not be interrupted by
+        // the delayed startup readiness dialog after they close this review.
+        startupCheckShown = true
+        startupCheckDialog?.dismiss()
         iconWasClicked = true
         // Pressing "Correct my writing" IS the intent to review, so take
         // focus back first. The card requires editor focus, and focus is
@@ -1487,25 +1708,82 @@ class MainActivity : Activity() {
         )
         val hasSuggestion = reviewSession?.current(selectedTone) != null
         val show = WritingAssistUiPolicy.shouldShowCard(editor.hasFocus(), iconWasClicked, hasSuggestion)
-        correctionCard.visibility = if (show) View.VISIBLE else View.GONE
+        correctionCard.visibility = View.GONE
         assistantTrigger.visibility = View.GONE
         if (show) {
-            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ReviewAttached)
-            correctionCard.isFocusableInTouchMode = true
-            correctionCard.requestFocus()
-            renderCurrentBlock()
-            correctionCard.announceForAccessibility(getString(R.string.correction_card_opened))
-            // Put the whole card on screen, top-aligned, so the suggestion and
-            // both action buttons are visible without hunting or scrolling.
-            correctionCard.post {
-                mainScroll?.smoothScrollTo(0, correctionCard.top.coerceAtLeast(0))
+            // The review is a pinned overlay, so it can open on this first
+            // frame while the keyboard finishes closing underneath it.
+            attachStableReviewCard()
+        } else {
+            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.CloseRequested)
+        }
+    }
+
+    private fun scheduleReviewAttachmentAfterKeyboard() {
+        pendingReviewAttach?.let { pending -> root.removeCallbacks(pending) }
+        val callbackToken = reviewSurfaceExecutor.currentCallbackToken()
+        val deadline = SystemClock.elapsedRealtime() + REVIEW_KEYBOARD_HIDE_LIMIT_MS
+        val pending = object : Runnable {
+            override fun run() {
+                if (
+                    !reviewSurfaceExecutor.isCurrentCallback(callbackToken) ||
+                    reviewSurfaceController.state !is ReviewSurfaceState.Opening
+                ) {
+                    pendingReviewAttach = null
+                    return
+                }
+                val keyboardVisible = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    root.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == true
+                } else {
+                    SystemClock.elapsedRealtime() < deadline
+                }
+                if (
+                    keyboardVisible &&
+                    SystemClock.elapsedRealtime() < deadline
+                ) {
+                    hideSystemKeyboard(editor)
+                    root.postDelayed(this, REVIEW_KEYBOARD_POLL_MS)
+                    return
+                }
+                pendingReviewAttach = null
+                attachStableReviewCard()
+            }
+        }
+        pendingReviewAttach = pending
+        root.post(pending)
+    }
+
+    private fun attachStableReviewCard() {
+        if (
+            reviewSurfaceController.state !is ReviewSurfaceState.Opening ||
+            mainEditorEligibility() != ReviewTargetEligibility.ELIGIBLE ||
+            reviewSession?.current(selectedTone) == null
+        ) {
+            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.TargetLost)
+            return
+        }
+        showCorrectionOverlay()
+        Log.i(REVIEW_LOG, "event=review-card-attached")
+        reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ReviewAttached)
+        correctionCard.isFocusableInTouchMode = true
+        correctionCard.requestFocus()
+        renderCurrentBlock()
+        correctionCard.announceForAccessibility(getString(R.string.correction_card_opened))
+        correctionCard.requestLayout()
+    }
+
+    private fun showCorrectionOverlay() {
+        correctionCard.visibility = View.VISIBLE
+        correctionCardOverlay?.apply {
+            visibility = View.VISIBLE
+            scrollTo(0, 0)
+            bringToFront()
+            post {
                 replaceButton.requestRectangleOnScreen(
                     Rect(0, 0, replaceButton.width, replaceButton.height),
                     true,
                 )
             }
-        } else {
-            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.CloseRequested)
         }
     }
 
@@ -1707,7 +1985,7 @@ class MainActivity : Activity() {
             editor.setText(updated)
             internalTextChange = false
             activeReviewChangeId = null
-            renderCurrentBlock()
+            finishOrRenderReview()
         } catch (_: IllegalArgumentException) {
             internalTextChange = false
             closeReview()
@@ -1722,7 +2000,7 @@ class MainActivity : Activity() {
         }
         session.dismissCurrent()
         activeReviewChangeId = null
-        renderCurrentBlock()
+        finishOrRenderReview()
     }
 
     private fun acceptCurrentChange() {
@@ -1733,7 +2011,7 @@ class MainActivity : Activity() {
         }.onSuccess { updated ->
             setEditorTextFromReview(updated)
             activeReviewChangeId = null
-            renderCurrentBlock(requestModel = false)
+            finishOrRenderReview(requestModel = false)
         }.onFailure {
             closeReview()
         }
@@ -1747,9 +2025,18 @@ class MainActivity : Activity() {
         }.onSuccess { updated ->
             setEditorTextFromReview(updated)
             activeReviewChangeId = null
-            renderCurrentBlock(requestModel = false)
+            finishOrRenderReview(requestModel = false)
         }.onFailure {
             closeReview()
+        }
+    }
+
+    /** Close immediately after the final decision; otherwise show the next section. */
+    private fun finishOrRenderReview(requestModel: Boolean = true) {
+        if (reviewSession?.complete == true) {
+            closeReview()
+        } else {
+            renderCurrentBlock(requestModel)
         }
     }
 
@@ -1965,7 +2252,7 @@ class MainActivity : Activity() {
                 iconWasClicked = false
                 return@restoreJob
             }
-            correctionCard.visibility = View.VISIBLE
+            showCorrectionOverlay()
             assistantTrigger.visibility = View.GONE
             reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ReviewAttached)
             renderCurrentBlock()
@@ -1978,8 +2265,13 @@ class MainActivity : Activity() {
         val span = TargetUnderlineSpan(COLOR_ERROR, dp(2).toFloat())
         editable.setSpan(span, block.start, block.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         activeTargetSpan = span
-        editor.setSelection(block.start)
-        editor.post { editor.bringPointIntoView(block.start) }
+        // Moving the editor cursor while the correction card owns focus makes
+        // the outer ScrollView jump back to the editor and hides the card's
+        // official header. Only move the cursor when the editor owns focus.
+        if (editor.hasFocus()) {
+            editor.setSelection(block.start)
+            editor.post { editor.bringPointIntoView(block.start) }
+        }
     }
 
     private fun clearTargetUnderline() {
@@ -2421,9 +2713,12 @@ class MainActivity : Activity() {
         private const val STARTUP_DIALOG_HANDOFF_DELAY_MS = 200L
         private const val DRAFT_SAVE_DELAY_MS = 400L
         private const val TRIGGER_REFRESH_DELAY_MS = 120L
+        private const val REVIEW_KEYBOARD_HIDE_LIMIT_MS = 360L
+        private const val REVIEW_KEYBOARD_POLL_MS = 16L
         const val PREFERENCES_NAME = "manuscript_preferences_v1"
         const val TONE_KEY = "writing_tone"
         private const val REVIEW_LOG = "ManuscriptReview"
+        private const val DOWNLOAD_LOG = "ManuscriptDownload"
         private val MAIN_EDITOR_TARGET_ID = ReviewTargetId("main-editor")
         // Sub-steps per section, so the bar can creep while one is running.
         private const val PROGRESS_STEPS = 100

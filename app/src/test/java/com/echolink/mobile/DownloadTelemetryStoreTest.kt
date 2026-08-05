@@ -51,7 +51,7 @@ class DownloadTelemetryStoreTest {
             )
             seedRecord(directory, expected)
 
-            val restored = store(directory, ready = true).read(target)
+            val restored = store(directory, ready = phase == DownloadPhase.READY).read(target)
             assertEquals(expected, restored)
             assertEquals(expected.telemetry.samples, restored?.telemetry?.samples)
             assertEquals(expected.workIdentity, restored?.workIdentity)
@@ -277,6 +277,86 @@ class DownloadTelemetryStoreTest {
     }
 
     @Test
+    fun exactZeroByteRestartCanRewindOneCurrentAttemptWithoutAllowingOtherRollback() {
+        val directory = temporaryFolder.newFolder("exact-zero-restart")
+        val current = record(DownloadPhase.DOWNLOADING, generation = 81L)
+        seedRecord(directory, current)
+        val targetStore = store(directory, ready = false)
+        val resetTime = nowMillis + 1L
+        val reset = DurableDownloadRecord(
+            target = target,
+            workIdentity = work,
+            telemetry = DownloadTelemetryRestoreFactory().restore(
+                observation = DownloadObservation(
+                    generation = current.telemetry.generation,
+                    phase = DownloadPhase.DOWNLOADING,
+                    downloadedBytes = 0L,
+                    totalBytes = current.telemetry.totalBytes,
+                    network = DownloadNetwork.WIFI,
+                    cancellationAllowed = true,
+                ),
+                updatedAtMillis = resetTime,
+                samples = listOf(
+                    DownloadSample(current.telemetry.generation, resetTime, 0L),
+                ),
+            ),
+        )
+
+        assertTrue(targetStore.write(reset))
+        assertEquals(reset, targetStore.read(target))
+
+        val resumedTime = resetTime + 1_000L
+        val resumed = DurableDownloadRecord(
+            target = target,
+            workIdentity = work,
+            telemetry = DownloadTelemetryRestoreFactory().restore(
+                observation = DownloadObservation(
+                    generation = current.telemetry.generation,
+                    phase = DownloadPhase.DOWNLOADING,
+                    downloadedBytes = 100L,
+                    totalBytes = current.telemetry.totalBytes,
+                    network = DownloadNetwork.WIFI,
+                    cancellationAllowed = true,
+                ),
+                updatedAtMillis = resumedTime,
+                samples = listOf(
+                    DownloadSample(current.telemetry.generation, resetTime, 0L),
+                    DownloadSample(current.telemetry.generation, resumedTime, 100L),
+                ),
+            ),
+        )
+        assertTrue(targetStore.write(resumed))
+        assertEquals(resumed, targetStore.read(target))
+
+        val blockedDirectory = temporaryFolder.newFolder("blocked-nonzero-rollback")
+        seedRecord(blockedDirectory, current)
+        val nonzeroRollback = DurableDownloadRecord(
+            target = target,
+            workIdentity = work,
+            telemetry = DownloadTelemetryRestoreFactory().restore(
+                observation = DownloadObservation(
+                    generation = current.telemetry.generation,
+                    phase = DownloadPhase.DOWNLOADING,
+                    downloadedBytes = 399L,
+                    totalBytes = current.telemetry.totalBytes,
+                    network = DownloadNetwork.WIFI,
+                    cancellationAllowed = true,
+                ),
+                updatedAtMillis = resetTime,
+                samples = listOf(
+                    DownloadSample(current.telemetry.generation, resetTime, 399L),
+                ),
+            ),
+        )
+        assertFalse(store(blockedDirectory, ready = false).write(nonzeroRollback))
+        assertEquals(current, store(blockedDirectory, ready = false).read(target))
+
+        val wrongIdentityReset = reset.copy(workIdentity = DownloadWorkIdentity(81L, 82L))
+        assertFalse(store(blockedDirectory, ready = false).write(wrongIdentityReset))
+        assertEquals(current, store(blockedDirectory, ready = false).read(target))
+    }
+
+    @Test
     fun generationReservationIsMonotonicAcrossFreshInstancesAndKeepsResumeOffset() {
         val directory = temporaryFolder.newFolder("generation")
         seedRecord(directory, record(DownloadPhase.FAILED, 41L))
@@ -299,6 +379,89 @@ class DownloadTelemetryStoreTest {
         assertTrue(reserved.telemetry.samples.isEmpty())
         assertEquals(nextWork, reserved.workIdentity)
         assertEquals(reserved, store(directory, ready = true).read(target))
+    }
+
+    @Test
+    fun clearRecordRemovesOnlyExactSnapshotAndTempButPreservesGenerationFence() {
+        val directory = temporaryFolder.newFolder("clear-record")
+        val targetStore = store(directory, ready = false)
+        targetStore.reserveNextGeneration(
+            target = target,
+            workIdentity = work,
+            network = DownloadNetwork.WIFI,
+            downloadedBytes = 25L,
+            totalBytes = 1_000L,
+        )
+        val otherWork = DownloadWorkIdentity.from(
+            UUID.fromString("ac832148-74ee-42b9-b5e9-aa920d46006c"),
+        )
+        val otherRecord = targetStore.reserveNextGeneration(
+            target = otherTarget,
+            workIdentity = otherWork,
+            network = DownloadNetwork.MOBILE,
+            downloadedBytes = 50L,
+            totalBytes = 2_000L,
+        )
+        val recordFile = DownloadTelemetryStore.recordFile(directory, target)
+        val temporary = File(recordFile.parentFile, "${recordFile.name}.tmp")
+            .apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        val generationFile = DownloadTelemetryStore.generationFile(directory, target)
+
+        targetStore.clearRecord(target)
+        targetStore.clearRecord(target)
+
+        assertFalse(recordFile.exists())
+        assertFalse(temporary.exists())
+        assertTrue(generationFile.isFile)
+        assertNull(store(directory, ready = false).read(target))
+        assertEquals(otherRecord, store(directory, ready = false).read(otherTarget))
+
+        val next = store(directory, ready = false).reserveNextGeneration(
+            target = target,
+            workIdentity = DownloadWorkIdentity.from(
+                UUID.fromString("da7dd202-3527-446f-b6e9-0b8ac8b07f60"),
+            ),
+            network = DownloadNetwork.OFFLINE,
+            downloadedBytes = 0L,
+            totalBytes = 1_000L,
+        )
+        assertEquals(DownloadGeneration(2L), next.telemetry.generation)
+    }
+
+    @Test
+    fun clearRecordRepairsCorruptGenerationBeforeAnyFreshReservation() {
+        val directory = temporaryFolder.newFolder("clear-corrupt-generation")
+        val current = record(DownloadPhase.DOWNLOADING, generation = 70L)
+        seedRecord(directory, current)
+        DownloadTelemetryStore.generationFile(directory, target)
+            .writeBytes(byteArrayOf(7, 0))
+        val targetStore = store(directory, ready = false)
+
+        targetStore.clearRecord(target)
+
+        assertNull(targetStore.read(target))
+        val reserved = targetStore.reserveNextGeneration(
+            target = target,
+            workIdentity = DownloadWorkIdentity(71L, 72L),
+            network = DownloadNetwork.WIFI,
+            downloadedBytes = 0L,
+            totalBytes = 1_000L,
+        )
+        assertEquals(DownloadGeneration(71L), reserved.telemetry.generation)
+
+        val orphanDirectory = temporaryFolder.newFolder("clear-orphan-corrupt-generation")
+        DownloadTelemetryStore.generationFile(orphanDirectory, target)
+            .writeBytes(byteArrayOf(9, 9, 9))
+        val orphanStore = store(orphanDirectory, ready = false)
+        orphanStore.clearRecord(target)
+        val first = orphanStore.reserveNextGeneration(
+            target = target,
+            workIdentity = DownloadWorkIdentity(1L, 2L),
+            network = DownloadNetwork.OFFLINE,
+            downloadedBytes = 0L,
+            totalBytes = 1_000L,
+        )
+        assertEquals(DownloadGeneration(1L), first.telemetry.generation)
     }
 
     @Test
@@ -442,7 +605,7 @@ class DownloadTelemetryStoreTest {
     }
 
     @Test
-    fun futureTimestampAndStaleActiveOrReadyStateNeverRestoreAsReadyOrActive() {
+    fun futureTimestampAndStaleUncommittedOrReadyStateFailClosed() {
         val directory = temporaryFolder.newFolder("recovery")
         val future = record(
             DownloadPhase.DOWNLOADING,
@@ -455,7 +618,7 @@ class DownloadTelemetryStoreTest {
         val staleTime = nowMillis - DownloadTelemetryRecoveryPolicy.ACTIVE_STALE_MILLIS - 1L
         val staleActive = record(DownloadPhase.VERIFYING, 2L, updatedAtMillis = staleTime)
         seedRecord(directory, staleActive)
-        val activeRecovered = store(directory, ready = true).read(target)
+        val activeRecovered = store(directory, ready = false).read(target)
         assertEquals(DownloadPhase.PAUSED, activeRecovered?.telemetry?.phase)
         assertEquals(DownloadBlockReason.DEVICE_CONSTRAINT, activeRecovered?.telemetry?.blockReason)
         assertTrue(activeRecovered?.telemetry?.canRetry == true)
@@ -465,6 +628,57 @@ class DownloadTelemetryStoreTest {
         val readyRecovered = store(directory, ready = true).read(target)
         assertEquals(DownloadPhase.PAUSED, readyRecovered?.telemetry?.phase)
         assertFalse(readyRecovered?.telemetry?.verificationSucceeded == true)
+    }
+
+    @Test
+    fun durableActivationMarkerRecoversFreshOrStaleVerifyingSnapshotToReady() {
+        listOf(
+            nowMillis,
+            nowMillis - DownloadTelemetryRecoveryPolicy.ACTIVE_STALE_MILLIS - 1L,
+        ).forEachIndexed { index, timestamp ->
+            val directory = temporaryFolder.newFolder("activation-recovery-$index")
+            val verifying = record(
+                DownloadPhase.VERIFYING,
+                generation = 30L + index,
+                updatedAtMillis = timestamp,
+            )
+            seedRecord(directory, verifying)
+
+            val recovered = store(directory, ready = true).read(target)
+
+            assertEquals(DownloadPhase.READY, recovered?.telemetry?.phase)
+            assertTrue(recovered?.telemetry?.verificationSucceeded == true)
+            assertFalse(recovered?.telemetry?.canCancel == true)
+            assertFalse(recovered?.telemetry?.canRetry == true)
+            assertEquals(verifying.workIdentity, recovered?.workIdentity)
+            assertEquals(verifying.telemetry.generation, recovered?.telemetry?.generation)
+            assertEquals(nowMillis, recovered?.telemetry?.updatedAtMillis)
+
+            val persisted = store(directory, ready = true).read(target)
+            assertEquals(DownloadPhase.READY, persisted?.telemetry?.phase)
+            assertTrue(persisted?.telemetry?.verificationSucceeded == true)
+        }
+    }
+
+    @Test
+    fun activationRecoveryCommitFailureReturnsNullAndLeavesVerifyingSnapshotRecoverable() {
+        val directory = temporaryFolder.newFolder("activation-recovery-write-failure")
+        val verifying = record(DownloadPhase.VERIFYING, generation = 41L)
+        seedRecord(directory, verifying)
+        val failingStore = DownloadTelemetryStore(
+            directory = directory,
+            clock = { nowMillis },
+            readyReconciler = DownloadReadyReconciler { _, _ -> true },
+            committer = AtomicSnapshotCommitter { _, _ ->
+                throw IOException("Injected activation recovery commit failure")
+            },
+        )
+
+        assertNull(failingStore.read(target))
+
+        val recovered = store(directory, ready = true).read(target)
+        assertEquals(DownloadPhase.READY, recovered?.telemetry?.phase)
+        assertTrue(recovered?.telemetry?.verificationSucceeded == true)
     }
 
     @Test

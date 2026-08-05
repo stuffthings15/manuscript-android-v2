@@ -1,6 +1,40 @@
 package com.echolink.mobile
 
 object DownloadTargetCatalog {
+    fun targetsFor(family: AiModelFamily): List<DownloadTargetKey> = when (family) {
+        AiModelFamily.GEMMA -> listOf(
+            DownloadTargetKey(AiModelFamily.GEMMA, AiModelTier.FAST, BackendKind.LITERT_CPU),
+            DownloadTargetKey(AiModelFamily.GEMMA, AiModelTier.FAST, BackendKind.LITERT_GPU),
+            DownloadTargetKey(
+                AiModelFamily.GEMMA,
+                AiModelTier.THOROUGH,
+                BackendKind.LITERT_CPU,
+            ),
+            DownloadTargetKey(
+                AiModelFamily.GEMMA,
+                AiModelTier.THOROUGH,
+                BackendKind.LITERT_GPU,
+            ),
+        )
+        AiModelFamily.LEGACY_QWEN -> listOf(
+            DownloadTargetKey(
+                AiModelFamily.LEGACY_QWEN,
+                AiModelTier.LEGACY_COMPACT,
+                BackendKind.LEGACY_LLAMA_CPU,
+            ),
+            DownloadTargetKey(
+                AiModelFamily.LEGACY_QWEN,
+                AiModelTier.LEGACY_BALANCED,
+                BackendKind.LEGACY_LLAMA_CPU,
+            ),
+            DownloadTargetKey(
+                AiModelFamily.LEGACY_QWEN,
+                AiModelTier.LEGACY_ADVANCED,
+                BackendKind.LEGACY_LLAMA_CPU,
+            ),
+        )
+    }
+
     fun targetFor(selection: AiRuntimeSelection): DownloadTargetKey {
         val target = DownloadTargetKey(
             family = selection.artifact.family,

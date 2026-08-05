@@ -5,9 +5,12 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.InterruptedIOException
+import java.security.MessageDigest
 import java.util.concurrent.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -18,6 +21,57 @@ import org.junit.rules.TemporaryFolder
 class AiModelInstallerAdversarialTest {
     @get:Rule
     val temporaryFolder = TemporaryFolder()
+
+    @Test
+    fun activeProofRejectsWrongSizeAndDetectsSameSizeSampleMutation() {
+        val directory = temporaryFolder.newFolder("active-proof")
+        val bytes = ByteArray(20_000) { index -> (index % 251).toByte() }
+        val localArtifact = artifact.copy(
+            sizeBytes = bytes.size.toLong(),
+            sha256 = "0".repeat(64),
+        )
+        val active = File(directory, localArtifact.fileName).apply { writeBytes(bytes) }
+        val installer = AiModelInstaller(directory, CountingTransport())
+        val original = requireNotNull(installer.activeProof(localArtifact))
+
+        val changed = bytes.clone().also { it[0] = (it[0].toInt() xor 0x7f).toByte() }
+        active.writeBytes(changed)
+        assertTrue(active.setLastModified(original.modifiedMillis))
+        val mutated = requireNotNull(installer.activeProof(localArtifact))
+
+        assertEquals(original.sizeBytes, mutated.sizeBytes)
+        assertEquals(original.modifiedMillis, mutated.modifiedMillis)
+        assertEquals(original.fileKey, mutated.fileKey)
+        assertNotEquals(original.fingerprint, mutated.fingerprint)
+
+        active.writeBytes(changed.copyOf(changed.size - 1))
+        assertNull(installer.activeProof(localArtifact))
+    }
+
+    @Test
+    fun rejectedModelCleanupDeletesOnlyTheExactCandidateOrActiveFile() {
+        val directory = temporaryFolder.newFolder("rejected-cleanup")
+        val installer = AiModelInstaller(directory, CountingTransport())
+        val candidate = installer.candidateFile(artifact).apply { writeText("complete-model") }
+        val active = installer.activeFile(artifact).apply { writeText("complete-model") }
+        val partial = installer.partialFile(artifact).apply { writeText("keep") }
+        val foreign = File(directory, "foreign-model.bin").apply { writeText("keep") }
+
+        installer.discardRejectedModel(artifact, candidate)
+        assertFalse(candidate.exists())
+        assertTrue(active.exists())
+        assertTrue(partial.exists())
+        assertTrue(foreign.exists())
+
+        assertThrows(IllegalArgumentException::class.java) {
+            installer.discardRejectedModel(artifact, foreign)
+        }
+        assertTrue(foreign.exists())
+
+        installer.discardRejectedModel(artifact, active)
+        assertFalse(active.exists())
+        assertTrue(partial.exists())
+    }
 
     @Test
     fun prematureCleanEofPreservesPartialAndEtagForTheExactNextResumeOffset() {
@@ -233,7 +287,7 @@ class AiModelInstallerAdversarialTest {
         assertEquals(listOf("\"old\"", null), transport.requests.map { it.etag })
         assertFalse(firstBody.readAttempted)
         assertTrue(firstDisconnected)
-        assertEquals(1, progress.count { it == 0L })
+        assertEquals(listOf(9L, 0L, artifact.sizeBytes), progress)
         assertEquals("complete-model", candidate.readText())
     }
 
@@ -514,6 +568,175 @@ class AiModelInstallerAdversarialTest {
             assertEquals("working", previous.readText())
             assertFalse(candidate.exists())
         }
+    }
+
+    @Test
+    fun qualificationCompletesChecksumAndSelfTestBeforeTheShortActivationStep() {
+        val directory = temporaryFolder.newFolder("qualified-activation")
+        val active = File(directory, artifact.fileName).apply { writeText("working") }
+        val candidate = File(directory, "test.candidate.litertlm").apply {
+            writeText("complete-model")
+        }
+        var selfTests = 0
+        val installer = AiModelInstaller(directory, CountingTransport())
+
+        val qualification = requireNotNull(
+            installer.qualifyCandidate(artifact, candidate) { file ->
+                selfTests += 1
+                file.readText() == "complete-model"
+            },
+        )
+
+        assertEquals(1, selfTests)
+        assertEquals("working", active.readText())
+        assertEquals("complete-model", candidate.readText())
+
+        val activation = installer.activateQualifiedCandidate(qualification)
+
+        assertTrue(activation.activated)
+        assertEquals("complete-model", active.readText())
+        assertThrows(IllegalStateException::class.java) {
+            installer.activateQualifiedCandidate(qualification)
+        }
+    }
+
+    @Test
+    fun integrityCallbackSeparatesARejectedModelFromCorruptBytes() {
+        val rejectedDirectory = temporaryFolder.newFolder("rejected-after-integrity")
+        val rejectedInstaller = AiModelInstaller(rejectedDirectory, CountingTransport())
+        val rejectedCandidate = rejectedInstaller.candidateFile(artifact).apply {
+            writeText("complete-model")
+        }
+        var verifiedCallbacks = 0
+        var selfTests = 0
+
+        assertNull(
+            rejectedInstaller.qualifyCandidate(
+                artifact = artifact,
+                candidate = rejectedCandidate,
+                onIntegrityVerified = { verifiedCallbacks += 1 },
+                selfTest = {
+                    selfTests += 1
+                    false
+                },
+            ),
+        )
+        assertEquals(1, verifiedCallbacks)
+        assertEquals(1, selfTests)
+
+        val corruptDirectory = temporaryFolder.newFolder("corrupt-before-self-test")
+        val corruptInstaller = AiModelInstaller(corruptDirectory, CountingTransport())
+        val corruptCandidate = corruptInstaller.candidateFile(artifact).apply {
+            writeBytes(ByteArray(artifact.sizeBytes.toInt()) { 7 })
+        }
+
+        assertNull(
+            corruptInstaller.qualifyCandidate(
+                artifact = artifact,
+                candidate = corruptCandidate,
+                onIntegrityVerified = { verifiedCallbacks += 1 },
+                selfTest = {
+                    selfTests += 1
+                    true
+                },
+            ),
+        )
+        assertEquals(1, verifiedCallbacks)
+        assertEquals(1, selfTests)
+    }
+
+    @Test
+    fun activeButUnverifiedModelCanBeQualifiedAndAcceptedWithoutRenamingIt() {
+        val directory = temporaryFolder.newFolder("active-unverified-recovery")
+        val active = File(directory, artifact.fileName).apply { writeText("complete-model") }
+        val installer = AiModelInstaller(directory, CountingTransport())
+        var selfTests = 0
+
+        val qualification = requireNotNull(
+            installer.qualifyActive(
+                artifact = artifact,
+                active = active,
+                stopped = { false },
+                selfTest = { file ->
+                    selfTests += 1
+                    file == active && file.readText() == "complete-model"
+                },
+            ),
+        )
+
+        val accepted = installer.acceptQualifiedActive(qualification)
+
+        assertEquals(1, selfTests)
+        assertEquals(active.canonicalFile, accepted)
+        assertEquals("complete-model", active.readText())
+        assertFalse(installer.candidateFile(artifact).exists())
+    }
+
+    @Test
+    fun stopDuringCandidateHashAbortsBeforeSelfTestOrActivation() {
+        val directory = temporaryFolder.newFolder("stop-during-candidate-hash")
+        val bytes = ByteArray(700_000) { index -> (index % 251).toByte() }
+        val localArtifact = artifact.copy(
+            sizeBytes = bytes.size.toLong(),
+            sha256 = MessageDigest.getInstance("SHA-256")
+                .digest(bytes)
+                .joinToString("") { byte -> "%02x".format(byte) },
+        )
+        val installer = AiModelInstaller(directory, CountingTransport())
+        val candidate = installer.candidateFile(localArtifact).apply { writeBytes(bytes) }
+        var stopChecks = 0
+        var selfTests = 0
+
+        assertThrows(InterruptedIOException::class.java) {
+            installer.qualifyCandidate(
+                artifact = localArtifact,
+                candidate = candidate,
+                stopped = {
+                    stopChecks += 1
+                    stopChecks >= 2
+                },
+                selfTest = {
+                    selfTests += 1
+                    true
+                },
+            )
+        }
+
+        assertTrue(stopChecks >= 2)
+        assertEquals(0, selfTests)
+        assertTrue(candidate.exists())
+        assertFalse(installer.activeFile(localArtifact).exists())
+    }
+
+    @Test
+    fun changedOrForeignQualifiedCandidateCannotReplaceTheWorkingActiveModel() {
+        val directory = temporaryFolder.newFolder("changed-qualification")
+        val active = File(directory, artifact.fileName).apply { writeText("working") }
+        val candidate = File(directory, "test.candidate.litertlm").apply {
+            writeText("complete-model")
+        }
+        val installer = AiModelInstaller(directory, CountingTransport())
+        val qualification = requireNotNull(
+            installer.qualifyCandidate(artifact, candidate) { true },
+        )
+        candidate.writeText("changed--model")
+
+        assertThrows(AiModelIntegrityException::class.java) {
+            installer.activateQualifiedCandidate(qualification)
+        }
+
+        assertEquals("working", active.readText())
+        assertEquals("changed--model", candidate.readText())
+
+        candidate.writeText("complete-model")
+        val foreignQualification = requireNotNull(
+            installer.qualifyCandidate(artifact, candidate) { true },
+        )
+        val otherInstaller = AiModelInstaller(directory, CountingTransport())
+        assertThrows(IllegalArgumentException::class.java) {
+            otherInstaller.activateQualifiedCandidate(foreignQualification)
+        }
+        assertEquals("working", active.readText())
     }
 
     private data class Request(val offset: Long, val etag: String?)

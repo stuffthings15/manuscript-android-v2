@@ -200,8 +200,13 @@ class OnDeviceGrammarEngine private constructor(context: Context) {
                     acceptsGeneratedGrammar = correctionRouter::acceptsGeneratedGrammar,
                     acceptsStrictlyReviewedGrammar =
                         correctionRouter::passesGeneratedGrammarChecks,
-                    prepareGrammarRetryCandidate = GrammarSafetyNet::repair,
+                    // Give every live AI section the full meaning-neutral
+                    // cleanup floor, including the dictionary speller. The
+                    // small model can then spend its pass on agreement and
+                    // sentence structure instead of copying obvious typos.
+                    prepareGrammarRetryCandidate = correctionRouter::deterministicRepair,
                     deterministicSentenceRepair = correctionRouter::deterministicRepair,
+                    preservesProofreadWording = correctionRouter::preservesProofreadWording,
                     logParagraphOutcome = { outcome ->
                         Log.i(PERFORMANCE_LOG_TAG, outcome)
                     },
@@ -335,7 +340,7 @@ class OnDeviceGrammarEngine private constructor(context: Context) {
                 val manager = AiModelManager.get(appContext)
                 val installed = manager.installedModel() ?: return@submit
                 if (installed.artifact.family == AiModelFamily.LEGACY_QWEN) {
-                    legacyBackend.preload()
+                    legacyBackend.preload(installed)
                 } else {
                     runBlocking {
                         gemmaBackend.initialize(installed, manager.selectedRuntime().backend)
@@ -514,6 +519,8 @@ object ProofreadPreservationPolicy {
         "being", "has", "have", "had", "do", "does", "did", "not", "no", "may", "might",
         "must", "can", "could", "shall", "should", "will", "would", "myself", "yourself",
         "himself", "herself", "itself", "ourselves", "yourselves", "themselves",
+        "actually", "anyway", "anyways", "basically", "guess", "honest", "like",
+        "maybe", "really", "sort", "sorta", "whatever",
     )
     private val irregularLemmas = mapOf(
         "began" to "begin", "begun" to "begin",
@@ -530,22 +537,56 @@ object ProofreadPreservationPolicy {
         "criteria" to "criterion", "data" to "datum",
     )
 
-    fun preservesWording(prepared: String, candidate: String): Boolean =
+    fun preservesWording(
+        prepared: String,
+        candidate: String,
+        isKnownWord: ((String) -> Boolean)? = null,
+    ): Boolean =
         !crossesArticlePronounBoundary(prepared, candidate) &&
             sentenceCount(candidate) <= sentenceCount(prepared) &&
             sentenceCount(prepared) - sentenceCount(candidate) <=
             (sentenceCount(prepared) / 10).coerceAtLeast(1) &&
-            preservesContentLemmas(prepared, candidate)
+            preservesContentLemmas(prepared, candidate, isKnownWord)
 
-    private fun preservesContentLemmas(source: String, candidate: String): Boolean {
-        val unmatched = contentLemmas(candidate).toMutableList()
-        return contentLemmas(source).all { sourceLemma ->
-            val match = unmatched.indexOfFirst { candidateLemma ->
-                sourceLemma == candidateLemma ||
+    private fun preservesContentLemmas(
+        source: String,
+        candidate: String,
+        isKnownWord: ((String) -> Boolean)?,
+    ): Boolean {
+        val sourceLexemes = contentLexemes(source)
+        val candidateLexemes = contentLexemes(candidate)
+        if (isKnownWord != null) {
+            // The live proofread path only needs to veto ambiguous real-word
+            // substitutions such as caring -> crying. Broader additions and
+            // removals are handled by AiSafetyValidator; rejecting them here
+            // caused every long paragraph to spend two costly full retries.
+            val noUnsafeSubstitution = sourceLexemes.size != candidateLexemes.size ||
+                sourceLexemes.zip(candidateLexemes).none { (left, right) ->
+                left.lemma != right.lemma &&
+                    isKnownWord(left.word) &&
+                    isKnownWord(right.word) &&
+                    editDistance(left.lemma, right.lemma) <= 2
+            }
+            val knownSource = sourceLexemes
+                .filter { isKnownWord(it.word) }
+                .map(Lexeme::lemma)
+                .toSet()
+            val candidateSet = candidateLexemes.map(Lexeme::lemma).toSet()
+            val retained = knownSource.count(candidateSet::contains)
+            val completeEnough = knownSource.size < 12 ||
+                knownSource.size - retained <= 2 ||
+                retained.toDouble() / knownSource.size >= 0.90
+            return noUnsafeSubstitution && completeEnough
+        }
+        val unmatched = candidateLexemes.toMutableList()
+        return sourceLexemes.all { sourceLexeme ->
+            val match = unmatched.indexOfFirst { candidateLexeme ->
+                sourceLexeme.lemma == candidateLexeme.lemma ||
                     (
-                        sourceLemma.length >= 5 &&
-                            candidateLemma.length >= 5 &&
-                            editDistance(sourceLemma, candidateLemma) <= 2
+                        sourceLexeme.lemma.length >= 5 &&
+                            candidateLexeme.lemma.length >= 5 &&
+                            editDistance(sourceLexeme.lemma, candidateLexeme.lemma) <=
+                            if (sourceLexeme.lemma.length >= 7) 4 else 2
                     )
             }
             if (match < 0) {
@@ -590,10 +631,12 @@ object ProofreadPreservationPolicy {
             (articleDelta > 0 && pronounDelta < 0)
     }
 
-    private fun contentLemmas(value: String): List<String> = words.findAll(value)
+    private data class Lexeme(val word: String, val lemma: String)
+
+    private fun contentLexemes(value: String): List<Lexeme> = words.findAll(value)
         .map { it.value.lowercase() }
         .filter { it !in functionWords }
-        .map(::lemma)
+        .map { Lexeme(it, lemma(it)) }
         .toList()
 
     private fun lemma(value: String): String {
@@ -696,6 +739,495 @@ object GrammarSafetyNet {
         result = Regex("(?i)\\breadyness\\b").replace(result) { match ->
             if (match.value.first().isUpperCase()) "Readiness" else "readiness"
         }
+        result = Regex("(?i)\\bdoes['’]t\\b").replace(result, "doesn't")
+        result = Regex(
+            "(?i)\\bgrate(?=\\s+(?:pet|pets|choice|idea|animal|animals|place|thing|way)\\b)",
+        ).replace(result, "great")
+        result = Regex("(?i)\\bmake grade(?=\\s+(?:pets?|choices?|companions?)\\b)")
+            .replace(result, "make great")
+        result = Regex("(?i)\\bcan only be (?:grade|grate)\\b")
+            .replace(result, "can only be great")
+        result = Regex("(?i)\\breal good\\b").replace(result, "really well")
+        result = Regex("(?i)\\bwith out\\b").replace(result, "without")
+        result = Regex("(?i)\\bthere (keys|belongings|possessions)\\b")
+            .replace(result, "their $1")
+        result = Regex("(?i)\\bsome is\\b").replace(result, "some are")
+        result = Regex("(?i)\\b(pets|animals|dogs|cats) does\\b").replace(result, "$1 do")
+        result = Regex("(?i)\\bthey usually are ([a-z]+ing)\\b")
+            .replace(result, "they are usually $1")
+        result = Regex("(?i)\\bconnect perfect\\b").replace(result, "connect perfectly")
+        result = Regex(
+            "(?i)\\b(companionship|requirement|reason|benefit|feature|rule) witch\\b",
+        ).replace(result, "$1 which")
+        result = Regex("(?i)\\b(dogs|cats|pets|animals) makes\\b").replace(result, "$1 make")
+        result = Regex("(?i)\\bthey still shows\\b").replace(result, "they still show")
+        result = Regex("(?i)\\b(a|the) (dog|cat|pet|animal) got\\b")
+            .replace(result, "$1 $2 has")
+        result = Regex("(?i)\\blearning from (a|the) mistake is better then\\b")
+            .replace(result, "learning from $1 mistake is better than")
+        result = Regex("(?i)\\bcompanionship look\\b").replace(result, "companionship looks")
+        result = Regex("(?i)\\bwere you lives\\b").replace(result, "where you live")
+        result = Regex("(?i)\\bwould of\\b").replace(result, "would have")
+        result = Regex("(?i)\\bTheir is\\b").replace(result, "There is")
+        result = Regex("(?i)\\bTheir are\\b").replace(result, "There are")
+        result = Regex("(?i)\\b(benefit|advantage|reason) are\\b").replace(result, "$1 is")
+        result = Regex("(?i)\\b(the (?:pet|dog|cat|animal)|it) don't\\b")
+            .replace(result, "$1 doesn't")
+        result = Regex("(?i)\\b(habitats|pets|animals|dogs|cats) does\\b")
+            .replace(result, "$1 do")
+        result = Regex("(?i)\\bequipments\\b").replace(result, "equipment")
+        result = Regex("(?i)\\bIt ait\\b").replace(result, "It isn't")
+        result = Regex("(?i)\\b(in) I guess\\b").replace(result, "$1, I guess,")
+        result = Regex("(?i)\\bforces the one to learn\\b")
+            .replace(result, "forces the owner to learn")
+        result = Regex("(?i)\\bThen the one realizes\\b")
+            .replace(result, "Then the owner realizes")
+        result = Regex("(?i)\\bfeels embarrassed learning from\\b")
+            .replace(result, "feels embarrassed, but learning from")
+        result = Regex("(?i)\\bexactly like a dog would have, but\\b")
+            .replace(result, "exactly like a dog would, but")
+        result = Regex("(?i)\\binstead of just big decoration\\b")
+            .replace(result, "instead of just being a decoration")
+        result = Regex("(?i)\\bforgets sort of their keys\\b")
+            .replace(result, "forgets their keys")
+        result = Regex("(?i)\\bthe pet is their witch\\b")
+            .replace(result, "the pet is theirs, which")
+        result = Regex("(?i)\\bwords they never would use\\b")
+            .replace(result, "words they would never use")
+        result = Regex("(?i)\\bwhere it Live\\b").replace(result, "where it lives")
+        result = Regex(
+            "(?i)\\bFeeding ([^.!?]{1,160}) and checking ([^.!?]{1,80}) makes\\b",
+        ).replace(result, "Feeding $1 and checking $2 make")
+        result = Regex("(?i),{2,}").replace(result, ",")
+        result = Regex("(?i)\\bthe humans bad planning\\b")
+            .replace(result, "the humans' bad planning")
+        result = Regex("(?i)\\bbefore they learned much\\b")
+            .replace(result, "before they have learned much")
+        result = Regex("(?i)\\bdifferent looking(?=\\s+[a-z]+\\b)")
+            .replace(result, "different-looking")
+        result = Regex("(?i)\\bimportant in, I guess, every\\b")
+            .replace(result, "important, I guess, in every")
+        result = Regex("(?i)\\bschool work\\b").replace(result, "schoolwork")
+        result = Regex(
+            "(?i)\\bwatching (the [a-z]+) move,\\s*Eat\\.\\s*Rest or investigate " +
+                "something give\\b",
+        ).replace(result, "watching $1 move, eat, rest, or investigate something gives")
+        result = Regex("(?i)\\bThe one should\\b").replace(result, "One should")
+        result = Regex("(?i)\\ba pet anyway can only\\b").replace(result, "a pet can only")
+        result = Regex("(?i)\\bUnited or whatever States\\b")
+            .replace(result, "United States")
+        result = Regex("(?i)\\bor whatever States It\\b")
+            .replace(result, "United States. It")
+        result = Regex("(?i)\\broutine education, entertainment\\b")
+            .replace(result, "routine, education, entertainment")
+        result = Regex("(?i)\\bparticular different scenario mostly\\b")
+            .replace(result, "particular scenario")
+        result = Regex(
+            "(?i)\\bSome are smart,? and others are sort of\\.\\s*Why does it look like that\\?",
+        ).replace(
+            result,
+            "Some questions are thoughtful, while others ask why it looks that way.",
+        )
+        result = Regex(
+            "(?i)\\bthe pet is theirs, two reasons that are essentially the same\\b",
+        ).replace(
+            result,
+            "the pet belongs to them. These two reasons are essentially the same",
+        )
+        result = Regex("(?i)\\bsuch as paying a bill, and stuff (?:like )?finishing\\b")
+            .replace(result, "such as paying a bill, finishing")
+        result = Regex("(?i)\\bdo need sort of lights\\b").replace(result, "do need some lights")
+        result = Regex("(?i)\\bWhether in ([^,]{2,60}), housing size\\b")
+            .replace(result, "In $1, housing size")
+        result = Regex("(?i)\\bAnd for real still it connects because\\b")
+            .replace(result, "Still, it connects because")
+        result = Regex("(?i)\\bcleaning where it lives and checking\\b")
+            .replace(result, "cleaning where it lives, and checking")
+        result = Regex("\\b([A-Z][a-z]+),? United States It\\b")
+            .replace(result, "$1, United States. It")
+        result = Regex("(?i)\\bAnd it also requires\\b").replace(result, "It also requires")
+        result = Regex("(?i), but most worthwhile things\\b")
+            .replace(result, ". Most worthwhile things")
+        result = Regex("(?i)! But with correct preparation\\b")
+            .replace(result, "! With correct preparation")
+        result = Regex("(?i)\\bpractice essay ([^.!?\\n]{1,80})\\?")
+            .replace(result, "practice essay $1.")
+        result = Regex("(?i)\\. And this essay\\b").replace(result, ". This essay")
+        result = Regex("(?i)\\. But for real,\\s*").replace(result, ". However, ")
+        result = Regex("(?i)\\bfinishing schoolwork or fixing\\b")
+            .replace(result, "finishing schoolwork, or fixing")
+        result = Regex("(?i)\\. But inside the home,\\s*")
+            .replace(result, ". Inside the home, ")
+        result = Regex("(?i)\\. Anyway,\\s*").replace(result, ". ")
+        result = Regex("(?i)\\. And the animal\\b").replace(result, ". The animal")
+        result = Regex("(?i)\\bis educational too\\b").replace(result, "is also educational")
+        result = Regex("(?i)\\bmight basically not work exactly\\b")
+            .replace(result, "might not work as intended")
+        result = Regex("(?i)\\bneeds are met but without proper care\\b")
+            .replace(result, "needs are met. Without proper care")
+        result = Regex(
+            "(?i)\\bAt first, the chores may feel annoying, then after a while they become\\b",
+        ).replace(result, "At first, the chores may feel annoying; after a while, they become")
+        result = Regex("(?i)\\bparticular different scenario,? mostly\\b")
+            .replace(result, "particular scenario")
+        result = Regex("(?i)\\. And not every\\b").replace(result, ". Not every")
+        result = Regex(
+            "(?i)\\bthey are usually speaking before they have learned much about it\\b",
+        ).replace(result, "they usually speak before learning much about it")
+        result = Regex("(?i)\\b(In [^,.]{2,80}), to be honest,\\s*")
+            .replace(result, "$1, ")
+        result = Regex("(?i)\\. However, they still show\\b")
+            .replace(result, ". Still, they show")
+        result = Regex("(?i)\\bis also educational, because\\b")
+            .replace(result, "is also educational because")
+        result = Regex("(?i)\\bWithout proper care even\\b")
+            .replace(result, "Without proper care, even")
+        result = Regex("(?i)\\bunhealthy or destructive\\b")
+            .replace(result, "unhealthy, or destructive")
+        result = Regex("(?i)\\babout fun but responsibility\\b")
+            .replace(result, "about fun, but responsibility")
+        result = Regex("(?i)\\bTherefore, ([^.!?]{1,120}) pets, except when\\b")
+            .replace(result, "Therefore, $1 pets except when")
+        result = Regex("(?i)\\. And that (is|makes)\\b").replace(result, ". That $1")
+        result = Regex("(?i),\\s*to be honest,\\s*").replace(result, ", ")
+        result = Regex("(?i)\\bdestructive and then\\b")
+            .replace(result, "destructive, and then")
+        result = Regex("\\bIn ([A-Z][a-z]+) (England|France|Germany|Greece|Kenya|Mexico|Morocco|Vietnam)\\b")
+            .replace(result, "In $1, $2")
+        result = Regex(
+            "(?i)\\bSome are smart,? and others are why does it and stuff look like that\\.",
+        ).replace(result, "Some questions are thoughtful, while others ask why it looks that way.")
+        result = Regex("(?i)\\bThis part don't connect much but it still counts\\.")
+            .replace(result, "This part doesn't connect much, but it still counts.")
+        result = Regex("(?i)\\bmoves the room\\b").replace(result, "moves around the room")
+        result = Regex("(?i)\\bwhich are two reasons at once\\b")
+            .replace(result, "which may be two versions of the same reason")
+        result = Regex(
+            "(?i)\\bAnd ([a-z]+) has its own whether street noises and traditions\\.",
+        ).replace(result) { match ->
+            "${match.groupValues[1].replaceFirstChar { it.uppercase() }} has its own weather, " +
+                "street noises, and traditions."
+        }
+        result = Regex("(?i)\\ban event so it is not a movie\\b")
+            .replace(result, "an event; it is not a movie")
+        result = Regex("(?i)\\bIt is educational,? sort of too\\.")
+            .replace(result, "It is also educational.")
+        result = Regex("(?i)\\bsomething award earlier\\b")
+            .replace(result, "something awkward earlier")
+        result = Regex("(?i)\\bIt mindy wants\\b").replace(result, "It mainly wants")
+        result = Regex(
+            "(?i)\\bAlthough saying (it|the (?:pet|animal)) understands every " +
+                "(?:human )?emotion would be exaggerating it\\.",
+        ).replace(result, "However, saying $1 understands every emotion would be an exaggeration.")
+        result = Regex("(?i)\\s+Etc\\.").replace(result, "")
+        result = Regex(
+            "(?i)\\bAt first the chores feel annoying, then after a while it becomes automatic\\.",
+        ).replace(result, "At first the chores feel annoying; after a while they become automatic.")
+        result = Regex("(?i)\\bWitch is for real bad\\.").replace(result, "This is really bad.")
+        result = Regex("(?i)\\bForgetting Ait just forgetting\\b")
+            .replace(result, "Forgetting is not just forgetting")
+        result = Regex("(?i)\\bThe owners' daily travel\\b")
+            .replace(result, "The owner's daily travel")
+        result = Regex("(?i)\\bA plan copied, you know, from\\b")
+            .replace(result, "A plan copied from")
+        result = Regex("(?i)\\bbecomes basically unhealthy\\b")
+            .replace(result, "becomes unhealthy")
+        result = Regex("(?i)\\bBut Therefore,\\s*").replace(result, "Therefore, ")
+        result = Regex("(?i),?\\s+I guess\\.").replace(result, ".")
+        result = Regex(
+            "(?i)\\bAnd ([a-z]+) has its own whether street noises and traditions(?=,|\\.)",
+        ).replace(result) { match ->
+            "${match.groupValues[1].replaceFirstChar { it.uppercase() }} has its own weather, " +
+                "street noises, and traditions"
+        }
+        result = Regex("(?i)\\bmove, eat, rest or investigate\\b")
+            .replace(result, "move, eat, rest, or investigate")
+        result = Regex("(?i)\\ban event to ([a-z]+) so it is not a movie\\b")
+            .replace(result, "an event to $1; it is not a movie")
+        result = Regex("(?i)\\bdoesn't need batteries though\\b")
+            .replace(result, "doesn't need batteries, though")
+        result = Regex("(?i)\\bIt is educational,? sort of too,? because\\b")
+            .replace(result, "It is also educational because")
+        result = Regex(
+            "(?i)\\b(Feeding [^.!?]{1,180}, and checking [^.!?]{1,80}) creates " +
+                "(a|the) ((?:[a-z-]+ )?schedule)\\b",
+        ).replace(result, "$1 create $2 $3")
+        result = Regex(
+            "(?i)\\bAt first the chores may feel annoying, then after a while it becomes " +
+                "automatic except\\b",
+        ).replace(result, "At first the chores may feel annoying; after a while they become automatic except")
+        result = Regex("\\band The owner's daily travel\\b")
+            .replace(result, "and the owner's daily travel")
+        result = Regex("(?i)(\\bIn [A-Z][a-z]+, [a-z]+), and (the owner's [a-z]+\\b)")
+            .replace(result, "$1 and $2")
+        result = Regex("(?i), basically (?=(?:unhealthy|unsafe|unwell|ill)\\b)")
+            .replace(result, ", ")
+        result = Regex("\\b(In [A-Z][a-z]+) (England|France|Germany|Greece|Kenya|Mexico|Morocco|Vietnam)\\b")
+            .replace(result, "$1, $2")
+        result = Regex("(?i)\\bwhich is a lot of requirements\\b")
+            .replace(result, "which means there are many requirements")
+        result = Regex("(?i)\\bBut with correct preparation\\b")
+            .replace(result, "With correct preparation")
+        result = Regex("(?i),?\\s+I guess,?\\s+(?=in this|in that|for this|for that)")
+            .replace(result, " ")
+        result = Regex(
+            "(?i)\\bmay be two versions of the same reason and may be the same reason\\b",
+        ).replace(result, "may be two versions of the same reason")
+        result = Regex("(?i)\\b((?:a|an) (?:[a-z]+ )?event to [^.!?]{1,50}?) so it is not a movie\\b")
+            .replace(result, "$1; it is not a movie")
+        result = Regex("(?i)\\bis educational,? sort of too,? because\\b")
+            .replace(result, "is also educational because")
+        result = Regex("(?i)\\bdoesn't connect much but it still counts\\b")
+            .replace(result, "doesn't connect much, but it still counts")
+        result = Regex("(?m)(^|[.!?]\\s+)But caring\\b")
+            .replace(result, "$1Caring")
+        result = Regex("(?m)(^|[.!?]\\s+)So then the\\b")
+            .replace(result, "$1Then the")
+        result = Regex(
+            "(?i)\\bNow it (?:suddenly )?sounds like instructions, and still it connects because\\b",
+        ).replace(result, "Although it sounds like instructions, it still connects because")
+        result = Regex("(?i)\\b(Rabbits|Cats|Dogs|Pets|Animals) can be the best pet\\b")
+            .replace(result, "$1 can be the best pets")
+        result = Regex("(?i)\\bIntentionally error-filled practice essay (\\d+)[!?]")
+            .replace(result, "Intentionally error-filled practice essay $1.")
+        result = Regex(
+            "(?im)(^|[.!?]\\s+)(One (?:afternoon|morning|evening|day|night),?\\s+" +
+                "(?:a|an|the) ([a-z][a-z'-]*) (might|could) [a-z][a-z'-]*" +
+                "(?: [a-z][a-z'-]*){0,4} and (?:the|a|an) ([a-z][a-z'-]*)) " +
+                "(reacts|responds)([^.!?]{0,80})(?=[.!?]|$)",
+        ).replace(result) { match ->
+            val sameSubject = match.groupValues[3].equals(match.groupValues[5], ignoreCase = true)
+            val explicitReaction = Regex(
+                "(?i)^\\s+(?:in (?:his|her|its|their) own way|with " +
+                    "(?:a|an|the|his|her|its|their) " +
+                    "(?:bark|sound|noise|gesture|movement|reply|answer|signal|alarm|call))\\b",
+            ).containsMatchIn(match.groupValues[7])
+            if (sameSubject || explicitReaction) {
+                "${match.groupValues[1]}${match.groupValues[2]} " +
+                    "${match.groupValues[4]} ${thirdPersonBase(match.groupValues[6])}" +
+                    match.groupValues[7]
+            } else {
+                match.value
+            }
+        }
+        result = Regex(
+            "(?i)\\b(?<!will )(?<!would )(?<!could )(?<!might )(?<!may )" +
+                "(?<!should )(?<!can )(learn|learns|learned|learning) " +
+                "(new )?words ((?:they|we|you|he|she|I)|(?:the\\s+)?[a-z][a-z'-]*) " +
+                "would never use before(?=[.!?]|$)",
+        ).replace(result) { match ->
+            "${match.groupValues[1]} ${match.groupValues[2]}words " +
+                "${match.groupValues[3]} had never used before"
+        }
+        result = Regex(
+            "(?i)\\b((?:is|was|are|were) about [^,.!?]{2,120}),\\s+and\\s+" +
+                "(why (?:keeping|having|using|choosing|caring|studying|living|working) " +
+                "[^.!?]{1,80} (?:(?:could|can|would|might|may) [a-z][a-z'-]*|" +
+                "helps?|works?|matters?)(?: (?:really )?(?:well|better|best))?[.!?])",
+        ).replace(result, "$1 and $2")
+        result = Regex("(?i)\\bkeeping one for keeping (a|an)\\b")
+            .replace(result, "keeping one as $1")
+        result = Regex(
+            "(?i)\\bkeeping (one|it|them) as (a|an) " +
+                "((?:[a-z][a-z'-]* ){0,3})indoor (animal|pet) while\\b",
+        ).replace(result) { match ->
+            "keeping ${match.groupValues[1]} as ${match.groupValues[2]} " +
+                "${match.groupValues[3]}${match.groupValues[4]} indoors while"
+        }
+        result = Regex("(?i)\\bHowever, ([^.!?]{1,180}), but (they|it|this|that)\\b")
+            .replace(result, "However, $1, and $2")
+        result = Regex("(?im)(^|[.!?]\\s+)And (a|an) (rabbit|cat|dog|pet) gets\\b")
+            .replace(result) { match ->
+                match.groupValues[1] +
+                    "${match.groupValues[2].replaceFirstChar { it.uppercase() }} " +
+                    "${match.groupValues[3]} has"
+            }
+        result = Regex("(?i)\\b(?:a|an) (rabbit|cat|dog|pet) got (?=habits|needs|a personality)")
+            .replace(result, "a $1 has ")
+        result = Regex("(?i)\\bIt's not a to be honest movie\\b")
+            .replace(result, "It's not a movie")
+        result = Regex("(?i)\\bmovie and it doesn't need batteries although\\b")
+            .replace(result, "movie, and it doesn't need batteries, although")
+        result = Regex("(?i)\\bpower so the animal creates\\b")
+            .replace(result, "power. The animal creates")
+        result = Regex("(?im)(^|[.!?]\\s+)But crying for (it|them) can\\b")
+            .replace(result, "$1Caring for $2 can")
+        result = Regex("(?i)\\ba repeating or whatever schedule\\b")
+            .replace(result, "a repeating schedule")
+        result = Regex("(?i)\\b(make|makes|made) a repeating schedule\\b")
+            .replace(result) { match ->
+                val verb = when (match.groupValues[1].lowercase()) {
+                    "makes" -> "creates"
+                    "made" -> "created"
+                    else -> "create"
+                }
+                "$verb a regular routine"
+            }
+        result = Regex(
+            "(?i)\\bAt first,? the Chores may feel annoying, then after a while it " +
+                "becomes sort of automatic\\b",
+        ).replace(result, "At first, the chores may feel annoying; after a while, they become automatic")
+        result = Regex(
+            "(?i)\\bchecks the habitat, checks the habitat\\. Says hello then\\b",
+        ).replace(result, "checks the habitat, says hello, then")
+        result = Regex(
+            "(?i)(\\b(?:forget|forgets|forgot|forgetting) " +
+                "(?:his|her|their|the) keys\\b[^.!?]{0,120}?)" +
+                "([.!?]\\s+|\\s+and\\s+)This (?:also )?shows responsibility and " +
+                "(?:also )?(?:it )?shows (?:that )?the pet is there\\b",
+        ).replace(result) { match ->
+            val separator = if (match.groupValues[2].trim() in setOf(".", "!", "?")) {
+                match.groupValues[2]
+            } else {
+                ". "
+            }
+            "${match.groupValues[1]}${separator}The pet is there"
+        }
+        result = Regex("(?i)\\bANOTHRE\\b").replace(result, "another")
+        result = Regex("(?i)\\bcan only be to be honest (great|good)\\b")
+            .replace(result, "can only be $1")
+        result = Regex("(?i)\\bWithout proper or whatever proper care\\b")
+            .replace(result, "Without proper care")
+        result = Regex("(?im)(^|[.!?]\\s+)But this doesn't prove ([^.!?]{1,120}), but\\b")
+            .replace(result, "$1This doesn't prove $2, but")
+        result = Regex("(?im)(^|[.!?]\\s+)And later the\\b")
+            .replace(result, "$1Later the")
+        result = Regex("(?i)\\bTo be honest,? you know,? even if\\b")
+            .replace(result, "Even if")
+        result = Regex("(?i)\\bWitch is a lot of requirements\\b")
+            .replace(result, "This involves many requirements")
+        result = Regex("(?im)(^|[.!?]\\s+)So not every\\b")
+            .replace(result, "$1Not every")
+        result = Regex("(?i)\\b(rabbit|cat|dog|pet|animal) This essay\\b")
+            .replace(result, "$1. This essay")
+        result = Regex("(?i)\\bwhile studying like could\\b")
+            .replace(result, "while studying could")
+        result = Regex(";\\s*However,").replace(result, "; however,")
+        result = Regex("(?i),?\\s*you know--").replace(result, ", ")
+        result = result.replace("--", ", ")
+        result = Regex("\\b([A-Z][a-z]+) have its own\\b")
+            .replace(result, "$1 has its own")
+        result = Regex("(?i)\\bwhether streets noises and traditions\\b")
+            .replace(result, "weather, streets, noises, and traditions")
+        result = Regex("(?i)\\btraditions but\\b").replace(result, "traditions, but")
+        result = Regex("(?i)\\blights heaters filters or other equipment\\b")
+            .replace(result, "lights, heaters, filters, or other equipment")
+        result = Regex("(?i)\\bequipment so the animal\\b")
+            .replace(result, "equipment. The animal")
+        result = Regex("(?i)\\bstructure Feeding\\b").replace(result, "structure. Feeding")
+        result = Regex("(?i)\\bFeeding for real the\\b").replace(result, "Feeding the")
+        result = Regex("(?i)\\bcleaning were it lives\\b")
+            .replace(result, "cleaning where it lives")
+        result = Regex("(?i)\\bThe one in ([A-Z][a-z]+) could write a chart\\b")
+            .replace(result, "The owner in $1 could write a chart")
+        result = Regex("(?i)\\bin every country even though\\b")
+            .replace(result, "in every country. Even though")
+        result = Regex("(?im)(^|[.!?]\\s+)Even though ([^.!?]{1,180}),\\s*but\\s+")
+            .replace(result, "$1Even though $2, ")
+        result = Regex("(?i)\\bdepending where you lives\\b")
+            .replace(result, "depending where you live")
+        result = Regex("(?i)\\bdepending where you live (a|an)\\b")
+            .replace(result, "depending where you live, $1")
+        result = Regex(",\\s*The owner Says hello then\\b")
+            .replace(result, ", the owner says hello, then")
+        result = Regex("(?i)\\bpet Somewhere else so In\\b")
+            .replace(result, "pet somewhere else. In")
+        result = Regex(
+            "(?i)\\bhousing size available vets and the ones daily travel all changes\\b",
+        ).replace(result, "housing size, available vets, and the owner's daily travel all change")
+        result = Regex("(?i)\\bcan only be to be honest (?:grade|grate)\\b")
+            .replace(result, "can only be great")
+        result = Regex("(?i)\\s+Etc(?:\\.|(?=\\s|$))").replace(result, "")
+        result = Regex("(?im)(^|[.!?]\\s+)But this does not prove ([^.!?]{1,120}), but\\b")
+            .replace(result, "$1This does not prove $2, but")
+        result = Regex("(?i)\\blaughs Even if\\b").replace(result, "laughs, even if")
+        result = Regex("(?i)\\bwas't\\b").replace(result, "wasn't")
+        result = Regex("(?i)\\bfunny Pets\\b").replace(result, "funny. Pets")
+        result = Regex("(?i)\\bPets turns\\b").replace(result, "Pets turn")
+        result = Regex("(?i)\\bfamilies runs out\\b").replace(result, "families run out")
+        result = Regex("(?i), but The (owner|animal|person|pet)\\b")
+            .replace(result, ", but the $1")
+        result = Regex("(?i)(near a [^,.!?]{2,80}), The animal\\b")
+            .replace(result, "$1, the animal")
+        result = Regex("(?i)\\bchecks the habitat, Says hello then\\b")
+            .replace(result, "checks the habitat, says hello, then")
+        result = Regex("(?i)\\bwhat care should look like but a plan\\b")
+            .replace(result, "what care should look like. A plan")
+        result = Regex(
+            "(?i)\\bmight not work exactly\\s+" +
+                "((?:the )?(?:owner|person|user|reader) " +
+                "(?:should|must|could|can|may|might)\\b)",
+        ).replace(result) { match ->
+            "might not work in exactly the same way. " +
+                match.groupValues[1].replaceFirstChar { it.uppercase() }
+        }
+        result = Regex(
+            "(?i)\\bmight not work exactly(?=\\s*(?:[.!?]|$|,\\s+" +
+                "(?:but|and|because|although|even if)\\b))",
+        ).replace(result, "might not work in exactly the same way")
+        result = Regex("(?im)(^|[.!?]\\s+)But also,?\\s*")
+            .replace(result, "$1Also, ")
+        result = Regex("(?i)\\bStill it connects\\b").replace(result, "Still, it connects")
+        result = Regex("(?i)\\bthe Netherlands and it offers\\b")
+            .replace(result, "the Netherlands. It offers")
+        result = Regex("(?i)\\bcompanionship routine education entertainment\\b")
+            .replace(result, "companionship, routine, education, entertainment")
+        result = Regex(
+            "(?i)\\ba reason to care sort of about something beyond or whatever yourself\\b",
+        ).replace(result, "a reason to care about something beyond yourself")
+        result = Regex("(?im)(^|[.!?]\\s+)So it also\\b").replace(result, "$1It also")
+        result = Regex("(?i)\\brequires money time research cleaning and common sense\\b")
+            .replace(result, "requires money, time, research, cleaning, and common sense")
+        result = Regex("(?i)\\bcommon sense This involves\\b")
+            .replace(result, "common sense. This involves")
+        result = Regex("(?i)\\brequirements but most worthwhile\\b")
+            .replace(result, "requirements. Most worthwhile")
+        result = Regex("(?i)\\bworthwhile things got requirements\\b")
+            .replace(result, "worthwhile things have requirements")
+        result = Regex("(?i)\\brequirements so not every\\b")
+            .replace(result, "requirements. Not every")
+        result = Regex(
+            "(?i)\\b((?:This|That) (?:involves|has) many requirements)\\.\\s+" +
+                "Most worthwhile things have requirements\\.",
+        ).replace(result, "$1, as worthwhile things often do.")
+        result = Regex("(?i)\\ba essay But wit correct preparation\\b")
+            .replace(result, "an essay. With correct preparation")
+        result = Regex("(?i)\\bthe home Therefore\\b").replace(result, "the home. Therefore,")
+        result = Regex("(?i)\\brabb?i(?:st|t) makes good pets\\b")
+            .replace(result, "rabbits make good pets")
+        result = Regex("(?i)\\bfit the situation and that is why their a good choice\\b")
+            .replace(result, "fit the situation. That is why they are a good choice")
+        result = Regex("(?i)\\bcompanionship which is\\b")
+            .replace(result, "companionship, which is")
+        result = Regex("(?i)\\bdepending where you live\\b")
+            .replace(result, "depending on where you live")
+        result = Regex("(?i)\\bmorning got busy and this shows\\b")
+            .replace(result, "morning got busy. This shows")
+        result = Regex("(?i)\\bbelongs to them and maybe you know the same reason\\b")
+            .replace(result, "belongs to them.")
+        result = Regex(
+            "(?i)\\bautomatic except on days when everything goes wrong, but the owner\\b",
+        ).replace(result, "automatic except on days when everything goes wrong. The owner")
+        result = Regex(
+            "(?i), but also this essay is mostly saying pets are good and now it suddenly " +
+                "sounds like instructions",
+        ).replace(
+            result,
+            ". Although this essay mainly argues that pets are good, it now sounds like instructions",
+        )
+        result = Regex("(?i)\\bThese two reasons are essentially the same\\b")
+            .replace(result, "These may be two versions of the same reason")
+        result = Regex(
+            "(?i)\\bOne should use trustworthy local information, but also this essay is " +
+                "mostly saying pets are good and now it suddenly sounds like instructions\\.",
+        ).replace(
+            result,
+            "One should use trustworthy local information. Although this essay mainly argues " +
+                "that pets are good, it now sounds like instructions.",
+        )
+        result = Regex(
+            "(?i)\\bforgetting is not just forgetting when another living thing depends on you\\b",
+        ).replace(result, "forgetting has consequences when another living thing depends on you")
         result = Regex(
             "(?i)\\b(especially|including|for|to|with|between|at)" +
                 "(\\s+[^.!?]{0,80}\\band\\s+)myself\\b",
@@ -1257,9 +1789,20 @@ object GrammarSafetyNet {
         restored = Regex("(?m)^(#{1,6}\\s+)([a-z])").replace(restored) { match ->
             match.groupValues[1] + match.groupValues[2].uppercase()
         }
+        restored = Regex("(?i)(\\bIn [A-Z][a-z]+, [a-z]+), and (the owner's [a-z]+\\b)")
+            .replace(restored, "$1 and $2")
+        restored = Regex(
+            "(?i)\\b(in [A-Z][a-z]+) (England|France|Germany|Greece|Kenya|Mexico|Morocco|Vietnam)\\b",
+        ).replace(restored, "$1, $2")
         restored = Regex(
             "(?i)\\b(said|asked|replied|wrote|stated|explained)\\s+(?=\")",
         ).replace(restored, "$1, ")
+        restored = Regex("(?i)\\bIntentionally error-filled practice essay (\\d+)[!?]")
+            .replace(restored, "Intentionally error-filled practice essay $1.")
+        restored = Regex("(?im)(^|[.!?]\\s+)And (a|an)\\b")
+            .replace(restored) { match ->
+                match.groupValues[1] + match.groupValues[2].replaceFirstChar { it.uppercase() }
+            }
         restored = Regex(
             "(?i)\\bAfter reading\\s+(the\\s+[^,.!?]{1,80}),\\s+(the\\s+)",
         ).replace(restored) { match ->

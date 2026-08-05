@@ -8,6 +8,121 @@ import org.junit.Test
 
 class DocumentCorrectionPipelineTest {
     @Test
+    fun proofreadSemanticGuardRejectsRealWordDriftAndUsesStrictRetry() = runBlocking {
+        val backend = ScriptedBackend { request ->
+            if (request.strictRetry) {
+                "Caring for the rabbit can calm the owner."
+            } else {
+                "Crying for the rabbit can calm the owner."
+            }
+        }
+        val pipeline = DocumentCorrectionPipeline(
+            primaryBackend = backend,
+            preservesProofreadWording = { _, candidate -> "Crying" !in candidate },
+        )
+
+        val result = pipeline.process(
+            DocumentCorrectionRequest(
+                jobId = "semantic-retry",
+                source = "Caring for the rabbit can calm the owner.",
+                tone = WritingTone.PROOFREAD,
+                qualityMode = QualityMode.FAST,
+            ),
+        )
+
+        assertEquals("Caring for the rabbit can calm the owner.", result.text)
+        assertEquals(2, backend.requests.size)
+        assertTrue(backend.requests.last().strictRetry)
+    }
+
+    @Test
+    fun rejectedResidualSweepStillKeepsIndividuallySafeSentenceRepairs() = runBlocking {
+        val backend = ScriptedBackend { request -> request.originalTarget }
+        val pipeline = DocumentCorrectionPipeline(
+            primaryBackend = backend,
+            deterministicSentenceRepair = { text ->
+                text
+                    .replace("Bath England", "Bath, England")
+                    .replace("pet needs food", "animal needs fuel")
+            },
+        )
+
+        val result = pipeline.process(
+            DocumentCorrectionRequest(
+                jobId = "partial-residual",
+                source = "In Bath England, care matters. The pet needs food.",
+                tone = WritingTone.PROOFREAD,
+                qualityMode = QualityMode.FAST,
+            ),
+        )
+
+        assertEquals("In Bath, England, care matters. The pet needs food.", result.text)
+    }
+
+    @Test
+    fun liveAiEvidenceGroupsAttemptsByDocumentAndSection() {
+        LocalAiAttemptEvidence.reset()
+        LocalAiAttemptEvidence.record("document-a", "document-a-p1-correct_only")
+        LocalAiAttemptEvidence.record("document-a", "document-a-p1-retry")
+        LocalAiAttemptEvidence.record("document-a", "document-a-p2-correct_only")
+        LocalAiAttemptEvidence.record("document-b", "document-b-p1-correct_only")
+
+        assertEquals(setOf(1, 2), LocalAiAttemptEvidence.snapshot().getValue("document-a"))
+        assertEquals(setOf(1), LocalAiAttemptEvidence.snapshot().getValue("document-b"))
+    }
+
+    @Test
+    fun inventedQuotationIsAProtectedSpanFailure() {
+        val validation = AiSafetyValidator.validate(
+            original = "A certain animal can be a pet.",
+            candidate = "\"A certain animal can be a pet.\"",
+            toneTransformation = false,
+            requiresVisibleChange = false,
+        )
+        assertTrue(SafetyIssue.PROTECTED_SPAN_CHANGED in validation.hardFailures)
+    }
+
+    @Test
+    fun proofreadCannotSwapOrdinaryContentWords() {
+        val validation = AiSafetyValidator.validate(
+            original = "The pet needs food.",
+            candidate = "The print needs fuel.",
+            toneTransformation = false,
+            requiresVisibleChange = false,
+        )
+        assertTrue(SafetyIssue.CONTENT_WORD_CHANGED in validation.hardFailures)
+    }
+
+    @Test
+    fun proofreadRejectsQuarterParagraphContentLoss() {
+        val original =
+            "A rabbit offers companionship, routine, education, and entertainment. " +
+                "It requires money, time, research, cleaning, and common sense. " +
+                "Not every rabbit is right for every person. With preparation, it can join the home."
+        val truncated =
+            "A rabbit offers companionship, routine, and education. " +
+                "Not every person should get one. With preparation, it can join the home."
+
+        val validation = AiSafetyValidator.validate(original, truncated)
+
+        assertTrue(SafetyIssue.CONTENT_REMOVED in validation.hardFailures)
+    }
+
+    @Test
+    fun proofreadRejectsMeaningfulClauseLossEvenBelowOneQuarter() {
+        val original =
+            "The rabbit offers companionship, routine, education, entertainment, responsibility, " +
+                "comfort, structure, learning, stories, and daily interest."
+        val candidate =
+            "The rabbit offers companionship, routine, education, entertainment, comfort, " +
+                "structure, learning, and daily interest."
+
+        val validation = AiSafetyValidator.validate(original, candidate)
+
+        assertTrue(SafetyIssue.CONTENT_REMOVED in validation.hardFailures)
+    }
+
+    @Test
     fun allParagraphsProcessAutomaticallyWithProtectedFactsAndProgress() = runBlocking {
         val primary = ScriptedBackend { request ->
             when (request.operation) {

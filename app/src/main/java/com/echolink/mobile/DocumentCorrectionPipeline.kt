@@ -2,6 +2,23 @@ package com.echolink.mobile
 
 import java.util.concurrent.ConcurrentHashMap
 
+/** Content-free evidence that every document section reached a live AI call. */
+object LocalAiAttemptEvidence {
+    private val sectionsByDocument = ConcurrentHashMap<String, MutableSet<Int>>()
+    private val paragraphNumber = Regex("-p(\\d+)-")
+
+    fun record(documentJobId: String, requestJobId: String) {
+        val section = paragraphNumber.find(requestJobId)?.groupValues?.get(1)?.toIntOrNull()
+            ?: return
+        sectionsByDocument.computeIfAbsent(documentJobId) { ConcurrentHashMap.newKeySet() }
+            .add(section)
+    }
+
+    fun snapshot(): Map<String, Set<Int>> = sectionsByDocument.mapValues { it.value.toSet() }
+
+    fun reset() = sectionsByDocument.clear()
+}
+
 data class DocumentCorrectionRequest(
     val jobId: String,
     val source: String,
@@ -272,6 +289,12 @@ object AiSafetyValidator {
         ) {
             hard += SafetyIssue.PROTECTED_SPAN_CHANGED
         }
+        // Source quotations are placeholders before this validator runs.
+        // Any quote mark visible here was invented by the model and can turn
+        // ordinary prose into a claim attributed to somebody else.
+        if (quotationMarks(original) != quotationMarks(candidate)) {
+            hard += SafetyIssue.PROTECTED_SPAN_CHANGED
+        }
         // One unified number check. Written and numeric forms of the same value
         // compare equal ("three" == "3"), while a changed value, changed order,
         // or changed meridiem ("3pm" -> "5pm") stays a hard failure.
@@ -343,12 +366,25 @@ object AiSafetyValidator {
             modality += SafetyIssue.PROHIBITION_CHANGED
         }
 
-        val originalContent = contentWords(original)
-        val candidateContent = contentWords(candidate)
-        if (originalContent != candidateContent) high += SafetyIssue.CONTENT_WORD_CHANGED
+        val originalContent = contentWords(normalizedOriginal)
+        val candidateContent = contentWords(normalizedCandidate)
+        if (originalContent != candidateContent) {
+            high += SafetyIssue.CONTENT_WORD_CHANGED
+            if (
+                !toneTransformation &&
+                !doubleNegative.containsMatchIn(normalizedOriginal) &&
+                !sourceExplicitlyRequiresMeaningCorrection &&
+                suspiciousEqualCountSubstitution(originalContent, candidateContent)
+            ) {
+                hard += SafetyIssue.CONTENT_WORD_CHANGED
+            }
+        }
+        val redundantModalCleanup =
+            Regex("(?i)\\b(?:can|could|may|might) be able to\\b").containsMatchIn(original)
+        val minimumContentRatio = if (redundantModalCleanup) 0.75 else 0.85
         if (
             originalContent.isNotEmpty() &&
-            candidateContent.size < originalContent.size * 0.75
+            candidateContent.size < originalContent.size * minimumContentRatio
         ) {
             // A proofread that silently drops a quarter of the content words
             // deleted a claim; that is a hard failure. Deliberate rewrites
@@ -414,6 +450,36 @@ object AiSafetyValidator {
             .map { it.value.lowercase() }
             .filterNot(stopWords::contains)
             .toList()
+
+    private fun quotationMarks(value: String): List<Char> =
+        value.filter { it == '"' || it == '\u201c' || it == '\u201d' }.toList()
+
+    private fun suspiciousEqualCountSubstitution(
+        original: List<String>,
+        candidate: List<String>,
+    ): Boolean {
+        if (original.size != candidate.size) return false
+        val originalCounts = original.map(::semanticContentStem).groupingBy { it }.eachCount()
+        val candidateCounts = candidate.map(::semanticContentStem).groupingBy { it }.eachCount()
+        val missing = originalCounts.flatMap { (word, count) ->
+            List((count - (candidateCounts[word] ?: 0)).coerceAtLeast(0)) { word }
+        }
+        val added = candidateCounts.flatMap { (word, count) ->
+            List((count - (originalCounts[word] ?: 0)).coerceAtLeast(0)) { word }
+        }
+        if (missing.isEmpty() || missing.size != added.size || missing.size > 2) return false
+        return missing.all { lost -> added.minOf { replacement -> editDistance(lost, replacement) } > 2 }
+    }
+
+    private fun semanticContentStem(value: String): String = when (val lower = entityStem(value)) {
+        "forgot", "forgotten", "forget", "forgetting" -> "forget"
+        "spoke", "spoken", "speak", "speaking" -> "speak"
+        "learnt", "learned", "learn", "learning" -> "learn"
+        "wrote", "written", "write", "writing" -> "write"
+        "brought", "bring", "bringing" -> "bring"
+        "sent", "send", "sending" -> "send"
+        else -> lower.removeSuffix("ing").removeSuffix("ed")
+    }
 
     // Adjacent written-number words ("two hundred", "twenty-two", "three
     // thousand five hundred") combine into one value so a style change
@@ -628,6 +694,7 @@ class DocumentCorrectionPipeline(
     // Model-free repair used when the model will not touch a sentence.
     private val deterministicSentenceRepair: (String) -> String =
         prepareGrammarRetryCandidate,
+    private val preservesProofreadWording: (String, String) -> Boolean = { _, _ -> true },
     private val correctionCacheGet: (String) -> String? = { null },
     private val correctionCachePut: (String, String) -> Unit = { _, _ -> },
     // Content-free per-paragraph outcome trace. A section that comes back
@@ -788,9 +855,15 @@ class DocumentCorrectionPipeline(
                         ?.also { outcomePath = "kept-original" }
                     ?: throw failure
             }
-            paragraph = paragraph.copy(
-                text = residualRepair(chunk.text, paragraph.text),
+            val restoredBeforeSweep = restoreFragment(protected, paragraph.text)
+            val repairedRestored = residualRepair(
+                restoreFragment(protected, chunk.text),
+                restoredBeforeSweep,
             )
+            val encodedAfterSweep = runCatching {
+                encodeFragment(protected, paragraph.text, repairedRestored)
+            }.getOrNull() ?: paragraph.text
+            paragraph = paragraph.copy(text = encodedAfterSweep)
             logParagraphOutcome(
                 "paragraph=${chunk.index}/${chunks.size};path=$outcomePath;" +
                     "changed=${paragraph.text.trim() != chunk.text.trim()};" +
@@ -1077,13 +1150,22 @@ class DocumentCorrectionPipeline(
         acceptsStrictReview: (String) -> Boolean,
         prepareGrammarRetry: (String) -> String,
     ): CorrectedParagraph {
+        // Give the AI a meaning-neutral spelling and punctuation floor.
+        // Small local models waste their limited context copying deliberate
+        // misspellings, then never reach the sentence structure. The floor is
+        // validated against the untouched chunk later, and every section
+        // still receives a live model generation.
+        val preparedTarget = runCatching { prepareGrammarRetry(chunk.text) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: chunk.text
         val initial = when (document.tone) {
             WritingTone.IMPROVE -> generateValidated(
                 backend = primaryBackend,
                 document = document,
                 chunk = chunk,
                 operation = WritingOperation.POLISH_PRESERVE_VOICE,
-                generationTarget = chunk.text,
+                generationTarget = preparedTarget,
                 immutableOriginal = chunk.text,
                 toneTransformation = false,
                 allowFallback = true,
@@ -1094,7 +1176,7 @@ class DocumentCorrectionPipeline(
                 document = document,
                 chunk = chunk,
                 operation = WritingOperation.CORRECT_ONLY,
-                generationTarget = chunk.text,
+                generationTarget = preparedTarget,
                 immutableOriginal = chunk.text,
                 toneTransformation = false,
                 allowFallback = true,
@@ -1119,13 +1201,10 @@ class DocumentCorrectionPipeline(
             ).mergeFallback(initial)
         }
 
-        // Only Best Quality (THOROUGH) pays for the second full review pass on a
-        // plain proofread. In Auto and Faster, a first pass that already preserves
-        // meaning (validation.safe, no high risks) is accepted as-is, so a full
-        // page finishes in one pass instead of doubling latency. Tone changes and
-        // IMPROVE still review because they must verify a deliberate rewrite. The
-        // advisory grammar veto no longer forces a review; recoverParagraph keeps
-        // meaning-safe output even if that veto stays unhappy.
+        // Best Quality pays for the second full review. A measured 4B Auto
+        // run with review took 6.5 minutes for ten sections and still left
+        // errors, so Auto keeps one AI pass plus the meaning-neutral cleanup
+        // floor. Faster also keeps one pass.
         // CONTENT_WORD_CHANGED from same-count substitutions never forces the
         // second pass: fixing a misspelling always changes the content-word
         // list, so treating it as review-worthy doubled the latency of nearly
@@ -1139,11 +1218,6 @@ class DocumentCorrectionPipeline(
             } else {
                 styled.validation.highRisks - SafetyIssue.CONTENT_WORD_CHANGED
             }
-        // Auto and Faster run ONE model pass per chunk: the validator already
-        // forces internal retries on hard failures, and the second full
-        // review doubled latency on almost every chunk because nearly any
-        // real correction changes a content word. Best Quality keeps the
-        // review pass for every chunk.
         val needsReview = document.qualityMode == QualityMode.THOROUGH
         val finalCandidate = if (needsReview && !styled.usedFallback) {
             reviewCandidate(
@@ -1228,7 +1302,44 @@ class DocumentCorrectionPipeline(
                 "failures=" + validation.hardFailures.joinToString("+") { it.name }
                     .ifEmpty { "none" },
         )
-        return if (blocking.isEmpty()) proposal else candidate
+        if (blocking.isEmpty()) return proposal
+
+        // A single aggressive or unsafe sentence must not cancel harmless
+        // spelling and punctuation repairs elsewhere in the paragraph. Each
+        // sentence is validated against the already-safe model candidate,
+        // then only independently safe repairs are composed.
+        var partialRepairs = 0
+        val partial = SENTENCE_SPLIT.replace(candidate) { match ->
+            val sentence = match.value
+            val repaired = runCatching { deterministicSentenceRepair(sentence) }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() && it != sentence }
+                ?: return@replace sentence
+            val sentenceValidation = AiSafetyValidator.validate(
+                original = sentence,
+                candidate = repaired,
+                toneTransformation = false,
+                requiresVisibleChange = false,
+            )
+            val sentenceBlocking = sentenceValidation.hardFailures - SPELLING_NEUTRAL_FAILURES
+            if (sentenceBlocking.isEmpty() || sameLexicalTokens(sentence, repaired)) {
+                partialRepairs += 1
+                repaired
+            } else {
+                sentence
+            }
+        }
+        logParagraphOutcome("sweep=partial;repairs=$partialRepairs")
+        return partial
+    }
+
+    private fun sameLexicalTokens(left: String, right: String): Boolean {
+        fun tokens(value: String): List<String> =
+            Regex("[\\p{L}\\p{N}]+")
+                .findAll(value)
+                .map { it.value.lowercase() }
+                .toList()
+        return tokens(left) == tokens(right)
     }
 
     private suspend fun reviewCandidate(
@@ -1329,18 +1440,35 @@ class DocumentCorrectionPipeline(
                 operation = operation,
                 target = generationTarget,
                 firstPassCandidate = null,
-                strictRetry = attempt == 1,
+                strictRetry = attempt == 1 ||
+                    (
+                        operation == WritingOperation.CORRECT_ONLY &&
+                            document.qualityMode != QualityMode.THOROUGH &&
+                            generationTarget != immutableOriginal
+                        ),
                 stage = operation.name.lowercase(),
             )
             val result = generate(backend, document.jobId, generationRequest)
             val text = result.text.takeIf { result.completed }.orEmpty()
             lastCandidate = text
-            val validation = AiSafetyValidator.validate(
+            val safetyValidation = AiSafetyValidator.validate(
                 original = immutableOriginal,
                 candidate = text,
                 toneTransformation = toneTransformation,
                 requiresVisibleChange = operation != WritingOperation.CORRECT_ONLY,
             )
+            val validation = if (
+                document.tone == WritingTone.PROOFREAD &&
+                operation == WritingOperation.CORRECT_ONLY &&
+                !preservesProofreadWording(generationTarget, text)
+            ) {
+                safetyValidation.copy(
+                    hardFailures = safetyValidation.hardFailures +
+                        SafetyIssue.CONTENT_WORD_CHANGED,
+                )
+            } else {
+                safetyValidation
+            }
             lastValidation = validation
             if (validation.safe) {
                 // A model that echoes its input back has not corrected
@@ -1465,6 +1593,7 @@ class DocumentCorrectionPipeline(
         request: LocalGenerationRequest,
     ): LocalGenerationResult {
         activeGenerationJobs[documentJobId] = request.jobId
+        LocalAiAttemptEvidence.record(documentJobId, request.jobId)
         return try {
             val result = backend.generate(request)
             val repaired = AiSafetyValidator.removeInventedEmDashes(

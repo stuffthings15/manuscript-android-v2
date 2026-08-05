@@ -16,6 +16,12 @@ data class DownloadAttempt(
     }
 }
 
+data class DownloadUiSnapshot(
+    val target: DownloadTargetKey,
+    val telemetry: DownloadTelemetry,
+    val actionableAttempt: DownloadAttempt?,
+)
+
 data class DownloadPartialSnapshot(
     val downloadedBytes: Long,
     val totalBytes: Long?,
@@ -74,6 +80,105 @@ internal class DownloadLifecycleCoordinator(
         synchronized(PROCESS_LOCK) {
             store.read(target)?.telemetry
         }
+
+    fun uiSnapshot(target: DownloadTargetKey): DownloadUiSnapshot? =
+        synchronized(PROCESS_LOCK) {
+            val current = store.read(target) ?: return@synchronized null
+            val actionable = if (
+                current.telemetry.phase in CANCEL_ACCEPTING_PHASES ||
+                current.telemetry.phase in RETRYABLE_PHASES
+            ) {
+                DownloadAttempt.from(current)
+            } else {
+                null
+            }
+            DownloadUiSnapshot(
+                target = current.target,
+                telemetry = current.telemetry,
+                actionableAttempt = actionable,
+            )
+        }
+
+    fun clearRecord(target: DownloadTargetKey) = synchronized(PROCESS_LOCK) {
+        store.clearRecord(target)
+    }
+
+    fun terminalAttempt(target: DownloadTargetKey): DownloadAttempt? =
+        synchronized(PROCESS_LOCK) {
+            val current = store.read(target) ?: return@synchronized null
+            if (current.telemetry.phase !in RETRYABLE_PHASES) return@synchronized null
+            DownloadAttempt.from(current)
+        }
+
+    fun activeAttempt(target: DownloadTargetKey): DownloadAttempt? =
+        synchronized(PROCESS_LOCK) {
+            val current = store.read(target) ?: return@synchronized null
+            if (current.telemetry.phase !in CANCEL_ACCEPTING_PHASES) {
+                return@synchronized null
+            }
+            DownloadAttempt.from(current)
+        }
+
+    fun isCurrent(attempt: DownloadAttempt): Boolean = synchronized(PROCESS_LOCK) {
+        val current = exactCurrent(attempt) ?: return@synchronized false
+        current.telemetry.phase !in TERMINAL_PHASES
+    }
+
+    fun commitReadyIfCurrent(
+        attempt: DownloadAttempt,
+        readyObservation: DownloadObservation,
+        action: () -> Unit,
+    ): Boolean {
+        require(readyObservation.generation == attempt.generation) {
+            "Ready generation must match the download attempt."
+        }
+        require(readyObservation.phase == DownloadPhase.READY) {
+            "Only a Ready observation can complete activation."
+        }
+        require(readyObservation.verificationSucceeded) {
+            "Ready activation requires successful verification."
+        }
+        require(
+            readyObservation.totalBytes == null ||
+                readyObservation.downloadedBytes >= readyObservation.totalBytes,
+        ) {
+            "Ready activation requires all known bytes."
+        }
+
+        return synchronized(PROCESS_LOCK) {
+            val current = exactCurrent(attempt) ?: return@synchronized false
+            if (current.telemetry.phase != DownloadPhase.VERIFYING) {
+                return@synchronized false
+            }
+            require(
+                current.telemetry.totalBytes == null ||
+                    readyObservation.totalBytes == current.telemetry.totalBytes,
+            ) {
+                "Ready activation must preserve the known download size."
+            }
+            require(readyObservation.downloadedBytes >= current.telemetry.downloadedBytes) {
+                "Ready activation cannot lose downloaded bytes."
+            }
+
+            action()
+            val ready = telemetryCalculator.record(
+                observation = readyObservation,
+                previous = current.telemetry,
+            )
+            check(
+                store.write(
+                    DurableDownloadRecord(
+                        target = current.target,
+                        workIdentity = current.workIdentity,
+                        telemetry = ready,
+                    ),
+                ),
+            ) {
+                "Ready telemetry could not be persisted after activation."
+            }
+            true
+        }
+    }
 
     fun publish(
         attempt: DownloadAttempt,
@@ -134,6 +239,34 @@ internal class DownloadLifecycleCoordinator(
             target = current.target,
             snapshot = partialSnapshotProvider.snapshot(current.target),
             previousWorkIdentity = current.workIdentity,
+        )
+    }
+
+    fun failCurrent(
+        attempt: DownloadAttempt,
+        failureCode: DownloadFailureCode,
+    ): Boolean = synchronized(PROCESS_LOCK) {
+        val current = exactCurrent(attempt) ?: return@synchronized false
+        if (current.telemetry.phase in TERMINAL_PHASES) return@synchronized true
+        val failed = telemetryCalculator.record(
+            observation = DownloadObservation(
+                generation = current.telemetry.generation,
+                phase = DownloadPhase.FAILED,
+                downloadedBytes = current.telemetry.downloadedBytes,
+                totalBytes = current.telemetry.totalBytes,
+                network = current.telemetry.network,
+                failureCode = failureCode,
+                cancellationAllowed = false,
+                retryAllowed = true,
+            ),
+            previous = current.telemetry,
+        )
+        store.write(
+            DurableDownloadRecord(
+                target = current.target,
+                workIdentity = current.workIdentity,
+                telemetry = failed,
+            ),
         )
     }
 
@@ -233,6 +366,7 @@ internal class DownloadLifecycleCoordinator(
             DownloadPhase.WAITING,
         )
         val RETRYABLE_PHASES = setOf(
+            DownloadPhase.WAITING,
             DownloadPhase.PAUSED,
             DownloadPhase.FAILED,
         )

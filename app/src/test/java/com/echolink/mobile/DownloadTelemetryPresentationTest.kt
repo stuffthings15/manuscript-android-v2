@@ -14,6 +14,17 @@ class DownloadTelemetryPresentationTest {
     private val calculator = DownloadTelemetryCalculator(clock = { 1_000L })
 
     @Test
+    fun uiLoadFailureIsNonblankAndOffersRetry() {
+        val presentation = DownloadTelemetryPresentation.uiFailure()
+
+        assertFalse(presentation.statusText.isBlank())
+        assertFalse(presentation.detailText.isBlank())
+        assertEquals(listOf(DownloadAction.RETRY), presentation.actions)
+        assertNull(presentation.progressText)
+        assertNull(presentation.percent)
+    }
+
+    @Test
     fun everyPhaseMapsToNonblankPlatformNeutralText() {
         DownloadPhase.entries.forEach { phase ->
             val presentation = DownloadTelemetryPresentation.from(telemetryFor(phase))
@@ -124,8 +135,28 @@ class DownloadTelemetryPresentationTest {
 
         assertTrue(waiting.detailText.contains("Wi-Fi"))
         assertTrue(paused.detailText.contains("paused by you", ignoreCase = true))
-        assertTrue(waiting.actions.isEmpty())
+        assertEquals(
+            listOf(DownloadAction.RETRY, DownloadAction.CANCEL),
+            waiting.actions,
+        )
         assertTrue(paused.actions.isEmpty())
+    }
+
+    @Test
+    fun wifiOnlyWaitingAlwaysOffersRetryAndCancelDespiteWorkerFlags() {
+        val waiting = calculator.record(
+            observation(
+                phase = DownloadPhase.WAITING,
+                network = DownloadNetwork.MOBILE,
+                blockReason = DownloadBlockReason.WIFI_REQUIRED,
+                retryAllowed = false,
+            ),
+        )
+
+        assertEquals(
+            listOf(DownloadAction.RETRY, DownloadAction.CANCEL),
+            DownloadTelemetryPresentation.from(waiting).actions,
+        )
     }
 
     @Test

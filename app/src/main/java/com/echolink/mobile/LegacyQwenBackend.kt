@@ -14,6 +14,10 @@ class LegacyQwenBackend(context: Context) : LocalRewriteBackend {
     override suspend fun initialize(model: InstalledAiModel, backend: BackendKind) {
         require(model.artifact.family == AiModelFamily.LEGACY_QWEN)
         require(backend == BackendKind.LEGACY_LLAMA_CPU)
+        val tier = requireNotNull(Qwen3Tier.entries.firstOrNull {
+            it.fileName == model.artifact.fileName
+        }) { "Unknown compatibility AI artifact." }
+        runtime.bindModel(model.file, tier)
         initialized = runtime.isReady()
         check(initialized) { "The hidden compatibility AI is not ready." }
     }
@@ -64,7 +68,11 @@ class LegacyQwenBackend(context: Context) : LocalRewriteBackend {
 
     fun setKeepWarm(warm: Boolean) = runtime.setKeepWarm(warm)
 
-    fun preload() {
+    fun preload(model: InstalledAiModel) {
+        val tier = requireNotNull(Qwen3Tier.entries.firstOrNull {
+            it.fileName == model.artifact.fileName
+        }) { "Unknown compatibility AI artifact." }
+        runtime.bindModel(model.file, tier)
         runtime.preload()
         initialized = runtime.isReady()
     }

@@ -105,6 +105,13 @@ class LocalCorrectionRouter(context: Context) {
             ),
         )
 
+    fun preservesProofreadWording(prepared: String, candidate: String): Boolean =
+        ProofreadPreservationPolicy.preservesWording(
+            prepared,
+            candidate,
+            fastLayer::knowsWord,
+        )
+
     /**
      * Lowercases a word typed in capitals when the lowercase form is an
      * ordinary dictionary word, so "THIS can be especially true" reads
@@ -262,7 +269,6 @@ object SymSpellWordPolicy {
         value = value.replace("isation", "ization")
         value = value.replace("yse", "yze")
         if (value.endsWith("re")) value = value.dropLast(2) + "er"
-        value = value.replace("ll", "l")
         value = value.replace("ae", "e").replace("oe", "e")
         return value
     }
@@ -302,7 +308,7 @@ class SymSpellCorrector(context: Context) {
     fun correct(source: String): String {
         val protected = DeterministicCleanup.protect(source)
         val wordPattern = Regex("[A-Za-z]{3,}")
-        val corrected = wordPattern.replace(protected.text) { match ->
+        val correctedOnce = wordPattern.replace(protected.text) { match ->
             val value = match.value
             val lower = value.lowercase(Locale.ROOT)
             // Capitalized words are corrected too, at Curtis's direction:
@@ -312,7 +318,10 @@ class SymSpellCorrector(context: Context) {
             // has no close match, so it stays as typed. The tradeoff is
             // accepted: a surname one edit from a common word can be
             // rewritten.
-            if (
+            val forced = NONSTANDARD_CORRECTIONS[lower]
+            if (forced != null) {
+                preserveCase(value, forced)
+            } else if (
                 value.startsWith("ECHOLINKTOKEN") ||
                 lower in APOSTROPHE_OMISSION_WORDS ||
                 SymSpellWordPolicy.isKnownForm(lower, dictionary::contains)
@@ -325,6 +334,15 @@ class SymSpellCorrector(context: Context) {
             } else {
                 dictionary.correct(value) ?: value
             }
+        }
+        // A misspelling can first land on another nonstandard form
+        // ("peopes" -> "peoples"). Apply the closed correction map once
+        // more without another fuzzy lookup, so it reaches "people" and
+        // cannot wander to a third unrelated word.
+        val corrected = wordPattern.replace(correctedOnce) { match ->
+            NONSTANDARD_CORRECTIONS[match.value.lowercase(Locale.ROOT)]
+                ?.let { preserveCase(match.value, it) }
+                ?: match.value
         }
         return DeterministicCleanup.restore(corrected, protected.tokens)
     }
@@ -446,7 +464,10 @@ class SymSpellCorrector(context: Context) {
         private const val DICTIONARY_ASSET = "symspell/frequency_dictionary_en.txt"
         // Start of text, or just after a sentence end.
         private val SENTENCE_START = Regex("(?:^|(?<=[.!?]\\s))[A-Za-z]")
-        private const val MAX_DICTIONARY_WORDS = 25_000
+        // Keep ordinary lower-frequency words such as "nicest" and "grate"
+        // in the known-word set. The old 25,000-word cut changed them into
+        // unrelated, higher-frequency words such as "incest" and "grade".
+        private const val MAX_DICTIONARY_WORDS = 50_000
         private const val MIN_WORD_LENGTH = 3
         private const val MAX_WORD_LENGTH = 24
         private const val MIN_CORRECTION_FREQUENCY = 10_000L
@@ -454,6 +475,44 @@ class SymSpellCorrector(context: Context) {
             "dont", "doesnt", "didnt", "cant", "wont", "isnt", "arent", "wasnt",
             "werent", "hasnt", "havent", "couldnt", "wouldnt", "shouldnt",
         )
+        /** Common informal and phonetic forms that large web dictionaries list as words. */
+        private val NONSTANDARD_CORRECTIONS = mapOf(
+            "wen" to "when",
+            "bout" to "about",
+            "cud" to "could",
+            "sorta" to "sort of",
+            "becuz" to "because",
+            "probly" to "probably",
+            "alot" to "a lot",
+            "gonna" to "going to",
+            "wanna" to "want to",
+            "gotta" to "have to",
+            "oner" to "owner",
+            "cair" to "care",
+            "animul" to "animal",
+            "edjucashunal" to "educational",
+            "anyways" to "anyway",
+            "thaey" to "they",
+            "skool" to "school",
+            "prie" to "pride",
+            "wether" to "whether",
+            "lernt" to "learned",
+            "sumtimes" to "sometimes",
+            "exagerating" to "exaggerating",
+            "wakees" to "wakes",
+            "makees" to "makes",
+            "peoples" to "people",
+            "dsty" to "dusty",
+            "looing" to "looking",
+            "fud" to "food",
+        )
+
+        private fun preserveCase(source: String, replacement: String): String = when {
+            source.all(Char::isUpperCase) -> replacement.uppercase(Locale.ROOT)
+            source.firstOrNull()?.isUpperCase() == true ->
+                replacement.replaceFirstChar { it.uppercase(Locale.ROOT) }
+            else -> replacement
+        }
     }
 }
 

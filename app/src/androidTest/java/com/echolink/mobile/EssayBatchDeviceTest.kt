@@ -42,6 +42,7 @@ class EssayBatchDeviceTest {
         // A real user opens the app once and works through their documents, so
         // the session stays warm across the batch exactly as it would in use.
         engine.setSessionWarm(true)
+        val failures = mutableListOf<String>()
 
         essays.forEach { essay ->
             val source = essay.readText()
@@ -84,6 +85,7 @@ class EssayBatchDeviceTest {
             if (!finished) {
                 report.writeText("STATUS: TIMEOUT after ${TIMEOUT_MINUTES}m\n\n$source")
                 Log.e(TAG, "essay=${essay.name} STATUS=TIMEOUT totalMs=$totalMs")
+                failures += "${essay.name}: document timeout"
                 return@forEach
             }
 
@@ -102,10 +104,20 @@ class EssayBatchDeviceTest {
                         "paragraph=${paragraphFailure?.paragraphIndex} " +
                         "reason=${failure?.message}",
                 )
+                failures += "${essay.name}: ${failure?.message ?: "unknown failure"}"
                 return@forEach
             }
 
             val kept = value.paragraphs.count { !it.validated }
+            val sourceBlocks = source.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }
+            val correctedBlocks = value.text.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }
+            runCatching {
+                check(value.paragraphs.size == sourceBlocks.size) { "paragraph count changed" }
+                check(correctedBlocks.size == sourceBlocks.size) { "section count changed" }
+                check(kept == 0) { "$kept sections were not validated" }
+                check(worstGapMs <= SECTION_TIMEOUT_MS) { "section exceeded terminal timeout" }
+                check('\u2014' !in value.text) { "correction introduced an em dash" }
+            }.exceptionOrNull()?.let { failures += "${essay.name}: ${it.message}" }
             report.writeText(
                 buildString {
                     appendLine("STATUS: OK")
@@ -125,10 +137,12 @@ class EssayBatchDeviceTest {
         }
 
         engine.setSessionWarm(false)
+        check(failures.isEmpty()) { failures.joinToString("\n") }
     }
 
     private companion object {
         const val TAG = "MANUSCRIPT_ESSAY_BATCH"
-        const val TIMEOUT_MINUTES = 8L
+        const val TIMEOUT_MINUTES = 12L
+        const val SECTION_TIMEOUT_MS = 90_000L
     }
 }

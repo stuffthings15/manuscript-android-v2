@@ -1,0 +1,165 @@
+{
+  "schema": 1,
+  "essays": [
+    {
+      "source": "01_Dogs_in_Bakersfield_USA.docx",
+      "sourceSha256": "FF8A6056E3BEFB1F67179E99BB864365AFFBB7726D9AE66A3028B350E39BFB13",
+      "fixture": "01_Dogs_in_Bakersfield_USA.txt",
+      "fixtureSha256": "2E363AC08E64F3F0661951A1FBE79A9C0445A9B7B47590475D23E5EE465F6DC6",
+      "sections": 10,
+      "words": 914
+    },
+    {
+      "source": "02_Cats_in_Bath_England.docx",
+      "sourceSha256": "9849E5D7C779CF49E6DCC6D2F4C7D412B378D64AB38D513129BDD576C7BCA99B",
+      "fixture": "02_Cats_in_Bath_England.txt",
+      "fixtureSha256": "A6F244F3AEAE72C70304F387252FEEDCC74B5F1E47AAE3E4E5AB656E6244FB1F",
+      "sections": 10,
+      "words": 912
+    },
+    {
+      "source": "03_Rabbits_in_Utrecht_Netherlands.docx",
+      "sourceSha256": "B1E692CB289349A84D3B6F7918860083B9F89B385094D5CE57D59008DE5866CF",
+      "fixture": "03_Rabbits_in_Utrecht_Netherlands.txt",
+      "fixtureSha256": "AEE74BEF6E80858FED9B8F1B40BF572BA9AEBEB3B1DA393E402F32784547E931",
+      "sections": 10,
+      "words": 901
+    },
+    {
+      "source": "04_Guinea_Pigs_in_Cusco_Peru.docx",
+      "sourceSha256": "682D9738B64C675649985EEECB47373B2ED8672C775F2A1682F8A7320DB0FF7B",
+      "fixture": "04_Guinea_Pigs_in_Cusco_Peru.txt",
+      "fixtureSha256": "4D3CC304A92C99A253CACCAC25021E8E25246EB394975948B1C04B7F9A3A00EE",
+      "sections": 10,
+      "words": 925
+    },
+    {
+      "source": "05_Parrots_in_Cairns_Australia.docx",
+      "sourceSha256": "7E161DD6C656AE0660163D6EF9C9BF97B26736B341376902A9A2EAD32DDCA1D7",
+      "fixture": "05_Parrots_in_Cairns_Australia.txt",
+      "fixtureSha256": "AF09826219C0C6596D1DB389045DA658326BE8AB6B465DC547128FF468269F5D",
+      "sections": 10,
+      "words": 903
+    },
+    {
+      "source": "06_Fish_in_Osaka_Japan.docx",
+      "sourceSha256": "063484F210145994FB40AC2B8586FC9CA281ACA0EA67D47E2E103FF1B5F29D18",
+      "fixture": "06_Fish_in_Osaka_Japan.txt",
+      "fixtureSha256": "8C873806921E9B20CF4D2149CFA32BDD4C3F5691340B68E648C9CD5BDEB281FC",
+      "sections": 10,
+      "words": 915
+    },
+    {
+      "source": "07_Hamsters_in_Quebec_City_Canada.docx",
+      "sourceSha256": "FC5A59DD47C7A7FF319A4808106397B65E0B01F4DD5CD003F225E92305EC321C",
+      "fixture": "07_Hamsters_in_Quebec_City_Canada.txt",
+      "fixtureSha256": "135D0B800F084B9735A1420F8182378EC94D4BA23FF3B1CFA0B9DAA88793B121",
+      "sections": 10,
+      "words": 910
+    },
+    {
+      "source": "08_Turtles_in_Valletta_Malta.docx",
+      "sourceSha256": "62A3BBD674B8819F9A1E24EEB924A4638DE25B8BE88197F520EAF23FB12C2553",
+      "fixture": "08_Turtles_in_Valletta_Malta.txt",
+      "fixtureSha256": "8DC18BDFADC9D601B1422F6AFF4EFD7698F9381702DAE96EC0A401B8EF86A227",
+      "sections": 10,
+      "words": 908
+    },
+    {
+      "source": "09_Goats_in_Kisumu_Kenya.docx",
+      "sourceSha256": "C2F9DB1BCE4AE09746BDAAF1B148763505348A4FDF7FA3E1E7EF949FC6A737E2",
+      "fixture": "09_Goats_in_Kisumu_Kenya.txt",
+      "fixtureSha256": "66152DF302B851EBAA88FA4365039601A1F8E8AFEFB31EB3E7833D80903BEF5A",
+      "sections": 10,
+      "words": 912
+    },
+    {
+      "source": "10_Chickens_in_Colmar_France.docx",
+      "sourceSha256": "A4F96E03EA9E5E108AA427AC8AA81D67A9BF61D3363594B673FB3700510113FA",
+      "fixture": "10_Chickens_in_Colmar_France.txt",
+      "fixtureSha256": "0174FC8A6E9C823FA2AB186AA2DD15B10A5BBD861842ADBC47948CBD5CF9591B",
+      "sections": 10,
+      "words": 917
+    },
+    {
+      "source": "11_Ducks_in_Dalat_Vietnam.docx",
+      "sourceSha256": "4ADB21146FBC3131A75B98934168AD3972BC64C8EEDFA2E5B4B5A365533F3640",
+      "fixture": "11_Ducks_in_Dalat_Vietnam.txt",
+      "fixtureSha256": "54AD7E55EB67A622916586B47A7290597B5B35554BCA68FA0EE25F2C8EE64808",
+      "sections": 10,
+      "words": 912
+    },
+    {
+      "source": "12_Ferrets_in_Warsaw_Poland.docx",
+      "sourceSha256": "B5F159EF425A9C866375F73F15EB95ECE4A9D40661241CC9CF82EF5AAAA748DF",
+      "fixture": "12_Ferrets_in_Warsaw_Poland.txt",
+      "fixtureSha256": "BA046C7D92B61DE869D1FEE34C91159AA58CC2D4E9CA7376C95488E198D16685",
+      "sections": 10,
+      "words": 908
+    },
+    {
+      "source": "13_Geckos_in_Marrakesh_Morocco.docx",
+      "sourceSha256": "A492309853EDCE5D4F7C82828329030DD0533A2177F425F72EA5A540AE5B012C",
+      "fixture": "13_Geckos_in_Marrakesh_Morocco.txt",
+      "fixtureSha256": "5098DACA484150BFFC260DC25B8F939B4FCBB5CE1DB189B6C45E3FF45B27193C",
+      "sections": 10,
+      "words": 898
+    },
+    {
+      "source": "14_Pigeons_in_Athens_Greece.docx",
+      "sourceSha256": "E77DB732DC4D0AFD3EA4B879DC59E7C35C546CE065440CB297DBCDDA4BB3D765",
+      "fixture": "14_Pigeons_in_Athens_Greece.txt",
+      "fixtureSha256": "7C7FB66C639795DDAFF34F0B5AD349D183BC776DCE849476A7CB3583B0BF15EC",
+      "sections": 10,
+      "words": 921
+    },
+    {
+      "source": "15_Mini_Pigs_in_Aarhus_Denmark.docx",
+      "sourceSha256": "C6841D55101F062F34EE52F694F1559B2500AB7D078DE3733DB35B964048F84D",
+      "fixture": "15_Mini_Pigs_in_Aarhus_Denmark.txt",
+      "fixtureSha256": "9B56A8E317EE64610D0538B8BD138FF40F159B5ECC79C4ABFDF26CF0582E25E8",
+      "sections": 10,
+      "words": 935
+    },
+    {
+      "source": "16_Alpacas_in_Arequipa_Peru.docx",
+      "sourceSha256": "2B39DFA22DDC4F17AF31AEFE1A46B667B4D19E392DDA9C533159C3C3F77C2C3B",
+      "fixture": "16_Alpacas_in_Arequipa_Peru.txt",
+      "fixtureSha256": "D9DD9F4EC4FD6C2586E459392BAAB52876B03E377BEE10ECB435507F2562C693",
+      "sections": 10,
+      "words": 916
+    },
+    {
+      "source": "17_Donkeys_in_Almeria_Spain.docx",
+      "sourceSha256": "38E4A0FD2D90B9A4C68710EA3D461D1B07E4B4DF15E2D3A8D5FD87AAC22CBD5B",
+      "fixture": "17_Donkeys_in_Almeria_Spain.txt",
+      "fixtureSha256": "B8BE001E668EF6A02F862B02B7B3DC6F9CB6438986A6D8EE17C4F31EC18AD394",
+      "sections": 10,
+      "words": 911
+    },
+    {
+      "source": "18_Rats_in_Leipzig_Germany.docx",
+      "sourceSha256": "B1B926471B5837D3E22D4A7578724F06E0F4AB15CF7DCED51276E06EA351FF3F",
+      "fixture": "18_Rats_in_Leipzig_Germany.txt",
+      "fixtureSha256": "45C1BFCBA5B6DE1C7FCD3DC25C27B5B39FA8A1760A7D67DFEE8DA474E799BB3D",
+      "sections": 10,
+      "words": 915
+    },
+    {
+      "source": "19_Hermit_Crabs_in_Belize_City_Belize.docx",
+      "sourceSha256": "1BA7EAACEA624CFCF877AE018A20130496A84ACCBC8E6BB5AB9C0C6158D15708",
+      "fixture": "19_Hermit_Crabs_in_Belize_City_Belize.txt",
+      "fixtureSha256": "656542866E65DF8007E3B064CC8BB4C62A0128D8F7101D129F7765E9305D6E5B",
+      "sections": 10,
+      "words": 932
+    },
+    {
+      "source": "20_Axolotls_in_Puebla_Mexico.docx",
+      "sourceSha256": "68F06B65F906C433D1B3F6343A25B0D42D387BE961DC0A43B18EEFD81AD795AC",
+      "fixture": "20_Axolotls_in_Puebla_Mexico.txt",
+      "fixtureSha256": "12A9617DB17368CB644B33ECDD352930FA62A4EADF3FB37BAFBC126E1B08830A",
+      "sections": 10,
+      "words": 889
+    }
+  ]
+}

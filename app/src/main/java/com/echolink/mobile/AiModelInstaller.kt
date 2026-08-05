@@ -6,13 +6,20 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.InterruptedIOException
+import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
+import java.nio.ByteBuffer
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
 import java.util.concurrent.CancellationException
+import java.util.concurrent.atomic.AtomicBoolean
 
 class AiModelIntegrityException(message: String) : IOException(message)
 class AiModelCleanupException(message: String) : IOException(message)
+class AiModelStorageException(message: String) : IOException(message)
 
 class RangeDownloadResponse(
     val statusCode: Int,
@@ -91,6 +98,38 @@ data class AiModelActivation(
     val activated: Boolean,
 )
 
+class AiModelQualifiedCandidate internal constructor(
+    internal val owner: Any,
+    internal val artifact: AiModelArtifact,
+    internal val candidate: File,
+    internal val snapshot: AiModelCandidateSnapshot,
+) {
+    internal val consumed = AtomicBoolean(false)
+}
+
+class AiModelQualifiedActive internal constructor(
+    internal val owner: Any,
+    internal val artifact: AiModelArtifact,
+    internal val active: File,
+    internal val snapshot: AiModelCandidateSnapshot,
+) {
+    internal val consumed = AtomicBoolean(false)
+}
+
+internal data class AiModelCandidateSnapshot(
+    val sizeBytes: Long,
+    val modifiedMillis: Long,
+    val fileKey: String?,
+    val fingerprint: String,
+)
+
+internal data class AiModelActiveProof(
+    val sizeBytes: Long,
+    val modifiedMillis: Long,
+    val fileKey: String?,
+    val fingerprint: String,
+)
+
 class AiModelInstaller(
     private val modelDirectory: File,
     private val transport: ModelDownloadTransport = HttpModelDownloadTransport(),
@@ -100,6 +139,8 @@ class AiModelInstaller(
     },
     private val syncOutput: (FileOutputStream) -> Unit = { output -> output.fd.sync() },
 ) {
+    private val qualificationOwner = Any()
+
     fun stage(
         artifact: AiModelArtifact,
         stopped: () -> Boolean,
@@ -231,17 +272,74 @@ class AiModelInstaller(
         candidate: File,
         selfTest: (File) -> Boolean,
     ): AiModelActivation {
-        require(candidate.parentFile == modelDirectory) {
-            "Invalid AI candidate folder."
-        }
-        require(candidate.name == candidateFileName(artifact)) {
-            "Invalid AI candidate name."
-        }
-        if (!isValid(candidate, artifact) || !selfTest(candidate)) {
+        val qualification = qualifyCandidate(
+            artifact = artifact,
+            candidate = candidate,
+            selfTest = selfTest,
+        )
+        if (qualification == null) {
             return AiModelActivation(
                 activeFile = activeFile(artifact).takeIf(File::isFile) ?: candidate,
                 activated = false,
             )
+        }
+        return activateQualifiedCandidate(qualification)
+    }
+
+    fun qualifyCandidate(
+        artifact: AiModelArtifact,
+        candidate: File,
+        stopped: () -> Boolean = { false },
+        onIntegrityVerified: () -> Unit = {},
+        selfTest: (File) -> Boolean,
+    ): AiModelQualifiedCandidate? {
+        requireCandidatePath(artifact, candidate)
+        if (!isValid(candidate, artifact, stopped)) return null
+        onIntegrityVerified()
+        if (!selfTest(candidate)) return null
+        val canonicalCandidate = candidate.canonicalFile
+        return AiModelQualifiedCandidate(
+            owner = qualificationOwner,
+            artifact = artifact,
+            candidate = canonicalCandidate,
+            snapshot = candidateSnapshot(canonicalCandidate),
+        )
+    }
+
+    fun qualifyActive(
+        artifact: AiModelArtifact,
+        active: File,
+        stopped: () -> Boolean = { false },
+        onIntegrityVerified: () -> Unit = {},
+        selfTest: (File) -> Boolean,
+    ): AiModelQualifiedActive? {
+        requireActivePath(artifact, active)
+        if (!isValid(active, artifact, stopped)) return null
+        onIntegrityVerified()
+        if (!selfTest(active)) return null
+        val canonicalActive = active.canonicalFile
+        return AiModelQualifiedActive(
+            owner = qualificationOwner,
+            artifact = artifact,
+            active = canonicalActive,
+            snapshot = candidateSnapshot(canonicalActive),
+        )
+    }
+
+    fun activateQualifiedCandidate(
+        qualification: AiModelQualifiedCandidate,
+    ): AiModelActivation {
+        require(qualification.owner === qualificationOwner) {
+            "The AI qualification belongs to a different installer."
+        }
+        check(qualification.consumed.compareAndSet(false, true)) {
+            "The AI qualification was already consumed."
+        }
+        val artifact = qualification.artifact
+        val candidate = qualification.candidate
+        requireCandidatePath(artifact, candidate)
+        if (!candidate.isFile || candidateSnapshot(candidate) != qualification.snapshot) {
+            throw AiModelIntegrityException("The qualified AI candidate changed before activation.")
         }
 
         val active = activeFile(artifact)
@@ -263,8 +361,40 @@ class AiModelInstaller(
         return AiModelActivation(active, activated = true)
     }
 
+    fun acceptQualifiedActive(qualification: AiModelQualifiedActive): File {
+        require(qualification.owner === qualificationOwner) {
+            "The AI qualification belongs to a different installer."
+        }
+        check(qualification.consumed.compareAndSet(false, true)) {
+            "The AI qualification was already consumed."
+        }
+        val artifact = qualification.artifact
+        val active = qualification.active
+        requireActivePath(artifact, active)
+        if (!active.isFile || candidateSnapshot(active) != qualification.snapshot) {
+            throw AiModelIntegrityException("The qualified active AI changed before acceptance.")
+        }
+        return active
+    }
+
     fun activeFile(artifact: AiModelArtifact): File =
         File(modelDirectory, artifact.fileName)
+
+    internal fun activeProof(artifact: AiModelArtifact): AiModelActiveProof? {
+        val active = activeFile(artifact)
+        if (!active.isFile || active.length() != artifact.sizeBytes) return null
+        return try {
+            val snapshot = candidateSnapshot(active.canonicalFile)
+            AiModelActiveProof(
+                sizeBytes = snapshot.sizeBytes,
+                modifiedMillis = snapshot.modifiedMillis,
+                fileKey = snapshot.fileKey,
+                fingerprint = snapshot.fingerprint,
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     fun candidateFile(artifact: AiModelArtifact): File =
         File(modelDirectory, candidateFileName(artifact))
@@ -278,6 +408,16 @@ class AiModelInstaller(
             ?.length()
             ?.takeIf { it in 0L..artifact.sizeBytes }
             ?: 0L
+
+    fun discardRejectedModel(artifact: AiModelArtifact, file: File) {
+        val canonical = file.canonicalFile
+        val allowed = setOf(
+            candidateFile(artifact).canonicalFile,
+            activeFile(artifact).canonicalFile,
+        )
+        require(canonical in allowed) { "Only an exact rejected AI model can be discarded." }
+        deleteRequired(canonical, "The rejected AI model could not be removed.")
+    }
 
     fun remainingBytes(artifact: AiModelArtifact): Long =
         artifact.sizeBytes - partialBytes(artifact)
@@ -358,6 +498,63 @@ class AiModelInstaller(
         if (stopped()) throw InterruptedIOException("AI download stopped.")
     }
 
+    private fun requireCandidatePath(artifact: AiModelArtifact, candidate: File) {
+        require(candidate.parentFile?.canonicalFile == modelDirectory.canonicalFile) {
+            "Invalid AI candidate folder."
+        }
+        require(candidate.name == candidateFileName(artifact)) {
+            "Invalid AI candidate name."
+        }
+    }
+
+    private fun requireActivePath(artifact: AiModelArtifact, active: File) {
+        require(active.parentFile?.canonicalFile == modelDirectory.canonicalFile) {
+            "Invalid active AI folder."
+        }
+        require(active.name == artifact.fileName) {
+            "Invalid active AI name."
+        }
+    }
+
+    private fun candidateSnapshot(candidate: File): AiModelCandidateSnapshot {
+        val attributes = Files.readAttributes(
+            candidate.toPath(),
+            BasicFileAttributes::class.java,
+            LinkOption.NOFOLLOW_LINKS,
+        )
+        if (!attributes.isRegularFile) {
+            throw AiModelIntegrityException("The qualified AI candidate is not a regular file.")
+        }
+        return AiModelCandidateSnapshot(
+            sizeBytes = attributes.size(),
+            modifiedMillis = attributes.lastModifiedTime().toMillis(),
+            fileKey = attributes.fileKey()?.toString(),
+            fingerprint = sampledFingerprint(candidate, attributes.size()),
+        )
+    }
+
+    private fun sampledFingerprint(file: File, sizeBytes: Long): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        RandomAccessFile(file, "r").use { input ->
+            sampleOffsets(sizeBytes).forEach { offset ->
+                input.seek(offset)
+                val buffer = ByteArray(minOf(SNAPSHOT_SAMPLE_BYTES.toLong(), sizeBytes - offset).toInt())
+                val count = input.read(buffer)
+                digest.update(ByteBuffer.allocate(Long.SIZE_BYTES).putLong(offset).array())
+                digest.update(ByteBuffer.allocate(Int.SIZE_BYTES).putInt(count).array())
+                if (count > 0) digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+    }
+
+    private fun sampleOffsets(sizeBytes: Long): List<Long> {
+        if (sizeBytes <= SNAPSHOT_SAMPLE_BYTES) return listOf(0L)
+        val last = (sizeBytes - SNAPSHOT_SAMPLE_BYTES).coerceAtLeast(0L)
+        val middle = (sizeBytes / 2L - SNAPSHOT_SAMPLE_BYTES / 2L).coerceAtLeast(0L)
+        return listOf(0L, middle, last).distinct()
+    }
+
     fun isValid(
         file: File,
         artifact: AiModelArtifact,
@@ -384,6 +581,7 @@ class AiModelInstaller(
     companion object {
         private const val HTTP_PARTIAL = 206
         private const val DOWNLOAD_BUFFER_BYTES = 256 * 1_024
+        private const val SNAPSHOT_SAMPLE_BYTES = 4 * 1_024L
 
         private fun candidateFileName(artifact: AiModelArtifact): String {
             val extension = artifact.fileName.substringAfterLast('.', missingDelimiterValue = "")

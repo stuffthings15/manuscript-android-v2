@@ -431,25 +431,62 @@ internal class DownloadTelemetryRecoveryPolicy(
         if (record.telemetry.updatedAtMillis > safelyAdd(now, FUTURE_TOLERANCE_MILLIS)) {
             return null
         }
+        val activeAndSelfTested = when (record.telemetry.phase) {
+            DownloadPhase.VERIFYING,
+            DownloadPhase.READY,
+            -> reconcileReady(record)
+            else -> false
+        }
+        if (record.telemetry.phase == DownloadPhase.VERIFYING && activeAndSelfTested) {
+            return readyAfterRecoveredActivation(record, now)
+        }
         val stale = record.telemetry.updatedAtMillis <= now &&
             now - record.telemetry.updatedAtMillis > ACTIVE_STALE_MILLIS
         if (stale && record.telemetry.phase in STALE_SENSITIVE_PHASES) {
             return pausedForRecovery(record, now)
         }
-        if (record.telemetry.phase == DownloadPhase.READY) {
-            val reconciled = try {
-                readyReconciler.isActiveAndSelfTested(
-                    record.target,
-                    record.telemetry.generation,
-                )
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: RuntimeException) {
-                false
-            }
-            if (!reconciled) return pausedForRecovery(record, now)
+        if (record.telemetry.phase == DownloadPhase.READY && !activeAndSelfTested) {
+            return pausedForRecovery(record, now)
         }
         return record
+    }
+
+    private fun reconcileReady(record: DurableDownloadRecord): Boolean = try {
+        readyReconciler.isActiveAndSelfTested(
+            record.target,
+            record.telemetry.generation,
+        )
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: RuntimeException) {
+        false
+    }
+
+    private fun readyAfterRecoveredActivation(
+        record: DurableDownloadRecord,
+        now: Long,
+    ): DurableDownloadRecord {
+        val downloadedBytes = record.telemetry.totalBytes?.let { total ->
+            maxOf(record.telemetry.downloadedBytes, total)
+        } ?: record.telemetry.downloadedBytes
+        return DurableDownloadRecord(
+            target = record.target,
+            workIdentity = record.workIdentity,
+            telemetry = DownloadTelemetryRestoreFactory().restore(
+                observation = DownloadObservation(
+                    generation = record.telemetry.generation,
+                    phase = DownloadPhase.READY,
+                    downloadedBytes = downloadedBytes,
+                    totalBytes = record.telemetry.totalBytes,
+                    network = record.telemetry.network,
+                    verificationSucceeded = true,
+                    cancellationAllowed = false,
+                    retryAllowed = false,
+                ),
+                updatedAtMillis = now,
+                samples = emptyList(),
+            ),
+        )
     }
 
     private fun pausedForRecovery(
@@ -586,6 +623,37 @@ internal class DownloadTelemetryStore(
         record
     }
 
+    @Throws(IOException::class)
+    fun clearRecord(target: DownloadTargetKey) = synchronized(PROCESS_LOCK) {
+        repairCorruptGenerationBeforeClear(target)
+        val record = recordFile(directory, target)
+        val temporary = File(record.parentFile, "${record.name}.tmp")
+        listOf(record, temporary).forEach { file ->
+            if (file.exists() && !file.delete()) {
+                throw IOException("Download telemetry could not be cleared.")
+            }
+        }
+    }
+
+    private fun repairCorruptGenerationBeforeClear(target: DownloadTargetKey) {
+        if (readGenerationCounter(target) != GenerationFence.Corrupt) return
+        val generation = readExact(target)?.telemetry?.generation?.value
+        val destination = generationFile(directory, target)
+        if (generation != null) {
+            writeAtomic(
+                destination,
+                DownloadGenerationCounterCodec.encode(target, generation),
+            )
+            return
+        }
+        val temporary = File(destination.parentFile, "${destination.name}.tmp")
+        listOf(destination, temporary).forEach { file ->
+            if (file.exists() && !file.delete()) {
+                throw IOException("Download generation storage could not be repaired.")
+            }
+        }
+    }
+
     private fun readExact(target: DownloadTargetKey): DurableDownloadRecord? {
         val file = recordFile(directory, target)
         if (!file.isFile || file.length() !in 1..DownloadTelemetryCodec.MAX_RECORD_BYTES.toLong()) {
@@ -663,7 +731,12 @@ internal class DownloadTelemetryStore(
         if (current == next) return true
         if (current.telemetry.phase in SEALED_PHASES) return false
         if (next.telemetry.updatedAtMillis < current.telemetry.updatedAtMillis) return false
-        if (next.telemetry.downloadedBytes < current.telemetry.downloadedBytes) return false
+        if (
+            next.telemetry.downloadedBytes < current.telemetry.downloadedBytes &&
+            !isExactZeroByteRestart(current, next)
+        ) {
+            return false
+        }
         if (
             current.telemetry.totalBytes != null &&
             current.telemetry.totalBytes != next.telemetry.totalBytes
@@ -673,12 +746,28 @@ internal class DownloadTelemetryStore(
         return next.telemetry.phase in ALLOWED_TRANSITIONS.getValue(current.telemetry.phase)
     }
 
+    private fun isExactZeroByteRestart(
+        current: DurableDownloadRecord,
+        next: DurableDownloadRecord,
+    ): Boolean =
+        current.telemetry.phase in RESTARTABLE_PHASES &&
+            current.telemetry.downloadedBytes > 0L &&
+            next.telemetry.phase == DownloadPhase.DOWNLOADING &&
+            next.telemetry.downloadedBytes == 0L &&
+            next.telemetry.totalBytes == current.telemetry.totalBytes &&
+            next.telemetry.samples.singleOrNull()?.downloadedBytes == 0L
+
     companion object {
         private val PROCESS_LOCK = Any()
         private val SEALED_PHASES = setOf(
             DownloadPhase.READY,
             DownloadPhase.PAUSED,
             DownloadPhase.FAILED,
+        )
+        private val RESTARTABLE_PHASES = setOf(
+            DownloadPhase.PREPARING,
+            DownloadPhase.DOWNLOADING,
+            DownloadPhase.WAITING,
         )
         private val ALLOWED_TRANSITIONS = mapOf(
             DownloadPhase.PREPARING to setOf(

@@ -4,103 +4,106 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import java.util.concurrent.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.InterruptedIOException
-import java.io.IOException
 
 class Qwen3ModelDownloadWorker(
     appContext: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
-    private val manager = Qwen3ModelManager.get(appContext)
+    private val progressUpdateThrottle = WorkerProgressUpdateThrottle()
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        val tier = inputData.getString(KEY_TIER)
-            ?.let { name -> Qwen3Tier.entries.firstOrNull { it.name == name } }
+        val attempt = DownloadWorkerAttemptDecoder.decodeLegacy(inputData, id)
             ?: return@withContext Result.failure()
-        if (!manager.hasDownloadConsent()) return@withContext Result.failure()
-        manager.installedModel(tier)?.let { installed ->
-            manager.onDownloadReady(tier, installed)
-            return@withContext Result.success()
-        }
-        manager.downloadedModel(tier)?.let { downloaded ->
-            setForeground(createForegroundInfo(tier, 100))
-            return@withContext qualifyDownloadedModel(tier, downloaded)
-        }
-        manager.candidateModel(tier)?.let { candidate ->
-            setForeground(createForegroundInfo(tier, 100))
-            return@withContext qualifyDownloadedModel(tier, candidate)
-        }
-
-        manager.onDownloadWaiting(tier)
-        setForeground(createForegroundInfo(tier, 0))
-        var lastPublishedPercent = -1
-        runCatching {
-            manager.downloadTier(
+        var initializedServices: AndroidDownloadServices? = null
+        try {
+            val services = AndroidDownloadServices.get(applicationContext)
+            initializedServices = services
+            if (!services.isCurrent(attempt)) return@withContext Result.success()
+            val manager = Qwen3ModelManager.get(applicationContext)
+            val tier = DownloadTargetCatalog.qwenTierFor(attempt.target)
+            val allowMobileData =
+                manager.downloadNetworkPolicy() == Qwen3DownloadNetworkPolicy.ALLOW_MOBILE_DATA
+            services.networkDecision(attempt.target)
+            val stopped = { isStopped || !services.isCurrent(attempt) }
+            val operations = QwenDownloadModelOperations(
+                manager = manager,
                 tier = tier,
-                stopped = { isStopped },
-                progress = { downloaded, total ->
-                    val percent = if (total <= 0L) 0
-                    else ((downloaded * 100L) / total).toInt().coerceIn(0, 100)
-                    if (percent != lastPublishedPercent) {
-                        lastPublishedPercent = percent
-                        setProgressAsync(
-                            workDataOf(
-                                KEY_DOWNLOADED to downloaded,
-                                KEY_TOTAL to total,
-                                KEY_PERCENT to percent,
-                            ),
-                        )
-                        setForegroundAsync(createForegroundInfo(tier, percent))
-                    }
+                progressObserver = { downloaded, total ->
+                    publishWorkerProgress(attempt, tier, downloaded, total, allowMobileData)
                 },
             )
-        }.fold(
-            onSuccess = { file ->
-                qualifyDownloadedModel(tier, file)
-            },
-            onFailure = { error ->
-                val insufficientStorage =
-                    manager.state is Qwen3ModelState.InsufficientStorage
-                if (!insufficientStorage) manager.onDownloadFailed(tier, error)
-                val retry =
-                    !insufficientStorage &&
-                        runAttemptCount < MAX_DOWNLOAD_ATTEMPTS &&
-                        (error is InterruptedIOException || error is IOException)
-                if (!retry) manager.clearDownloadRegistration(tier)
-                if (retry) Result.retry() else Result.failure()
-            },
+            val port = ExactManagerDownloadAttemptPort(
+                exactAttempt = attempt,
+                modelOperations = operations,
+                services = AndroidExactDownloadServiceOperations(services),
+                stopped = stopped,
+            )
+            val restoredPercent = services.restoreTelemetry(attempt.target)?.percent ?: 0
+            setForeground(createForegroundInfo(attempt, tier, restoredPercent, allowMobileData))
+
+            when (ExactDownloadAttemptExecutor(port).execute(attempt) { isStopped }) {
+                DownloadAttemptExecutionResult.SUCCESS -> Result.success()
+                DownloadAttemptExecutionResult.RETRY -> Result.retry()
+                DownloadAttemptExecutionResult.FAILURE -> Result.failure()
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            val services = initializedServices
+            when (
+                WorkerSetupFailurePolicy.persistUnknown(
+                    attempt,
+                    WorkerSetupFailureRecorder { exactAttempt, failureCode ->
+                        (services ?: AndroidDownloadServices.get(applicationContext))
+                            .failCurrent(exactAttempt, failureCode)
+                    },
+                )
+            ) {
+                WorkerSetupFailureResult.FAILURE -> Result.failure()
+                WorkerSetupFailureResult.RETRY -> Result.retry()
+            }
+        }
+    }
+
+    private fun publishWorkerProgress(
+        attempt: DownloadAttempt,
+        tier: Qwen3Tier,
+        downloaded: Long,
+        total: Long,
+        allowMobileData: Boolean,
+    ) {
+        val update = progressUpdateThrottle.next(
+            downloadedBytes = downloaded,
+            totalBytes = total,
+            nowMillis = SystemClock.elapsedRealtime(),
+        ) ?: return
+        setProgressAsync(
+            workDataOf(
+                PROGRESS_DOWNLOADED to update.downloadedBytes,
+                PROGRESS_TOTAL to update.totalBytes,
+                PROGRESS_PERCENT to update.percent,
+            ),
+        )
+        setForegroundAsync(
+            createForegroundInfo(attempt, tier, update.percent, allowMobileData),
         )
     }
 
-    private fun qualifyDownloadedModel(tier: Qwen3Tier, file: java.io.File): Result {
-        if (!Qwen3ModelSelfTester.verify(applicationContext, file)) {
-            val error = IOException("AI failed its local self-test.")
-            manager.onDownloadFailed(tier, error)
-            return if (runAttemptCount < MAX_SELF_TEST_ATTEMPTS) {
-                Result.retry()
-            } else {
-                manager.clearDownloadRegistration(tier)
-                Result.failure()
-            }
-        }
-        val active = if (file.name.endsWith(".candidate")) {
-            manager.activateCandidate(tier, file)
-        } else {
-            file
-        }
-        manager.markSelfTested(tier)
-        manager.onDownloadReady(tier, active)
-        return Result.success()
-    }
-
-    private fun createForegroundInfo(tier: Qwen3Tier, percent: Int): ForegroundInfo {
+    private fun createForegroundInfo(
+        attempt: DownloadAttempt,
+        tier: Qwen3Tier,
+        percent: Int,
+        allowMobileData: Boolean,
+    ): ForegroundInfo {
         val notificationManager =
             applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) {
@@ -112,8 +115,12 @@ class Qwen3ModelDownloadWorker(
                 ),
             )
         }
-        val cancel = androidx.work.WorkManager.getInstance(applicationContext)
-            .createCancelPendingIntent(id)
+        val cancel = DownloadCancelReceiver.pendingIntent(applicationContext, attempt)
+        val networkLabel = if (allowMobileData) {
+            R.string.qwen_download_network_any
+        } else {
+            R.string.qwen_download_network_wifi
+        }
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_manuscript)
             .setContentTitle(
@@ -123,16 +130,7 @@ class Qwen3ModelDownloadWorker(
                 applicationContext.getString(
                     R.string.qwen_download_progress,
                     percent,
-                    applicationContext.getString(
-                        if (
-                            manager.downloadNetworkPolicy() ==
-                            Qwen3DownloadNetworkPolicy.ALLOW_MOBILE_DATA
-                        ) {
-                            R.string.qwen_download_network_any
-                        } else {
-                            R.string.qwen_download_network_wifi
-                        },
-                    ),
+                    applicationContext.getString(networkLabel),
                 ),
             )
             .setOnlyAlertOnce(true)
@@ -151,14 +149,11 @@ class Qwen3ModelDownloadWorker(
         }
     }
 
-    companion object {
-        const val KEY_TIER = "tier"
-        const val KEY_DOWNLOADED = "downloaded"
-        const val KEY_TOTAL = "total"
-        const val KEY_PERCENT = "percent"
-        private const val CHANNEL_ID = "manuscript_qwen3_download"
-        private const val NOTIFICATION_ID = 4103
-        private const val MAX_DOWNLOAD_ATTEMPTS = 5
-        private const val MAX_SELF_TEST_ATTEMPTS = 1
+    private companion object {
+        const val PROGRESS_DOWNLOADED = "manuscript.download.progress.bytes.v1"
+        const val PROGRESS_TOTAL = "manuscript.download.progress.total.v1"
+        const val PROGRESS_PERCENT = "manuscript.download.progress.percent.v1"
+        const val CHANNEL_ID = "manuscript_qwen3_download"
+        const val NOTIFICATION_ID = 4103
     }
 }

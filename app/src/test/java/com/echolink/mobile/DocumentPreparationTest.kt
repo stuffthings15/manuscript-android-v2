@@ -8,6 +8,16 @@ import org.junit.Test
 
 class DocumentPreparationTest {
     @Test
+    fun unpunctuatedCityCountryPairRemainsEditableForGrammarCorrection() {
+        val protected = ProtectedSpanCodec.protect(
+            "An older woman lives in Bath England. Mira Chen visits her.",
+        )
+
+        assertTrue(protected.encodedText.contains("Bath England"))
+        assertFalse(protected.encodedText.contains("Mira Chen"))
+    }
+
+    @Test
     fun normalizationTracksExactLineEndingsAndRemovesInvalidControls() {
         val source = "Cafe\u0301\r\nFirst line.\nSecond\u0000 line.\r\n"
 
