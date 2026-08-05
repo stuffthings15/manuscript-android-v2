@@ -40,3 +40,4 @@ Task 4A: fix round 4 local green (10ms strict sampling; bounded physical tap acq
 Task 4A: fix round 5 harness green/device red (rendered exact-PTS probe; Close return 1044ms after visible panel disappearance; 16 focused contracts)
 Task 4C: local contract green (physical 300/500ms unchanged; verified emulator functional rendered ceiling 2000ms; fail-closed hardware and argument tests)
 Task 4C: exact-video and emulator gate complete (bounded three-frame decoder; reference-crop return proof; physical 300/500ms unchanged; emulator 1000/2500ms; 29 local tests; exact videos 5/5; full fixture 6/6)
+Task 4B: runtime lifecycle complete (commits 0c8f7c4, 55916f6, and 8d15dde; 1703 local tests; exact APK BBCD93A0...88F1F6B; emulator fixture 6/6; sole service bound; models preserved)
