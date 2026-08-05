@@ -112,10 +112,36 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
             val settingsActivationMs = settingsActivatedAt - settingsLaunchStartedAt
             assertTrue("Settings did not become active; elapsed=${settingsActivationMs}ms", settingsActivated)
             val disappearDeadline = settingsActivatedAt + 300L
-            val surfaceRemoved = waitUntilDeadline(disappearDeadline) { !hasV2OverlaySurface() }
-            val disappearedMs = SystemClock.elapsedRealtime() - settingsActivatedAt
-            assertTrue("V2 surface removal missed the total 300ms gate; elapsed=${disappearedMs}ms", surfaceRemoved)
-            assertTrue(disappearedMs <= 300L)
+            val departureTrace = FixtureSettingsDepartureDiagnostics(
+                settingsActivatedAtMs = settingsActivatedAt,
+                deadlineMs = disappearDeadline,
+                output = ::println,
+            )
+            departureTrace.pollStarted(SystemClock.elapsedRealtime())
+            var surfacePoll = 0
+            val surfaceRemoved = waitUntilDeadline(disappearDeadline) {
+                val pollStartedAt = SystemClock.elapsedRealtime()
+                val absent = !hasV2OverlaySurface()
+                val pollCompletedAt = SystemClock.elapsedRealtime()
+                departureTrace.queryCompleted(
+                    index = surfacePoll++,
+                    startedAtMs = pollStartedAt,
+                    endedAtMs = pollCompletedAt,
+                    absent = absent,
+                )
+                absent
+            }
+            val conditionReturnedAt = SystemClock.elapsedRealtime()
+            departureTrace.conditionReturned(conditionReturnedAt, surfaceRemoved)
+            val disappearedMs = conditionReturnedAt - settingsActivatedAt
+            departureTrace.assertionStarted(SystemClock.elapsedRealtime())
+            try {
+                assertTrue("V2 surface removal missed the total 300ms gate; elapsed=${disappearedMs}ms", surfaceRemoved)
+                assertTrue(disappearedMs <= 300L)
+            } finally {
+                departureTrace.assertionCompleted(SystemClock.elapsedRealtime())
+                departureTrace.flush()
+            }
             val (navigationStartedAt, rendered) = recordRenderedTriggerReturn(
                 name = "settings-${if (panelOpen) "panel" else "trigger"}",
                 triggerRegion = triggerRegion,
