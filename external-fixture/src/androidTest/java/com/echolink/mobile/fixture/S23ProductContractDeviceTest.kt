@@ -21,7 +21,7 @@ class S23ProductContractDeviceTest : FixtureDeviceSupport() {
         withFixture(S23ExternalEditorFixtureActivity.MODE_NORMAL) { assertTrue(productSurfaceMeetsExpectation(trigger, true)) }
         withFixture(S23ExternalEditorFixtureActivity.MODE_MULTILINE) {
             assertTrue(productSurfaceMeetsExpectation(trigger, true))
-            assertTrue("IME and fixture field must be visible before opening the panel.", waitUntil { fixtureImeAndFocusedFieldPresent() })
+            tapFixtureEditorForIme(S23ExternalEditorFixtureActivity.MODE_MULTILINE)
             tapProductSurface(trigger)
             assertTrue("Actual correction panel did not open.", productSurfaceMeetsExpectation(close, true))
             productSurfaceNeverVisible(modelSetup, 250L)

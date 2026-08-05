@@ -31,6 +31,7 @@ public final class S23ExternalEditorFixtureActivity extends Activity {
     public static final String STRUCTURAL_FIELD_TWO_DESCRIPTION = "Generated structural field two";
     public static final String FIXTURE_ROOT_DESCRIPTION = "Manuscript external field fixture";
     public static final String FINISH_DESCRIPTION = "Finish external field fixture";
+    public static final String EDITOR_DESCRIPTION_PREFIX = "Generated fixture editor: ";
     public static final long TRANSIENT_CLEAR_DELAY_MS = 900L;
 
     @Override public void onCreate(Bundle state) {
@@ -70,7 +71,8 @@ public final class S23ExternalEditorFixtureActivity extends Activity {
                     editor.clearFocus(); secondEditor.requestFocus();
                 }
             });
-            root.addView(action);
+            // Keep real lifecycle controls above the IME-obscured editor rows.
+            root.addView(action, 1);
         }
         Button finish = new Button(this);
         finish.setText(FINISH_DESCRIPTION);
@@ -89,6 +91,7 @@ public final class S23ExternalEditorFixtureActivity extends Activity {
     private EditText editorFor(String mode) {
         EditText editor = new EditText(this);
         editor.setId(View.generateViewId());
+        editor.setContentDescription(editorDescription(mode));
         editor.setMinHeight(dp(56));
         editor.setTextColor(Color.BLACK);
         editor.setBackgroundColor(Color.WHITE);
@@ -112,6 +115,10 @@ public final class S23ExternalEditorFixtureActivity extends Activity {
         if (MODE_TARGET_LOSS.equals(mode)) return "Move focus from generated field";
         if (MODE_STRUCTURAL_FIELDS.equals(mode)) return "Focus second generated field";
         return "Switch from generated field";
+    }
+    public static String editorDescription(String mode) {
+        if (MODE_STRUCTURAL_FIELDS.equals(mode)) return STRUCTURAL_FIELD_ONE_DESCRIPTION;
+        return EDITOR_DESCRIPTION_PREFIX + mode;
     }
     private static boolean lifecycle(String mode) {
         return MODE_DETACHED.equals(mode) || MODE_TARGET_LOSS.equals(mode) || MODE_PACKAGE_SWITCH.equals(mode);

@@ -54,7 +54,11 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
         withFixture(S23ExternalEditorFixtureActivity.MODE_STRUCTURAL_FIELDS) {
             tapFixtureDescription(S23ExternalEditorFixtureActivity.STRUCTURAL_FIELD_ONE_DESCRIPTION)
             val first = focusedFieldProof(S23ExternalEditorFixtureActivity.STRUCTURAL_FIELD_ONE_DESCRIPTION)
-            tapFixtureDescription(S23ExternalEditorFixtureActivity.STRUCTURAL_FIELD_TWO_DESCRIPTION)
+            tapFixtureDescription(
+                S23ExternalEditorFixtureActivity.actionDescription(
+                    S23ExternalEditorFixtureActivity.MODE_STRUCTURAL_FIELDS,
+                ),
+            )
             val second = focusedFieldProof(S23ExternalEditorFixtureActivity.STRUCTURAL_FIELD_TWO_DESCRIPTION)
             tapFixtureDescription(S23ExternalEditorFixtureActivity.STRUCTURAL_FIELD_ONE_DESCRIPTION)
             val firstAgain = focusedFieldProof(S23ExternalEditorFixtureActivity.STRUCTURAL_FIELD_ONE_DESCRIPTION)

@@ -185,3 +185,16 @@ the exact V2 overlay height to increase. The rebuilt test APK passed assembly.
 The follow-up device suite remained 6 run, 0 passed, 6 failed, 0 skipped; it
 still reaches the earlier exact V2 empty-field failures before the resize path.
 Post-run accessibility state remained Bound with `Crashed services:{}`.
+
+### Round 2 fixture readiness and cleanup
+
+Added stable descriptions for every generated editor; each fixture block now
+waits for its application root and expected editor. Multiline acceptance
+physically taps that editor before requiring an IME window and focused field.
+Cleanup now closes panels by real tap, finishes the fixture, uses Back for a
+remaining V2 overlay, and fails if any V2 overlay remains. Round 2 RED first
+showed 6/6 failures, then 2/6 passed after cleanup; the passing product path
+exercised IME/panel behavior. The latest full run was 6 run, 1 passed, 5
+failed; remaining failures are settings timing, detach Close persistence,
+structural focus, and product trigger behavior. Lifecycle controls were moved
+above IME-obscured editor rows; the fixture/test APKs rebuilt successfully.

@@ -59,18 +59,52 @@ open class FixtureDeviceSupport {
     }
 
     protected fun withFixture(mode: String, block: () -> Unit) {
+        clearFixtureAndV2Surfaces()
         fixtureContext.startActivity(Intent(fixtureContext, S23ExternalEditorFixtureActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             putExtra(S23ExternalEditorFixtureActivity.EXTRA_MODE, mode)
         })
         try {
             assertTrue("Fixture application window did not become active.", waitUntil { activePackage() == fixturePackage })
+            val editorDescription = S23ExternalEditorFixtureActivity.editorDescription(mode)
+            assertTrue(
+                "Fixture root/editor was not ready: $editorDescription",
+                waitUntil { findFixtureDescription(editorDescription).let { node -> node?.recycle(); node != null } },
+            )
             block()
         } finally {
+            if (activePackage() != fixturePackage) {
+                instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+                waitUntil { activePackage() == fixturePackage }
+            }
+            findProductSurface(manuscriptString("close_action"))?.let { node ->
+                node.recycle()
+                tapProductSurface(manuscriptString("close_action"))
+                waitUntil { !hasV2OverlaySurface() }
+            }
             if (activePackage() == fixturePackage && findFixtureDescription(S23ExternalEditorFixtureActivity.FINISH_DESCRIPTION) != null) {
                 tapFixtureDescription(S23ExternalEditorFixtureActivity.FINISH_DESCRIPTION)
+                waitUntil { activePackage() != fixturePackage }
             }
+            if (hasV2OverlaySurface()) {
+                instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+                waitUntil { !hasV2OverlaySurface() }
+            }
+            assertTrue("Fixture cleanup left a V2 overlay.", waitUntil { !hasV2OverlaySurface() })
         }
+    }
+
+    private fun clearFixtureAndV2Surfaces() {
+        if (activePackage() == fixturePackage && findFixtureDescription(S23ExternalEditorFixtureActivity.FINISH_DESCRIPTION) != null) {
+            tapFixtureDescription(S23ExternalEditorFixtureActivity.FINISH_DESCRIPTION)
+        }
+        if (hasV2OverlaySurface()) {
+            findProductSurface(manuscriptString("close_action"))?.let { node ->
+                node.recycle()
+                tapProductSurface(manuscriptString("close_action"))
+            } ?: instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        }
+        assertTrue("Test started with a stale V2 overlay.", waitUntil { !hasV2OverlaySurface() })
     }
 
     protected fun tapFixtureDescription(description: String) = tapNode(
@@ -128,6 +162,12 @@ open class FixtureDeviceSupport {
             } finally { root.recycle() }
         }
         return null
+    }
+
+    private fun hasV2OverlaySurface(): Boolean = automation.windows.any { window ->
+        if (window.type != AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) return@any false
+        val root = window.root ?: return@any false
+        try { root.packageName?.toString() == PRODUCT_PACKAGE } finally { root.recycle() }
     }
 
     protected fun v2OverlayHeightContaining(description: String): Int? = automation.windows.firstNotNullOfOrNull { window ->
@@ -192,6 +232,14 @@ open class FixtureDeviceSupport {
             imeVisible && focused != null && focused.isEditable && focused.isFocused &&
                 focused.packageName?.toString() == fixturePackage
         } finally { focused?.recycle(); root.recycle() }
+    }
+
+    protected fun tapFixtureEditorForIme(mode: String) {
+        tapFixtureDescription(S23ExternalEditorFixtureActivity.editorDescription(mode))
+        assertTrue(
+            "IME and focused fixture editor were not ready after a physical editor tap.",
+            waitUntil { fixtureImeAndFocusedFieldPresent() },
+        )
     }
 
     protected fun productStructuralLocator(root: AccessibilityNodeInfo, focused: AccessibilityNodeInfo): String? {
