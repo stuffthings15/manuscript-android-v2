@@ -43,7 +43,8 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
             val lookupMs = closeInjectedAt - closeLookupStartedAt
             val exactIdentity = productSurfaceMeetsExpectation(trigger, true)
             assertTrue(
-                "Recorded V2 trigger missed 500ms after visible panel disappearance; lookup=${lookupMs}ms " +
+                "Recorded V2 trigger failed the ${rendered.contractProfile} rendered-return contract " +
+                    "ceiling=${rendered.ceilingMs}ms after visible panel disappearance; lookup=${lookupMs}ms " +
                     "transitionAt=${rendered.transitionAtMs}ms triggerAt=${rendered.triggerAtMs}ms " +
                     "triggerDelay=${rendered.triggerDelayMs}ms encodedFrames=${rendered.encodedFrameCount}",
                 rendered.matched,
@@ -52,7 +53,8 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
             println(
                 "FIXTURE_CLOSE_TIMING lookupMs=$lookupMs transitionAtMs=${rendered.transitionAtMs} " +
                     "triggerAtMs=${rendered.triggerAtMs} triggerDelayMs=${rendered.triggerDelayMs} " +
-                    "encodedFrames=${rendered.encodedFrameCount} exactIdentity=$exactIdentity",
+                    "encodedFrames=${rendered.encodedFrameCount} exactIdentity=$exactIdentity " +
+                    "contract=${rendered.contractProfile} ceilingMs=${rendered.ceilingMs}",
             )
         }
     }
@@ -157,7 +159,8 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
             assertTrue("Fixture did not return after Back; elapsed=${navigationMs}ms", fixtureReturned)
             val exactIdentity = productSurfaceMeetsExpectation(trigger, true)
             assertTrue(
-                "Recorded V2 trigger missed 500ms after visible fixture return; " +
+                "Recorded V2 trigger failed the ${rendered.contractProfile} rendered-return contract " +
+                    "ceiling=${rendered.ceilingMs}ms after visible fixture return; " +
                     "transitionAt=${rendered.transitionAtMs}ms triggerAt=${rendered.triggerAtMs}ms " +
                     "triggerDelay=${rendered.triggerDelayMs}ms encodedFrames=${rendered.encodedFrameCount}",
                 rendered.matched,
@@ -168,7 +171,8 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
                     "settingsActivationMs=$settingsActivationMs disappearedMs=$disappearedMs " +
                     "navigationMs=$navigationMs transitionAtMs=${rendered.transitionAtMs} " +
                     "triggerAtMs=${rendered.triggerAtMs} triggerDelayMs=${rendered.triggerDelayMs} " +
-                    "encodedFrames=${rendered.encodedFrameCount} exactIdentity=$exactIdentity",
+                    "encodedFrames=${rendered.encodedFrameCount} exactIdentity=$exactIdentity " +
+                    "contract=${rendered.contractProfile} ceilingMs=${rendered.ceilingMs}",
             )
             productSurfaceNeverVisible(close, 250L)
         }

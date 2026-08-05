@@ -5,6 +5,7 @@ import android.app.UiAutomation
 import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
+import android.os.Build
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -27,6 +28,14 @@ open class FixtureDeviceSupport {
         serviceInfo = serviceInfo.apply {
             flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
+    }
+    protected val renderedReturnContract by lazy {
+        FixtureRenderedReturnContract.select(
+            hardware = Build.HARDWARE,
+            requestedProfile = InstrumentationRegistry.getArguments().getString(
+                FixtureRenderedReturnContract.PROFILE_ARGUMENT,
+            ),
+        )
     }
 
     protected fun manuscriptString(name: String): String {
@@ -199,7 +208,8 @@ open class FixtureDeviceSupport {
         if (video.exists()) check(video.delete()) { "Could not replace generated fixture recording: ${video.absolutePath}" }
         val recordingRequestedAt = SystemClock.elapsedRealtime()
         val descriptor = automation.executeShellCommand(
-            "screenrecord --time-limit 3 --bit-rate 4000000 ${video.absolutePath}",
+            "screenrecord --time-limit ${renderedReturnContract.recordingDurationSeconds} " +
+                "--bit-rate 4000000 ${video.absolutePath}",
         )
         assertTrue("screenrecord did not start for $name", waitUntil(1_000L) { shell("pidof screenrecord").isNotBlank() })
         SystemClock.sleep(250L)
@@ -214,6 +224,7 @@ open class FixtureDeviceSupport {
             triggerRegion = triggerRegion,
             transitionRegion = transitionRegion,
             ignoreBeforeMs = ignoreBeforeMs,
+            contract = renderedReturnContract,
         )
     }
 

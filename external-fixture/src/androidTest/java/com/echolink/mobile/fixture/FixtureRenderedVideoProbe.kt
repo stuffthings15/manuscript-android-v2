@@ -10,6 +10,8 @@ import java.io.FileInputStream
 object FixtureRenderedVideoProbe {
     data class Observation(
         val matched: Boolean,
+        val contractProfile: String,
+        val ceilingMs: Long,
         val transitionAtMs: Long?,
         val triggerAtMs: Long?,
         val triggerDelayMs: Long?,
@@ -21,6 +23,7 @@ object FixtureRenderedVideoProbe {
         triggerRegion: Rect,
         transitionRegion: Rect,
         ignoreBeforeMs: Long,
+        contract: FixtureRenderedReturnContract.Selection,
     ): Observation {
         val retriever = MediaMetadataRetriever()
         val input = FileInputStream(path)
@@ -29,7 +32,15 @@ object FixtureRenderedVideoProbe {
             val sampleTimesUs = videoSampleTimes(path)
             val baseline = sampleTimesUs.firstOrNull()?.let {
                 retriever.getFrameAtTime(it, MediaMetadataRetriever.OPTION_CLOSEST)
-            } ?: return Observation(false, null, null, null, sampleTimesUs.size)
+            } ?: return Observation(
+                false,
+                contract.profile.reportName,
+                contract.ceilingMs,
+                null,
+                null,
+                null,
+                sampleTimesUs.size,
+            )
             try {
                 var transitionAtMs: Long? = null
                 var triggerAtMs: Long? = null
@@ -54,7 +65,15 @@ object FixtureRenderedVideoProbe {
                     }
                 }
                 val delay = if (transitionAtMs != null && triggerAtMs != null) triggerAtMs - transitionAtMs else null
-                Observation(delay != null && delay in 0L..500L, transitionAtMs, triggerAtMs, delay, sampleTimesUs.size)
+                Observation(
+                    contract.accepts(transitionAtMs, triggerAtMs),
+                    contract.profile.reportName,
+                    contract.ceilingMs,
+                    transitionAtMs,
+                    triggerAtMs,
+                    delay,
+                    sampleTimesUs.size,
+                )
             } finally {
                 baseline.recycle()
             }

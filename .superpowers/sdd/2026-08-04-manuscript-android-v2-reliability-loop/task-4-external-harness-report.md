@@ -445,3 +445,25 @@ Final local result: 16 tests, 0 failures, 0 errors, 0 skipped. Fixture unit
 tests, fixture APK, and fixture test APK built successfully (70 tasks; 12
 executed, 58 up-to-date). No product source, package, data, model, or service
 state was changed by this round.
+
+### Task 4C rendered-return contract correction
+
+The 300 ms disappearance and 500 ms rendered-return gates remain the physical
+device acceptance contract. Unknown or missing hardware fails closed to that
+physical profile. An instrumentation argument cannot select the emulator
+profile on physical hardware. A `physical` argument may make an emulator run
+stricter.
+
+Only exact Android emulator hardware values `ranchu` and `goldfish` select a
+separate `verified-emulator-functional` profile. That profile uses a fixed
+2,000 ms rendered-return ceiling and is reported by name with its ceiling. It
+does not satisfy or replace physical acceptance. Its recording is five seconds
+instead of the unchanged three-second physical recording so the full ceiling
+can be observed after fixture return.
+
+Both profiles still fail on a missing transition, missing official rendered
+icon, blank crop, backwards timestamps, or a missing eventual exact V2 package
+and content-description identity. Strict selector tests were captured RED and
+then GREEN for the two ceilings, both recording durations, null and backwards
+observations, and instrumentation-argument safety. No emulator was used while
+implementing this contract correction.
