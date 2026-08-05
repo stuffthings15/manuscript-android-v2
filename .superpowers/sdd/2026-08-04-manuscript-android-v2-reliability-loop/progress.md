@@ -37,3 +37,4 @@ Task 4A: focused cleanup/timing fix complete (3 cleanup contracts; strict isolat
 Task 4A: fix round 2 local green (explicit transient user action; 6 focused harness contracts; fixture APKs built)
 Task 4A: fix round 3 local green (snapshot-start deadline semantics; bounded transient completion; 9 focused harness contracts)
 Task 4A: fix round 4 local green (10ms strict sampling; bounded physical tap acquisition; hint-aware transient proof; 11 focused contracts)
+Task 4A: fix round 5 harness green/device red (rendered exact-PTS probe; Close return 1044ms after visible panel disappearance; 16 focused contracts)

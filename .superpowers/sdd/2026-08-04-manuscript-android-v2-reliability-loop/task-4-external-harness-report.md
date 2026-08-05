@@ -390,3 +390,58 @@ Focused local result: 11 tests, 0 failures, 0 errors, 0 skipped. Fixture unit
 tests, fixture APK, and fixture test APK built successfully (70 tasks; 13
 executed, 57 up-to-date). No product package was installed, edited, cleared, or
 force-stopped. Full product-plus-fixture acceptance remains separate.
+
+### Task 4A fix round 5: rendered user-view timing
+
+API 36 accessibility-window enumeration is stale for the trigger-return clock:
+the exact product entered `TriggerVisible` at 59-222 ms and emitted the Close
+overlay state change at 263-300 ms, while `UiAutomation.windows` did not expose
+the returned overlay until 501-504 ms. The 500 ms trigger-return assertions now
+use rendered pixels and retain a separate eventual exact V2 overlay package plus
+content-description assertion. Neither observation alone passes.
+
+The expected crop is computed from the freshly reacquired fixture editor using
+the product's verified 48 dp placement. On the 420 dpi emulator, multiline
+editor bounds `[52,141][1028,424]` produce the exact 126 px crop
+`[902,434][1028,560]`. The pure detector requires the official dark circular
+frame, gold ring geometry, centered parchment manuscript, and dark ink while
+allowing the shipped pulse alpha/scale. Five pixel contracts cover opaque and
+pulsed/scaled presence, blank absence, a near-match frame without the official
+icon, and an adversarial palette checker. All pass.
+
+Live capture cannot serve as a completion clock on this API 36 emulator:
+`UiAutomation.takeScreenshot()` completed at 987 ms, shell PNG screencap plus
+in-memory decode completed at 1,993 ms, and full 10,368,016-byte raw RGBA
+screencap plus decode completed at 2,175 ms. Sample start alone was not accepted.
+
+The final harness therefore starts a 3-second, 4 Mbps `screenrecord` before the
+physical action, stores only generated fixture/Settings pixels under the
+fixture external-files directory, and analyzes the encoded video afterward.
+`MediaExtractor` supplies exact variable-frame sample timestamps and
+`MediaMetadataRetriever` decodes those frames. The first material change in the
+verified transition region is the user-visible transition; the official trigger
+must occur within the next unchanged 500 ms. Retrospective decode duration is
+irrelevant to the recorded presentation timestamps. The physical tap, 300 ms
+tree removal gate, and eventual exact V2 identity checks remain unchanged.
+
+Two isolated Close reproductions were strictly RED. The final exact-PTS run
+encoded 14 frames, showed panel disappearance at 1,185 ms, and first showed the
+official trigger at 2,229 ms: 1,044 ms later. An earlier generated-fixture video
+also showed the crop blank through transition +500 ms and first positive later;
+exact encoded PTS bracketed panel disappearance by 844 ms, trigger still absent
+at 1,269 ms, and first present at 1,453 ms, a minimum 609 ms delay. The six-test
+suite was not claimed after the first required test failed.
+
+Content-free manual crops are under `C:\tmp`: `round5-close-transition.png`,
+`round5-close-plus100.png`, `round5-close-plus300.png`, and
+`round5-close-plus500.png` share SHA-256
+`7095057c9094639ff5d305190ee243147ee081ddca86ec19e6a198a31128c8a2`;
+`round5-close-first-positive.png` is
+`4894a094ccea30fb6b4ef7c476bb94e4c18dc6288ed6640c8c6cdbd527a02099`.
+The source generated-fixture MP4 is
+`d87af053af9d3d45cd5814c07f27a644cc37770edf5016271643474ec3c65184`.
+
+Final local result: 16 tests, 0 failures, 0 errors, 0 skipped. Fixture unit
+tests, fixture APK, and fixture test APK built successfully (70 tasks; 12
+executed, 58 up-to-date). No product source, package, data, model, or service
+state was changed by this round.

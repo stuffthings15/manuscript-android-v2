@@ -25,20 +25,35 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
         withFixture(S23ExternalEditorFixtureActivity.MODE_NORMAL) { assertTrue(productSurfaceMeetsExpectation(trigger, true)) }
         withFixture(S23ExternalEditorFixtureActivity.MODE_MULTILINE) {
             assertTrue(productSurfaceMeetsExpectation(trigger, true))
+            val triggerRegion = expectedRenderedTriggerRegion(
+                S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_MULTILINE),
+            )
             tapProductSurface(trigger)
             assertTrue(productSurfaceMeetsExpectation(close, true))
-            val closeLookupStartedAt = SystemClock.elapsedRealtime()
-            val closeInjectedAt = tapProductSurface(close)
-            val lookupMs = closeInjectedAt - closeLookupStartedAt
-            val triggerReturned = waitUntilDeadline(closeInjectedAt + 500L) {
-                productSurfaceMeetsExpectation(trigger, true, 0L)
+            val closeRegion = productSurfaceBounds(close)
+            var closeLookupStartedAt = 0L
+            val (closeInjectedAt, rendered) = recordRenderedTriggerReturn(
+                name = "close",
+                triggerRegion = triggerRegion,
+                transitionRegion = closeRegion,
+            ) {
+                closeLookupStartedAt = SystemClock.elapsedRealtime()
+                tapProductSurface(close)
             }
-            val triggerReturnedMs = SystemClock.elapsedRealtime() - closeInjectedAt
+            val lookupMs = closeInjectedAt - closeLookupStartedAt
+            val exactIdentity = productSurfaceMeetsExpectation(trigger, true)
             assertTrue(
-                "V2 trigger return after physical Close missed 500ms; lookup=${lookupMs}ms elapsed=${triggerReturnedMs}ms",
-                triggerReturned,
+                "Recorded V2 trigger missed 500ms after visible panel disappearance; lookup=${lookupMs}ms " +
+                    "transitionAt=${rendered.transitionAtMs}ms triggerAt=${rendered.triggerAtMs}ms " +
+                    "triggerDelay=${rendered.triggerDelayMs}ms encodedFrames=${rendered.encodedFrameCount}",
+                rendered.matched,
             )
-            println("FIXTURE_CLOSE_TIMING lookupMs=$lookupMs returnedMs=$triggerReturnedMs")
+            assertTrue("Rendered trigger lacked eventual exact V2 overlay/contentDescription identity.", exactIdentity)
+            println(
+                "FIXTURE_CLOSE_TIMING lookupMs=$lookupMs transitionAtMs=${rendered.transitionAtMs} " +
+                    "triggerAtMs=${rendered.triggerAtMs} triggerDelayMs=${rendered.triggerDelayMs} " +
+                    "encodedFrames=${rendered.encodedFrameCount} exactIdentity=$exactIdentity",
+            )
         }
     }
 
@@ -83,6 +98,12 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
         requireHealthyManuscriptService()
         withFixture(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH) {
             assertTrue(productSurfaceMeetsExpectation(trigger, true))
+            val triggerRegion = expectedRenderedTriggerRegion(
+                S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH),
+            )
+            val fixtureTransitionRegion = fixtureBounds(
+                S23ExternalEditorFixtureActivity.editorDescription(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH),
+            )
             if (panelOpen) { tapProductSurface(trigger); assertTrue(productSurfaceMeetsExpectation(close, true)) }
             val settingsLaunchStartedAt = SystemClock.elapsedRealtime()
             tapFixtureDescription(S23ExternalEditorFixtureActivity.actionDescription(S23ExternalEditorFixtureActivity.MODE_PACKAGE_SWITCH))
@@ -95,21 +116,33 @@ class ExternalEditorLifecycleFixtureDeviceTest : FixtureDeviceSupport() {
             val disappearedMs = SystemClock.elapsedRealtime() - settingsActivatedAt
             assertTrue("V2 surface removal missed the total 300ms gate; elapsed=${disappearedMs}ms", surfaceRemoved)
             assertTrue(disappearedMs <= 300L)
-            val navigationStartedAt = SystemClock.elapsedRealtime()
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            val (navigationStartedAt, rendered) = recordRenderedTriggerReturn(
+                name = "settings-${if (panelOpen) "panel" else "trigger"}",
+                triggerRegion = triggerRegion,
+                transitionRegion = fixtureTransitionRegion,
+            ) {
+                val startedAt = SystemClock.elapsedRealtime()
+                instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+                startedAt
+            }
             val fixtureReturned = waitUntil { applicationWindowPresent(fixturePackage) }
             val fixtureReturnedAt = SystemClock.elapsedRealtime()
             val navigationMs = fixtureReturnedAt - navigationStartedAt
             assertTrue("Fixture did not return after Back; elapsed=${navigationMs}ms", fixtureReturned)
-            val returnDeadline = fixtureReturnedAt + 500L
-            val triggerReturned = waitUntilDeadline(returnDeadline) { productSurfaceMeetsExpectation(trigger, true, 0L) }
-            val returnedMs = SystemClock.elapsedRealtime() - fixtureReturnedAt
-            assertTrue("V2 trigger return missed 500ms after fixture activation; elapsed=${returnedMs}ms", triggerReturned)
-            assertTrue(returnedMs <= 500L)
+            val exactIdentity = productSurfaceMeetsExpectation(trigger, true)
+            assertTrue(
+                "Recorded V2 trigger missed 500ms after visible fixture return; " +
+                    "transitionAt=${rendered.transitionAtMs}ms triggerAt=${rendered.triggerAtMs}ms " +
+                    "triggerDelay=${rendered.triggerDelayMs}ms encodedFrames=${rendered.encodedFrameCount}",
+                rendered.matched,
+            )
+            assertTrue("Rendered trigger lacked eventual exact V2 overlay/contentDescription identity.", exactIdentity)
             println(
                 "FIXTURE_SETTINGS_TIMING panelOpen=$panelOpen " +
                     "settingsActivationMs=$settingsActivationMs disappearedMs=$disappearedMs " +
-                    "navigationMs=$navigationMs returnedMs=$returnedMs",
+                    "navigationMs=$navigationMs transitionAtMs=${rendered.transitionAtMs} " +
+                    "triggerAtMs=${rendered.triggerAtMs} triggerDelayMs=${rendered.triggerDelayMs} " +
+                    "encodedFrames=${rendered.encodedFrameCount} exactIdentity=$exactIdentity",
             )
             productSurfaceNeverVisible(close, 250L)
         }

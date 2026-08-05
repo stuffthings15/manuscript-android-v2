@@ -11,6 +11,8 @@ import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import androidx.test.platform.app.InstrumentationRegistry
+import java.io.File
+import java.io.FileInputStream
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -160,6 +162,61 @@ open class FixtureDeviceSupport {
         it.contentDescription?.toString() == description
     }
 
+    protected fun expectedRenderedTriggerRegion(editorDescription: String): Rect {
+        val editorBounds = fixtureBounds(editorDescription)
+        val metrics = fixtureContext.resources.displayMetrics
+        val size = fixtureDp(48)
+        val x = (editorBounds.right - size).coerceIn(0, maxOf(0, metrics.widthPixels - size))
+        val preferredY = if (editorBounds.top >= size + fixtureDp(8)) {
+            editorBounds.top - size - fixtureDp(4)
+        } else {
+            editorBounds.bottom + fixtureDp(4)
+        }
+        val y = preferredY.coerceIn(0, maxOf(0, metrics.heightPixels - size))
+        return Rect(x, y, x + size, y + size)
+    }
+
+    protected fun fixtureBounds(description: String): Rect {
+        val node = requireNotNull(findFixtureDescription(description)) { "Missing fixture bounds: $description" }
+        return Rect().also(node::getBoundsInScreen).also { node.recycle() }
+    }
+
+    protected fun productSurfaceBounds(description: String): Rect {
+        val node = requireNotNull(findProductSurface(description)) { "Missing V2 bounds: $description" }
+        return Rect().also(node::getBoundsInScreen).also { node.recycle() }
+    }
+
+    protected fun recordRenderedTriggerReturn(
+        name: String,
+        triggerRegion: Rect,
+        transitionRegion: Rect,
+        action: () -> Long,
+    ): Pair<Long, FixtureRenderedVideoProbe.Observation> {
+        val directory = requireNotNull(fixtureContext.getExternalFilesDir(null)) {
+            "Fixture external-files directory is unavailable."
+        }
+        val video = File(directory, "round5-$name.mp4")
+        if (video.exists()) check(video.delete()) { "Could not replace generated fixture recording: ${video.absolutePath}" }
+        val recordingRequestedAt = SystemClock.elapsedRealtime()
+        val descriptor = automation.executeShellCommand(
+            "screenrecord --time-limit 3 --bit-rate 4000000 ${video.absolutePath}",
+        )
+        assertTrue("screenrecord did not start for $name", waitUntil(1_000L) { shell("pidof screenrecord").isNotBlank() })
+        SystemClock.sleep(250L)
+        val injectedAt = action()
+        FileInputStream(descriptor.fileDescriptor).use { it.readBytes() }
+        descriptor.close()
+        assertTrue("screenrecord produced no fixture video for $name", video.isFile && video.length() > 0L)
+        shell("chmod 0644 ${video.absolutePath}")
+        val ignoreBeforeMs = (injectedAt - recordingRequestedAt - 100L).coerceAtLeast(100L)
+        return injectedAt to FixtureRenderedVideoProbe.analyze(
+            path = video.absolutePath,
+            triggerRegion = triggerRegion,
+            transitionRegion = transitionRegion,
+            ignoreBeforeMs = ignoreBeforeMs,
+        )
+    }
+
     protected fun findProductSurface(description: String): AccessibilityNodeInfo? {
         automation.windows.forEach { window ->
             if (window.type != AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) return@forEach
@@ -290,6 +347,9 @@ open class FixtureDeviceSupport {
             pauseMs = SystemClock::sleep,
         )
     }
+
+    private fun fixtureDp(value: Int): Int =
+        (value * fixtureContext.resources.displayMetrics.density).toInt()
 
     private fun String.section(start: String, end: String): String = substringAfter(start, "").substringBefore(end, "")
     private fun String.countOccurrences(value: String): Int = split(value).size - 1
