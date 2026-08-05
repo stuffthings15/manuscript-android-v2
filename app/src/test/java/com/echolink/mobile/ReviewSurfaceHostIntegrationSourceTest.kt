@@ -306,6 +306,14 @@ class ReviewSurfaceHostIntegrationSourceTest {
         assertTrue(beginBody.contains("logicalCompletionDeadlineMillis"))
         assertTrue(service.contains("terminalDetachLifecycle.retryFromEvent()"))
         assertTrue(service.contains("terminalDetachLifecycle.destroy()"))
+        assertTrue(service.contains("override fun hasPendingTerminalDetachOwnership()"))
+        assertTrue(service.contains("if (terminalDetachLifecycle.hasOwnership) return"))
+        assertTrue(service.contains("reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ServiceReconnected)"))
+        assertTrue(coordinator.contains("entries.remove(entry)"))
+        assertTrue(
+            coordinator.indexOf("entries.remove(entry)") <
+                coordinator.indexOf("onPhysicalDetach(entry.surface)"),
+        )
     }
 
     private fun source(name: String): String = File(

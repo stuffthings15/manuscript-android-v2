@@ -4,6 +4,7 @@ interface ReviewSurfaceEffectActions {
     fun cancelStaleCorrectionAndCallbackWork()
     fun detachReviewPanelSafely(): ReviewPanelDetachOutcome
     fun terminallyDetachReviewSurface(onTerminalCompletion: () -> Unit)
+    fun hasPendingTerminalDetachOwnership(): Boolean = false
     fun scrubTransientTextHolders()
     fun reacquireFocusedTarget(mode: ReviewTargetReacquisition): ReviewTarget
     fun restoreKeyboard(targetId: ReviewTargetId)
@@ -32,6 +33,20 @@ class ReviewSurfaceEffectExecutor(
     private val pendingEvents = ArrayDeque<ReviewSurfaceEvent>()
 
     fun dispatch(event: ReviewSurfaceEvent) {
+        if (
+            actions.hasPendingTerminalDetachOwnership() &&
+            event.canCreateReviewSurface()
+        ) {
+            actions.recordLifecycleDiagnostic(
+                ReviewLifecycleDiagnostics.transition(
+                    event = event,
+                    previousState = controller.state,
+                    nextState = controller.state,
+                    effects = emptyList(),
+                ),
+            )
+            return
+        }
         pendingEvents.addLast(event)
         drainEvents()
     }
@@ -159,6 +174,17 @@ class ReviewSurfaceEffectExecutor(
         outcome: ReviewLifecycleEffectOutcome,
     ) {
         actions.recordLifecycleDiagnostic(ReviewLifecycleDiagnostics.effect(effect, outcome))
+    }
+
+    private fun ReviewSurfaceEvent.canCreateReviewSurface(): Boolean = when (this) {
+        is ReviewSurfaceEvent.FocusedTargetAvailable,
+        ReviewSurfaceEvent.OpenRequested,
+        ReviewSurfaceEvent.ReviewAttached,
+        ReviewSurfaceEvent.PanelDetached,
+        is ReviewSurfaceEvent.RestorationCompleted,
+        ReviewSurfaceEvent.ServiceReconnected,
+        -> true
+        else -> false
     }
 
     private companion object {

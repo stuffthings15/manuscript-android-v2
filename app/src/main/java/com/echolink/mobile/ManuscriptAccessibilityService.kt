@@ -143,6 +143,9 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
                     terminalDetachLifecycle.begin(ownership, onTerminalCompletion)
                 }
 
+                override fun hasPendingTerminalDetachOwnership(): Boolean =
+                    terminalDetachLifecycle.hasOwnership
+
                 override fun scrubTransientTextHolders() {
                     reviewSession = null
                     suggestionListView = null
@@ -769,6 +772,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     }
 
     private fun showTrigger(bounds: Rect) {
+        if (terminalDetachLifecycle.hasOwnership) return
         rememberVisibleKeyboardFrame()
         val current = triggerView
         if (current != null) {
@@ -942,6 +946,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         )
 
     private fun openPanel() {
+        if (terminalDetachLifecycle.hasOwnership) return
         if (
             !LocalAiCorrectionGate.isReady(
                 AiModelManager.get(this).installedFile(),
@@ -1026,6 +1031,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     }
 
     override fun addKeyboardAreaPanel(bounds: KeyboardPanelBounds) {
+        if (terminalDetachLifecycle.hasOwnership) return
         OnDeviceGrammarEngine.get(this).setSessionWarm(true)
         val panel = buildPanel()
         val metrics = resources.displayMetrics
@@ -2412,6 +2418,9 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             "kind=surface-effect;effect=TerminalDetach;outcome=REMOVED" +
                 ";panelOwned=${ownership.panel != null};triggerOwned=${ownership.trigger != null}",
         )
+        if (reviewSurfaceController.state != ReviewSurfaceState.Destroyed) {
+            reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ServiceReconnected)
+        }
     }
 
     private fun cancelKeyboardRestore() {

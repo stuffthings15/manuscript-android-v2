@@ -81,6 +81,63 @@ class ReviewSurfaceEffectExecutorTest {
     }
 
     @Test
+    fun pendingTerminalOwnershipBlocksRepeatedFocusOpenAndCloseCreation() {
+        val fixture = openFixture()
+        repeat(3) {
+            fixture.actions.detachOutcomes.addLast(ReviewPanelDetachOutcome.STILL_ATTACHED)
+        }
+        fixture.actions.terminalDetachOutcome = ReviewPanelDetachOutcome.STILL_ATTACHED
+        fixture.executor.dispatch(ReviewSurfaceEvent.CloseRequested)
+        fixture.actions.completeTerminalLifecycle()
+        fixture.actions.resetSurfaceCreationRequests()
+
+        repeat(100) {
+            fixture.executor.dispatch(
+                ReviewSurfaceEvent.FocusedTargetAvailable(
+                    ReviewTarget(TARGET_ID, ReviewTargetEligibility.ELIGIBLE),
+                ),
+            )
+            fixture.executor.dispatch(ReviewSurfaceEvent.OpenRequested)
+            fixture.executor.dispatch(ReviewSurfaceEvent.ReviewAttached)
+            fixture.executor.dispatch(ReviewSurfaceEvent.CloseRequested)
+        }
+
+        assertEquals(ReviewSurfaceState.Hidden, fixture.controller.state)
+        assertTrue(fixture.actions.ownsAttachedSurface)
+        assertEquals(0, fixture.actions.triggerCreationRequests)
+        assertEquals(0, fixture.actions.panelCreationRequests)
+        assertEquals(1, fixture.actions.terminalCompletionCalls)
+    }
+
+    @Test
+    fun destroyWithPendingOwnershipRejectsEveryLaterCreationWithoutLosingOwnership() {
+        val fixture = openFixture()
+        repeat(3) {
+            fixture.actions.detachOutcomes.addLast(ReviewPanelDetachOutcome.STILL_ATTACHED)
+        }
+        fixture.actions.terminalDetachOutcome = ReviewPanelDetachOutcome.STILL_ATTACHED
+        fixture.executor.dispatch(ReviewSurfaceEvent.CloseRequested)
+        fixture.actions.completeTerminalLifecycle()
+        fixture.actions.resetSurfaceCreationRequests()
+
+        fixture.executor.dispatch(ReviewSurfaceEvent.Destroy)
+        repeat(100) {
+            fixture.executor.dispatch(
+                ReviewSurfaceEvent.FocusedTargetAvailable(
+                    ReviewTarget(TARGET_ID, ReviewTargetEligibility.ELIGIBLE),
+                ),
+            )
+            fixture.executor.dispatch(ReviewSurfaceEvent.OpenRequested)
+        }
+
+        assertEquals(ReviewSurfaceState.Destroyed, fixture.controller.state)
+        assertTrue(fixture.actions.ownsAttachedSurface)
+        assertEquals(0, fixture.actions.triggerCreationRequests)
+        assertEquals(0, fixture.actions.panelCreationRequests)
+        assertEquals(1, fixture.actions.terminalCompletionCalls)
+    }
+
+    @Test
     fun invalidationRetriesAStillAttachedPanelWithoutRestoringTheTarget() {
         val fixture = openFixture()
         fixture.actions.detachOutcomes.addLast(ReviewPanelDetachOutcome.STILL_ATTACHED)
@@ -336,7 +393,11 @@ class ReviewSurfaceEffectExecutorTest {
         val detachOutcomes = ArrayDeque<ReviewPanelDetachOutcome>()
         var reacquired = ReviewTarget(TARGET_ID, ReviewTargetEligibility.ELIGIBLE)
         var terminalDetachOutcome = ReviewPanelDetachOutcome.REMOVED
-        var ownsAttachedSurface = true
+        var ownsAttachedSurface = false
+        var terminalCompletionCalls = 0
+        var triggerCreationRequests = 0
+        var panelCreationRequests = 0
+        private var terminalCompletionReported = false
         private var terminalDetachConfirmation: (() -> Unit)? = null
 
         override fun cancelStaleCorrectionAndCallbackWork() {
@@ -351,17 +412,34 @@ class ReviewSurfaceEffectExecutorTest {
         override fun terminallyDetachReviewSurface(onTerminalCompletion: () -> Unit) {
             calls += "terminal-detach"
             if (terminalDetachOutcome == ReviewPanelDetachOutcome.STILL_ATTACHED) {
+                ownsAttachedSurface = true
                 terminalDetachConfirmation = onTerminalCompletion
             } else {
                 ownsAttachedSurface = false
+                terminalCompletionReported = true
+                terminalCompletionCalls += 1
                 onTerminalCompletion()
             }
         }
 
+        override fun hasPendingTerminalDetachOwnership(): Boolean = ownsAttachedSurface
+
+        fun completeTerminalLifecycle() {
+            if (terminalCompletionReported) return
+            terminalCompletionReported = true
+            terminalCompletionCalls += 1
+            terminalDetachConfirmation?.invoke()
+        }
+
         fun confirmTerminalDetach() {
             ownsAttachedSurface = false
-            terminalDetachConfirmation?.invoke()
+            completeTerminalLifecycle()
             terminalDetachConfirmation = null
+        }
+
+        fun resetSurfaceCreationRequests() {
+            triggerCreationRequests = 0
+            panelCreationRequests = 0
         }
 
         override fun scrubTransientTextHolders() {
@@ -378,6 +456,14 @@ class ReviewSurfaceEffectExecutorTest {
 
         override fun restoreKeyboard(targetId: ReviewTargetId) {
             calls += "keyboard:${targetId.value}"
+        }
+
+        override fun renderReviewSurfaceState(state: ReviewSurfaceState) {
+            when (state) {
+                is ReviewSurfaceState.TriggerVisible -> triggerCreationRequests += 1
+                is ReviewSurfaceState.Opening -> panelCreationRequests += 1
+                else -> Unit
+            }
         }
 
         override fun recordLifecycleDiagnostic(diagnostic: String) {
