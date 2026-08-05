@@ -10,6 +10,7 @@ import android.util.Log
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewTreeObserver
 import android.widget.EditText
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
@@ -21,6 +22,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.FileInputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 @RunWith(AndroidJUnit4::class)
 class ReviewSurfaceLifecycleDeviceTest {
@@ -98,22 +101,18 @@ class ReviewSurfaceLifecycleDeviceTest {
             } else if (closeDelayMs > 0L) {
                 SystemClock.sleep(closeDelayMs)
             }
-            var capturedCloseBounds: Rect? = null
+            val closeBounds = awaitStableVisibleBoundsAcrossFrames(close)
             assertTrue(
-                "Close did not reach a full touch target before host input.",
-                waitUntil {
-                    fullyVisibleBounds(close)?.also { bounds ->
-                        capturedCloseBounds = bounds
-                    } != null
-                },
+                "Close did not keep identical full touch bounds across two draw frames.",
+                closeBounds != null,
             )
-            val closeBounds = requireNotNull(capturedCloseBounds)
+            val stableCloseBounds = requireNotNull(closeBounds)
             val phase = if (waitForActiveRequest) "active" else "delay-${closeDelayMs}ms"
             Log.i(
                 REVIEW_LOG_TAG,
                 "event=host-touch-ready;phase=$phase;cycle=$hostCycle;" +
-                    "x=${closeBounds.exactCenterX().toInt()};" +
-                    "y=${closeBounds.exactCenterY().toInt()};" +
+                    "x=${stableCloseBounds.exactCenterX().toInt()};" +
+                    "y=${stableCloseBounds.exactCenterY().toInt()};" +
                     "elapsed_ms=${SystemClock.elapsedRealtime()}",
             )
 
@@ -344,6 +343,44 @@ class ReviewSurfaceLifecycleDeviceTest {
 
     private fun hasGlobalVisibleBounds(view: View): Boolean {
         return fullyVisibleBounds(view) != null
+    }
+
+    private fun awaitStableVisibleBoundsAcrossFrames(
+        view: View,
+        timeoutMs: Long = 5_000L,
+    ): Rect? {
+        val completed = CountDownLatch(1)
+        var stableBounds: Rect? = null
+        lateinit var listener: ViewTreeObserver.OnPreDrawListener
+        instrumentation.runOnMainSync {
+            var previous: Rect? = null
+            listener = object : ViewTreeObserver.OnPreDrawListener {
+                override fun onPreDraw(): Boolean {
+                    val current = fullyVisibleBounds(view)?.let(::Rect)
+                    if (current != null && current == previous) {
+                        stableBounds = current
+                        if (view.viewTreeObserver.isAlive) {
+                            view.viewTreeObserver.removeOnPreDrawListener(this)
+                        }
+                        completed.countDown()
+                    } else {
+                        previous = current
+                        view.postInvalidateOnAnimation()
+                    }
+                    return true
+                }
+            }
+            view.viewTreeObserver.addOnPreDrawListener(listener)
+            view.postInvalidateOnAnimation()
+        }
+        if (!completed.await(timeoutMs, TimeUnit.MILLISECONDS)) {
+            instrumentation.runOnMainSync {
+                if (view.viewTreeObserver.isAlive) {
+                    view.viewTreeObserver.removeOnPreDrawListener(listener)
+                }
+            }
+        }
+        return stableBounds
     }
 
     private fun fullyVisibleBounds(view: View): Rect? {
