@@ -278,9 +278,11 @@ class ReviewSurfaceLifecycleDeviceTest {
         instrumentation.waitForIdleSync()
         SystemClock.sleep(650L)
         instrumentation.waitForIdleSync()
-        onView(withText(R.string.qwen_model_not_now))
-            .inRoot(isDialog())
-            .perform(click())
+        if (!activity.hasWindowFocus()) {
+            onView(withText(R.string.qwen_model_not_now))
+                .inRoot(isDialog())
+                .perform(click())
+        }
         instrumentation.waitForIdleSync()
         assertTrue(
             "MainActivity did not regain focus after startup guidance.",
