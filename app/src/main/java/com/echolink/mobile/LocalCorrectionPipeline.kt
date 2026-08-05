@@ -105,6 +105,9 @@ class LocalCorrectionRouter(context: Context) {
             ),
         )
 
+    fun verifiesDeterministicRepair(source: String, proposal: String): Boolean =
+        proposal == deterministicRepair(source)
+
     fun preservesProofreadWording(prepared: String, candidate: String): Boolean =
         ProofreadPreservationPolicy.preservesWording(
             prepared,

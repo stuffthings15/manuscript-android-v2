@@ -218,6 +218,8 @@ class OnDeviceGrammarEngine private constructor(context: Context) {
                     // small model can then spend its pass on agreement and
                     // sentence structure instead of copying obvious typos.
                     prepareGrammarRetryCandidate = correctionRouter::deterministicRepair,
+                    verifiesGrammarRetryCandidate =
+                        correctionRouter::verifiesDeterministicRepair,
                     deterministicSentenceRepair = correctionRouter::deterministicRepair,
                     preservesProofreadWording = correctionRouter::preservesProofreadWording,
                     logParagraphOutcome = { outcome ->

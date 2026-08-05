@@ -836,9 +836,11 @@ class DocumentCorrectionPipeline(
     private val acceptsStrictlyReviewedGrammar: (String) -> Boolean =
         acceptsGeneratedGrammar,
     private val prepareGrammarRetryCandidate: (String) -> String = { it },
+    private val verifiesGrammarRetryCandidate: (String, String) -> Boolean =
+        { source, proposal -> proposal == GrammarSafetyNet.repair(source) },
     // Model-free repair used when the model will not touch a sentence.
     private val deterministicSentenceRepair: (String) -> String =
-        prepareGrammarRetryCandidate,
+        GrammarSafetyNet::repair,
     private val preservesProofreadWording: (String, String) -> Boolean = { _, _ -> true },
     private val correctionCacheGet: (String) -> String? = { null },
     private val correctionCachePut: (String, String) -> Unit = { _, _ -> },
@@ -950,7 +952,7 @@ class DocumentCorrectionPipeline(
                         val restoredCandidate = restoreFragment(protected, candidate)
                         val proposed = prepareGrammarRetryCandidate(restoredCandidate)
                         val approved = proposed.takeIf {
-                            it == GrammarSafetyNet.repair(restoredCandidate)
+                            verifiesGrammarRetryCandidate(restoredCandidate, it)
                         } ?: restoredCandidate
                         encodeFragment(protected, candidate, approved)
                     },
@@ -988,7 +990,7 @@ class DocumentCorrectionPipeline(
                             val restoredCandidate = restoreFragment(protected, candidate)
                             val proposed = prepareGrammarRetryCandidate(restoredCandidate)
                             val approved = proposed.takeIf {
-                                it == GrammarSafetyNet.repair(restoredCandidate)
+                                verifiesGrammarRetryCandidate(restoredCandidate, it)
                             } ?: restoredCandidate
                             encodeFragment(protected, candidate, approved)
                         },
@@ -1012,10 +1014,14 @@ class DocumentCorrectionPipeline(
                     ?: throw failure
             }
             val restoredBeforeSweep = restoreFragment(protected, paragraph.text)
-            val repairedRestored = residualRepair(
-                restoreFragment(protected, chunk.text),
-                restoredBeforeSweep,
-            )
+            val repairedRestored = if (paragraph.validated) {
+                residualRepair(
+                    restoreFragment(protected, chunk.text),
+                    restoredBeforeSweep,
+                )
+            } else {
+                restoredBeforeSweep
+            }
             val encodedAfterSweep = runCatching {
                 encodeFragment(protected, paragraph.text, repairedRestored)
             }.getOrNull() ?: paragraph.text

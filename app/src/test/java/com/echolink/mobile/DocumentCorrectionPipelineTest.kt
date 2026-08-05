@@ -134,6 +134,82 @@ class DocumentCorrectionPipelineTest {
     }
 
     @Test
+    fun trustedPreparedHeadingCanReachModelAcceptedTerminalText() = runBlocking {
+        val source = "Dogs Makes Grate Petts in Bakersfield"
+        val prepared = "Dogs Make Great Pets in Bakersfield"
+        val deterministicRepair: (String) -> String = { value ->
+            if (value == source) prepared else GrammarSafetyNet.repair(value)
+        }
+        val previouslyPrepared = GrammarSafetyNet.repair(source)
+        assertEquals("Dogs make Grate Petts in Bakersfield", previouslyPrepared)
+        assertFalse(
+            ProofreadPreservationPolicy.preservesWording(
+                previouslyPrepared,
+                prepared,
+                { true },
+            ),
+        )
+        assertTrue(
+            AiSafetyValidator.validate(
+                source,
+                prepared,
+                trustedDeterministicTarget = prepared,
+            ).safe,
+        )
+
+        LocalAiAttemptEvidence.reset()
+        val backend = ScriptedBackend { request -> request.originalTarget }
+        val result = DocumentCorrectionPipeline(
+            primaryBackend = backend,
+            prepareGrammarRetryCandidate = deterministicRepair,
+            verifiesGrammarRetryCandidate = { input, proposal ->
+                proposal == deterministicRepair(input)
+            },
+        ).process(
+            DocumentCorrectionRequest(
+                jobId = "prepared-heading",
+                source = source,
+                tone = WritingTone.PROOFREAD,
+                qualityMode = QualityMode.FAST,
+            ),
+        )
+
+        assertEquals(prepared, result.text)
+        assertEquals(prepared, backend.requests.first().originalTarget)
+        assertTrue(result.paragraphs.single().validated)
+        assertTrue(
+            LocalAiAttemptEvidence.snapshotDetails()
+                .getValue("prepared-heading")
+                .getValue(1)
+                .terminalProvenance in setOf(
+                    LocalAiTerminalProvenance.MODEL_ACCEPTED,
+                    LocalAiTerminalProvenance.MODEL_PLUS_SAFE_REPAIRS,
+                ),
+        )
+    }
+
+    @Test
+    fun unverifiedPreparedProposalNeverBecomesATrustedGenerationTarget() = runBlocking {
+        val source = "Dogs Makes Grate Petts in Bakersfield"
+        val backend = ScriptedBackend { request -> request.originalTarget }
+
+        val result = DocumentCorrectionPipeline(
+            primaryBackend = backend,
+            prepareGrammarRetryCandidate = { "Cats Replace Every Fact" },
+        ).process(
+            DocumentCorrectionRequest(
+                jobId = "unverified-prepared-heading",
+                source = source,
+                tone = WritingTone.PROOFREAD,
+                qualityMode = QualityMode.FAST,
+            ),
+        )
+
+        assertTrue(backend.requests.none { "Cats" in it.originalTarget })
+        assertFalse("Cats" in result.text)
+    }
+
+    @Test
     fun inventedQuotationIsAProtectedSpanFailure() {
         val validation = AiSafetyValidator.validate(
             original = "A certain animal can be a pet.",
