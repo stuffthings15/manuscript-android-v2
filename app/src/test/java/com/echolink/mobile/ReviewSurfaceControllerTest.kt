@@ -55,6 +55,17 @@ class ReviewSurfaceControllerTest {
     }
 
     @Test
+    fun terminalCompletionEscapesClosingWithoutRestoringAStalledSurface() {
+        val controller = openController()
+        controller.dispatch(ReviewSurfaceEvent.CloseRequested)
+
+        val effects = controller.dispatch(ReviewSurfaceEvent.TerminalDetachCompleted)
+
+        assertTrue(effects.isEmpty())
+        assertEquals(ReviewSurfaceState.Hidden, controller.state)
+    }
+
+    @Test
     fun closeDuringFocusRestorationRejectsLateRestorationAndLeavesSurfaceHidden() {
         val controller = openController()
         controller.dispatch(ReviewSurfaceEvent.CloseRequested)
@@ -360,6 +371,7 @@ class ReviewSurfaceControllerTest {
                 "CloseRequested",
                 "StaleWorkCancelled",
                 "PanelDetached",
+                "TerminalDetachCompleted",
                 "RestorationCompleted",
                 "RestorationFailed",
                 "TargetLost",

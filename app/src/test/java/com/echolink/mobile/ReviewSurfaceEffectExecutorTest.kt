@@ -34,7 +34,7 @@ class ReviewSurfaceEffectExecutorTest {
     }
 
     @Test
-    fun terminalDetachRetainsOwnershipUntilConfirmedThenRestoresAndAllowsFutureTriggers() {
+    fun terminalDetachRetainsOwnershipUntilConfirmedThenHidesAndAllowsFutureTriggers() {
         val fixture = openFixture()
         repeat(3) {
             fixture.actions.detachOutcomes.addLast(ReviewPanelDetachOutcome.STILL_ATTACHED)
@@ -53,10 +53,31 @@ class ReviewSurfaceEffectExecutorTest {
         fixture.actions.confirmTerminalDetach()
 
         assertFalse(fixture.actions.ownsAttachedSurface)
-        assertEquals(ReviewSurfaceState.TriggerVisible(TARGET_ID), fixture.controller.state)
+        assertEquals(ReviewSurfaceState.Hidden, fixture.controller.state)
 
+        fixture.executor.dispatch(
+            ReviewSurfaceEvent.FocusedTargetAvailable(
+                ReviewTarget(TARGET_ID, ReviewTargetEligibility.ELIGIBLE),
+            ),
+        )
         fixture.executor.dispatch(ReviewSurfaceEvent.OpenRequested)
         assertTrue(fixture.controller.state is ReviewSurfaceState.Opening)
+    }
+
+    @Test
+    fun destroyEscapesAStalledTerminalDetachAndRejectsItsLateCompletion() {
+        val fixture = openFixture()
+        repeat(3) {
+            fixture.actions.detachOutcomes.addLast(ReviewPanelDetachOutcome.STILL_ATTACHED)
+        }
+        fixture.actions.terminalDetachOutcome = ReviewPanelDetachOutcome.STILL_ATTACHED
+        fixture.executor.dispatch(ReviewSurfaceEvent.CloseRequested)
+        assertTrue(fixture.controller.state is ReviewSurfaceState.Closing)
+
+        fixture.executor.dispatch(ReviewSurfaceEvent.Destroy)
+        fixture.actions.confirmTerminalDetach()
+
+        assertEquals(ReviewSurfaceState.Destroyed, fixture.controller.state)
     }
 
     @Test
@@ -269,6 +290,22 @@ class ReviewSurfaceEffectExecutorTest {
         assertFalse(fixture.executor.isCurrentCallback(oldToken))
     }
 
+    @Test
+    fun destroyRetainsAndDeactivatesOwnershipWhenItsFirstDetachStalls() {
+        val fixture = openFixture()
+        fixture.actions.detachOutcomes.addLast(ReviewPanelDetachOutcome.STILL_ATTACHED)
+        fixture.actions.terminalDetachOutcome = ReviewPanelDetachOutcome.STILL_ATTACHED
+
+        fixture.executor.dispatch(ReviewSurfaceEvent.Destroy)
+
+        assertEquals(
+            listOf("cancel", "detach", "scrub", "terminal-detach"),
+            fixture.actions.calls,
+        )
+        assertTrue(fixture.actions.ownsAttachedSurface)
+        assertEquals(ReviewSurfaceState.Destroyed, fixture.controller.state)
+    }
+
     private fun openFixture(): Fixture = hiddenFixture().also { fixture ->
         fixture.executor.dispatch(
             ReviewSurfaceEvent.FocusedTargetAvailable(
@@ -311,13 +348,13 @@ class ReviewSurfaceEffectExecutorTest {
             return detachOutcomes.removeFirstOrNull() ?: ReviewPanelDetachOutcome.REMOVED
         }
 
-        override fun terminallyDetachReviewSurface(onDetached: () -> Unit) {
+        override fun terminallyDetachReviewSurface(onTerminalCompletion: () -> Unit) {
             calls += "terminal-detach"
             if (terminalDetachOutcome == ReviewPanelDetachOutcome.STILL_ATTACHED) {
-                terminalDetachConfirmation = onDetached
+                terminalDetachConfirmation = onTerminalCompletion
             } else {
                 ownsAttachedSurface = false
-                onDetached()
+                onTerminalCompletion()
             }
         }
 

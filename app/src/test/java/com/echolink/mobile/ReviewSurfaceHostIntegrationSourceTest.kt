@@ -282,6 +282,32 @@ class ReviewSurfaceHostIntegrationSourceTest {
         assertTrue(activePackage.contains("root.recycle()"))
     }
 
+    @Test
+    fun terminalDetachMakesOwnedWindowsInertBeforeIndependentCompletionAndCleanup() {
+        val service = source("ManuscriptAccessibilityService.kt")
+        val coordinator = source("TerminalDetachLifecycleCoordinator.kt")
+        val deactivateBody = service.substring(
+            service.indexOf("private fun deactivateTerminalView"),
+            service.indexOf("private fun detachTerminalReviewSurface"),
+        )
+        val beginBody = coordinator.substring(
+            coordinator.indexOf("fun begin("),
+            coordinator.indexOf("fun retryFromEvent"),
+        )
+
+        assertTrue(deactivateBody.contains("view.visibility = View.GONE"))
+        assertTrue(deactivateBody.contains("view.alpha = 0f"))
+        assertTrue(deactivateBody.contains("view.isClickable = false"))
+        assertTrue(deactivateBody.contains("FLAG_NOT_TOUCHABLE"))
+        assertTrue(deactivateBody.contains("IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS"))
+        assertTrue(service.contains("if (panelView === ownership.panel) panelView = null"))
+        assertTrue(service.contains("if (triggerView === ownership.trigger) triggerView = null"))
+        assertTrue(beginBody.indexOf("deactivate(surface)") < beginBody.indexOf("detach(entry)"))
+        assertTrue(beginBody.contains("logicalCompletionDeadlineMillis"))
+        assertTrue(service.contains("terminalDetachLifecycle.retryFromEvent()"))
+        assertTrue(service.contains("terminalDetachLifecycle.destroy()"))
+    }
+
     private fun source(name: String): String = File(
         System.getProperty("user.dir"),
         "src/main/java/com/echolink/mobile/$name",

@@ -77,6 +77,7 @@ object ReviewLifecycleDiagnostics {
         ReviewSurfaceEvent.CloseRequested -> "CloseRequested"
         ReviewSurfaceEvent.StaleWorkCancelled -> "StaleWorkCancelled"
         ReviewSurfaceEvent.PanelDetached -> "PanelDetached"
+        ReviewSurfaceEvent.TerminalDetachCompleted -> "TerminalDetachCompleted"
         is ReviewSurfaceEvent.RestorationCompleted -> "RestorationCompleted"
         ReviewSurfaceEvent.RestorationFailed -> "RestorationFailed"
         ReviewSurfaceEvent.TargetLost -> "TargetLost"

@@ -41,6 +41,7 @@ sealed interface ReviewSurfaceEvent {
     data object CloseRequested : ReviewSurfaceEvent
     data object StaleWorkCancelled : ReviewSurfaceEvent
     data object PanelDetached : ReviewSurfaceEvent
+    data object TerminalDetachCompleted : ReviewSurfaceEvent
     data class RestorationCompleted(val target: ReviewTarget) : ReviewSurfaceEvent
     data object RestorationFailed : ReviewSurfaceEvent
     data object TargetLost : ReviewSurfaceEvent
@@ -100,6 +101,7 @@ class ReviewSurfaceController(
         is ReviewSurfaceEvent.FocusedTargetAvailable,
         is ReviewSurfaceEvent.RestorationCompleted,
         ReviewSurfaceEvent.RestorationFailed,
+        ReviewSurfaceEvent.TerminalDetachCompleted,
         ReviewSurfaceEvent.TargetLost,
         ReviewSurfaceEvent.PasswordFocused,
         ReviewSurfaceEvent.ApplicationSwitched,
@@ -136,6 +138,7 @@ class ReviewSurfaceController(
                 ReviewSurfaceEvent.CloseRequested -> close(state)
                 ReviewSurfaceEvent.StaleWorkCancelled -> ReviewSurfaceTransition(state)
                 ReviewSurfaceEvent.PanelDetached -> detached(state)
+                ReviewSurfaceEvent.TerminalDetachCompleted -> terminalDetachCompleted(state)
                 is ReviewSurfaceEvent.RestorationCompleted -> restored(state, event.target)
                 ReviewSurfaceEvent.RestorationFailed -> restorationFailed(state)
                 ReviewSurfaceEvent.TargetLost -> invalidate(state, ReviewTargetEligibility.MISSING)
@@ -215,6 +218,13 @@ class ReviewSurfaceController(
             }
             else -> ReviewSurfaceTransition(state)
         }
+
+        private fun terminalDetachCompleted(state: ReviewSurfaceState): ReviewSurfaceTransition =
+            if (state is ReviewSurfaceState.Closing) {
+                ReviewSurfaceTransition(ReviewSurfaceState.Hidden)
+            } else {
+                ReviewSurfaceTransition(state)
+            }
 
         private fun restored(
             state: ReviewSurfaceState,

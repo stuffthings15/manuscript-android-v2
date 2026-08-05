@@ -72,7 +72,27 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     private val terminalDetachEventRetrySampler = ReviewRawEventDiagnosticSampler(
         TERMINAL_DETACH_EVENT_RETRY_INTERVAL_MS,
     )
-    private var pendingTerminalDetach: TerminalDetachOwnership? = null
+    private val terminalDetachLifecycle by lazy {
+        TerminalDetachLifecycleCoordinator<TerminalDetachOwnership>(
+            scheduler = object : DelayedWorkScheduler {
+                override fun postDelayed(runnable: Runnable, delayMillis: Long) {
+                    mainHandler.postDelayed(runnable, delayMillis)
+                }
+
+                override fun remove(runnable: Runnable) {
+                    mainHandler.removeCallbacks(runnable)
+                }
+            },
+            retryDelayMillis = TERMINAL_DETACH_RETRY_MS,
+            logicalCompletionDeadlineMillis = TERMINAL_DETACH_COMPLETION_DEADLINE_MS,
+            postCompletionRetryDelayMillis = TERMINAL_DETACH_EVENT_RETRY_INTERVAL_MS,
+            rapidRetryAttempts = MAX_TERMINAL_DETACH_SCHEDULED_RETRIES,
+            scheduledCleanupAttempts = MAX_TERMINAL_DETACH_CLEANUP_RETRIES,
+            deactivate = ::deactivateTerminalReviewSurface,
+            attemptDetach = ::detachTerminalReviewSurface,
+            onPhysicalDetach = ::releaseTerminalReviewSurfaceOwnership,
+        )
+    }
     private val replacementVerificationWork by lazy {
         TrackedDelayedWork(
             object : DelayedWorkScheduler {
@@ -116,17 +136,11 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
                     }
                 }
 
-                override fun terminallyDetachReviewSurface(onDetached: () -> Unit) {
+                override fun terminallyDetachReviewSurface(onTerminalCompletion: () -> Unit) {
                     val panel = panelView
                     val trigger = triggerView
-                    panel?.visibility = View.GONE
-                    trigger?.visibility = View.GONE
-                    val ownership = TerminalDetachOwnership(panel, trigger, onDetached)
-                    pendingTerminalDetach = ownership
-                    attemptTerminalReviewSurfaceDetach(
-                        ownership,
-                        scheduledRetriesRemaining = MAX_TERMINAL_DETACH_SCHEDULED_RETRIES,
-                    )
+                    val ownership = TerminalDetachOwnership(panel, trigger)
+                    terminalDetachLifecycle.begin(ownership, onTerminalCompletion)
                 }
 
                 override fun scrubTransientTextHolders() {
@@ -225,10 +239,11 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || isOverlaySelfEvent(event)) return
-        pendingTerminalDetach?.let { ownership ->
-            if (terminalDetachEventRetrySampler.shouldLog(android.os.SystemClock.uptimeMillis())) {
-                attemptTerminalReviewSurfaceDetach(ownership, scheduledRetriesRemaining = 0)
-            }
+        if (
+            terminalDetachLifecycle.hasOwnership &&
+            terminalDetachEventRetrySampler.shouldLog(android.os.SystemClock.uptimeMillis())
+        ) {
+            terminalDetachLifecycle.retryFromEvent()
         }
         if (invalidateDetachedRetainedNodeOnWindowsChanged(event)) return
         val eventPackage = event.packageName?.toString().orEmpty()
@@ -597,6 +612,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         mainHandler.removeCallbacks(keyboardHideRunnable)
         mainHandler.removeCallbacks(releaseTriggerPress)
         reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.Destroy)
+        terminalDetachLifecycle.destroy()
         cancelTargetClear()
         cancelKeyboardRestore()
         clearTarget()
@@ -2341,11 +2357,32 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         targetLossDeadline.cancel()
     }
 
-    private fun attemptTerminalReviewSurfaceDetach(
-        ownership: TerminalDetachOwnership,
-        scheduledRetriesRemaining: Int,
-    ) {
-        if (pendingTerminalDetach !== ownership) return
+    private fun deactivateTerminalReviewSurface(ownership: TerminalDetachOwnership) {
+        ownership.panel?.let(::deactivateTerminalView)
+        ownership.trigger?.let { trigger ->
+            TriggerPulseController.stop(trigger)
+            deactivateTerminalView(trigger)
+        }
+        if (panelView === ownership.panel) panelView = null
+        if (triggerView === ownership.trigger) triggerView = null
+    }
+
+    private fun deactivateTerminalView(view: View) {
+        view.visibility = View.GONE
+        view.alpha = 0f
+        view.isEnabled = false
+        view.isClickable = false
+        view.isFocusable = false
+        view.isFocusableInTouchMode = false
+        view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        val params = view.layoutParams as? WindowManager.LayoutParams ?: return
+        params.flags = params.flags or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        runCatching { windowManager.updateViewLayout(view, params) }
+    }
+
+    private fun detachTerminalReviewSurface(ownership: TerminalDetachOwnership): Boolean {
         val panelRemoval = ownership.panel?.let {
             runCatching { windowManager.removeViewImmediate(it) }
         }
@@ -2356,11 +2393,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             ownership.panel?.isAttachedToWindow != true &&
             ownership.trigger?.isAttachedToWindow != true
         ) {
-            if (panelView === ownership.panel) panelView = null
-            if (triggerView === ownership.trigger) triggerView = null
-            pendingTerminalDetach = null
-            ownership.onDetached()
-            return
+            return true
         }
         val failureType = panelRemoval?.exceptionOrNull()?.javaClass?.simpleName
             ?: triggerRemoval?.exceptionOrNull()?.javaClass?.simpleName
@@ -2368,19 +2401,17 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         Log.w(
             REVIEW_LOG_TAG,
             "kind=surface-effect;effect=TerminalDetach;outcome=STILL_ATTACHED" +
-                ";failure=$failureType;scheduledRetriesRemaining=$scheduledRetriesRemaining",
+                ";failure=$failureType",
         )
-        if (scheduledRetriesRemaining > 0) {
-            mainHandler.postDelayed(
-                {
-                    attemptTerminalReviewSurfaceDetach(
-                        ownership,
-                        scheduledRetriesRemaining - 1,
-                    )
-                },
-                TERMINAL_DETACH_RETRY_MS,
-            )
-        }
+        return false
+    }
+
+    private fun releaseTerminalReviewSurfaceOwnership(ownership: TerminalDetachOwnership) {
+        Log.i(
+            REVIEW_LOG_TAG,
+            "kind=surface-effect;effect=TerminalDetach;outcome=REMOVED" +
+                ";panelOwned=${ownership.panel != null};triggerOwned=${ownership.trigger != null}",
+        )
     }
 
     private fun cancelKeyboardRestore() {
@@ -2498,7 +2529,6 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     private data class TerminalDetachOwnership(
         val panel: View?,
         val trigger: View?,
-        val onDetached: () -> Unit,
     )
 
     private inner class VerifiedApplicationEventContext(
@@ -2534,7 +2564,9 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         const val REVIEW_LOG_TAG = "ManuscriptReview"
         const val TARGET_CLEAR_GRACE_MS = 800L
         const val TERMINAL_DETACH_RETRY_MS = 16L
+        const val TERMINAL_DETACH_COMPLETION_DEADLINE_MS = 64L
         const val MAX_TERMINAL_DETACH_SCHEDULED_RETRIES = 3
+        const val MAX_TERMINAL_DETACH_CLEANUP_RETRIES = 8
         const val TERMINAL_DETACH_EVENT_RETRY_INTERVAL_MS = 250L
         const val RAW_EVENT_DIAGNOSTIC_INTERVAL_MS = 250L
         const val PRESS_GUARD_MS = 600L

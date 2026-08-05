@@ -3,7 +3,7 @@ package com.echolink.mobile
 interface ReviewSurfaceEffectActions {
     fun cancelStaleCorrectionAndCallbackWork()
     fun detachReviewPanelSafely(): ReviewPanelDetachOutcome
-    fun terminallyDetachReviewSurface(onDetached: () -> Unit)
+    fun terminallyDetachReviewSurface(onTerminalCompletion: () -> Unit)
     fun scrubTransientTextHolders()
     fun reacquireFocusedTarget(mode: ReviewTargetReacquisition): ReviewTarget
     fun restoreKeyboard(targetId: ReviewTargetId)
@@ -70,6 +70,7 @@ class ReviewSurfaceEffectExecutor(
     private fun runEffects(effects: List<ReviewSurfaceEffect>) {
         val raisedEvents = ArrayDeque<ReviewSurfaceEvent>()
         var reacquiredTarget: ReviewTarget? = null
+        var terminalDetachRequired = false
         effects.forEach { effect ->
             when (effect) {
                 ReviewSurfaceEffect.CancelStaleCorrectionAndCallbackWork -> {
@@ -94,13 +95,14 @@ class ReviewSurfaceEffectExecutor(
                         raisedEvents.addLast(ReviewSurfaceEvent.PanelDetached)
                     } else {
                         detachAttemptCount += 1
-                        if (detachAttemptCount < MAX_DETACH_ATTEMPTS) {
+                        if (controller.state == ReviewSurfaceState.Destroyed) {
+                            detachAttemptCount = 0
+                            terminalDetachRequired = true
+                        } else if (detachAttemptCount < MAX_DETACH_ATTEMPTS) {
                             raisedEvents.addLast(ReviewSurfaceEvent.CloseRequested)
                         } else {
                             detachAttemptCount = 0
-                            actions.terminallyDetachReviewSurface {
-                                dispatch(ReviewSurfaceEvent.PanelDetached)
-                            }
+                            terminalDetachRequired = true
                         }
                     }
                 }
@@ -142,6 +144,11 @@ class ReviewSurfaceEffectExecutor(
                         recordEffect(effect, ReviewLifecycleEffectOutcome.SKIPPED)
                     }
                 }
+            }
+        }
+        if (terminalDetachRequired) {
+            actions.terminallyDetachReviewSurface {
+                dispatch(ReviewSurfaceEvent.TerminalDetachCompleted)
             }
         }
         pendingEvents.addAll(raisedEvents)
