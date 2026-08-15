@@ -40,6 +40,9 @@ class DocumentCorrectionPipelineTest {
         val backend = ScriptedBackend { request -> request.originalTarget }
         val pipeline = DocumentCorrectionPipeline(
             primaryBackend = backend,
+            verifiesGrammarRetryCandidate = { source, proposal ->
+                proposal == source.replace("Bath England", "Bath, England")
+            },
             deterministicSentenceRepair = { text ->
                 text
                     .replace("Bath England", "Bath, England")
@@ -106,6 +109,9 @@ class DocumentCorrectionPipelineTest {
         )
         val repaired = DocumentCorrectionPipeline(
             primaryBackend = ScriptedBackend { "Cats purr." },
+            verifiesGrammarRetryCandidate = { source, proposal ->
+                proposal == source.replace("purr.", "purr!")
+            },
             deterministicSentenceRepair = { it.replace("purr.", "purr!") },
         )
         repaired.process(

@@ -1019,6 +1019,18 @@ object GrammarSafetyNet {
     fun repair(value: String): String {
         val immutable = DeterministicCleanup.protect(value)
         var result = immutable.text
+        result = Regex("(?i)\\band\\s+but\\b").replace(result, "but")
+        result = Regex("(?i)\\bpay\\s+attention\\s+too(?=\\s*[.,!?;:]|$)")
+            .replace(result, "pay attention to")
+        result = Regex(
+            "(?i)\\bthere is\\s+((?:[a-z][a-z'-]*\\s+){0,2})" +
+                "(benefits|reasons|problems|advantages|disadvantages)\\b",
+        ).replace(result) { match ->
+            val opener = if (match.value.first().isUpperCase()) "There are " else "there are "
+            "$opener${match.groupValues[1]}${match.groupValues[2]}"
+        }
+        result = Regex("\\b([A-Z][a-z'-]+) have (its|his|her)\\b")
+            .replace(result, "$1 has $2")
         result = Regex(
             "(?i)\\b(there) is (several|many|few|numerous|two|three|four|five|" +
                 "six|seven|eight|nine|ten|\\d+) ([a-z][a-z'-]*s)\\b",
@@ -2188,6 +2200,11 @@ object GrammarSafetyNet {
         ).replace(restored, "$1, $2, and $3")
         restored = Regex("(?i)\\b(By the end of [^,.!?]{2,80})\\s+(no one|nobody)\\b")
             .replace(restored, "$1, $2")
+        restored = Regex("(?i)\\ba\\s+(?=[aeiou][a-z'-]*\\b)").replace(restored, "an ")
+        restored = Regex("(?i)\\bwit\\s+(?=correct|proper|careful|adequate|enough\\b)")
+            .replace(restored) { match ->
+                if (match.value.first().isUpperCase()) "With " else "with "
+            }
         return restored
     }
 

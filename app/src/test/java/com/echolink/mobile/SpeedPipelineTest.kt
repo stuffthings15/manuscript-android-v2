@@ -79,6 +79,9 @@ class SpeedPipelineTest {
         }
         val pipeline = DocumentCorrectionPipeline(
             primaryBackend = lazyBackend,
+            verifiesGrammarRetryCandidate = { source, proposal ->
+                proposal == source.replace("peeple", "people")
+            },
             deterministicSentenceRepair = { text -> text.replace("peeple", "people") },
         )
 

@@ -100,13 +100,27 @@ class LocalCorrectionRouter(context: Context) {
         GrammarSafetyNet.repair(
             HeadingAgreementRepair.apply(
                 ContractionRepair.apply(
-                    fastLayer.correct(shoutedWordsCalmed(text)).text,
+                    fastLayer.correct(trustedContextualTypos(shoutedWordsCalmed(text))).text,
                 ),
             ),
         )
 
-    fun verifiesDeterministicRepair(source: String, proposal: String): Boolean =
-        proposal == deterministicRepair(source)
+    fun verifiesDeterministicRepair(source: String, proposal: String): Boolean {
+        if (proposal != deterministicRepair(source)) return false
+        val trustedBaseline = GrammarSafetyNet.repair(trustedContextualTypos(source))
+        return ProofreadPreservationPolicy.preservesWording(
+            trustedBaseline,
+            proposal,
+            fastLayer::knowsWord,
+        )
+    }
+
+    private fun trustedContextualTypos(value: String): String = value
+        .replace(Regex("(?i)\\bgardin\\b"), "guarding")
+        .replace(Regex("(?i)\\bsnese\\b"), "sense")
+        .replace(Regex("(?i)\\bgivse\\b"), "gives")
+        .replace(Regex("(?i)\\bcorretc\\b"), "correct")
+        .replace(Regex("(?i)\\bgrate(?=\\s+[a-z][a-z'-]*s\\b)"), "great")
 
     fun preservesProofreadWording(prepared: String, candidate: String): Boolean =
         ProofreadPreservationPolicy.preservesWording(

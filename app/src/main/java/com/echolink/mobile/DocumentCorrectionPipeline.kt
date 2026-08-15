@@ -1005,7 +1005,10 @@ class DocumentCorrectionPipeline(
                         deterministicRepair = { sentence ->
                             val restored = restoreFragment(protected, sentence)
                             val proposed = deterministicSentenceRepair(restored)
-                            encodeFragment(protected, sentence, proposed)
+                            val verified = proposed.takeIf {
+                                verifiesGrammarRetryCandidate(restored, it)
+                            } ?: restored
+                            encodeFragment(protected, sentence, verified)
                         },
                     )
                         ?.also { outcomePath = "sentence-salvage" }
@@ -1453,31 +1456,33 @@ class DocumentCorrectionPipeline(
         val raw = runCatching { deterministicSentenceRepair(tidied) }
             .getOrNull()
             ?: tidied
-        val proposal = raw.takeIf { it.isNotBlank() && it != candidate }
-        if (proposal == null) {
+        val proposal = raw.takeIf {
+            it.isNotBlank() &&
+                it != candidate &&
+                verifiesGrammarRetryCandidate(tidied, it)
+        }
+        if (proposal == null && raw == candidate) {
             logParagraphOutcome("sweep=nochange;len=${candidate.length}")
             return candidate
         }
-        val validation = AiSafetyValidator.validate(
-            original = original,
-            candidate = proposal,
-            toneTransformation = false,
-            requiresVisibleChange = false,
-        )
-        // Modality counts are expected to move here and must not veto the
-        // sweep. The repair only rewrites misspelled words, so restoring
-        // "neesd" to "need" makes an obligation word appear where the
-        // validator previously saw gibberish; rejecting on that handed the
-        // user back the raw misspellings. Numbers, protected spans, entities
-        // and content removal stay strict.
-        val blocking = validation.hardFailures - SPELLING_NEUTRAL_FAILURES
-        logParagraphOutcome(
-            "sweep=${if (blocking.isEmpty()) "applied" else "rejected"};" +
-                "len=${candidate.length}->${proposal.length};" +
-                "failures=" + validation.hardFailures.joinToString("+") { it.name }
-                    .ifEmpty { "none" },
-        )
-        if (blocking.isEmpty()) return proposal
+        if (proposal != null) {
+            val validation = AiSafetyValidator.validate(
+                original = original,
+                candidate = proposal,
+                toneTransformation = false,
+                requiresVisibleChange = false,
+            )
+            val blocking = validation.hardFailures - SPELLING_NEUTRAL_FAILURES
+            logParagraphOutcome(
+                "sweep=${if (blocking.isEmpty()) "applied" else "rejected"};" +
+                    "len=${candidate.length}->${proposal.length};" +
+                    "failures=" + validation.hardFailures.joinToString("+") { it.name }
+                        .ifEmpty { "none" },
+            )
+            if (blocking.isEmpty()) return proposal
+        } else {
+            logParagraphOutcome("sweep=rejected;reason=unverified-deterministic-repair")
+        }
 
         // A single aggressive or unsafe sentence must not cancel harmless
         // spelling and punctuation repairs elsewhere in the paragraph. Each
@@ -1488,6 +1493,7 @@ class DocumentCorrectionPipeline(
             val sentence = match.value
             val repaired = runCatching { deterministicSentenceRepair(sentence) }
                 .getOrNull()
+                ?.takeIf { verifiesGrammarRetryCandidate(sentence, it) }
                 ?.takeIf { it.isNotBlank() && it != sentence }
                 ?: return@replace sentence
             val sentenceValidation = AiSafetyValidator.validate(

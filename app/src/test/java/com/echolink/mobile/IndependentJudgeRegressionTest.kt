@@ -473,6 +473,12 @@ class IndependentJudgeRegressionTest {
 
     @Test
     fun grammarSafetyNetRepairsGenericAgreementCoordinationAndSpacing() {
+        assertEquals("There are emotional benefits.", GrammarSafetyNet.repair("There is emotional benefits."))
+        assertEquals("Rose has her notes.", GrammarSafetyNet.repair("Rose have her notes."))
+        assertEquals("Read an essay.", GrammarSafetyNet.repair("Read a essay."))
+        assertEquals("Pay attention to.", GrammarSafetyNet.repair("Pay attention too."))
+        assertEquals("Plan carefully but act.", GrammarSafetyNet.repair("Plan carefully and but act."))
+        assertEquals("With correct preparation.", GrammarSafetyNet.repair("Wit correct preparation."))
         assertEquals(
             "There are several benefits to the change.",
             GrammarSafetyNet.repair("There is several benefits to the change."),
