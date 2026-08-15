@@ -51,10 +51,15 @@ consent to download pinned AI weights; writing inference stays on the device.
 
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Android\openjdk\jdk-21.0.8'
+$env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
 .\gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
 Output: `app/build/outputs/apk/debug/app-debug.apk`
+
+The tree carries no `local.properties`, so without `ANDROID_HOME` the build
+stops at "SDK location not found". Setting it per shell as above leaves the
+tree clean; writing a `local.properties` with `sdk.dir` works too.
 
 Gradle itself can start on JDK 17 or newer. The JDK that compiles and runs the
 app module is not that one: `app/build.gradle` pins a Java 21 toolchain, because
