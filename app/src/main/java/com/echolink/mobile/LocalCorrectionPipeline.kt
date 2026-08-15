@@ -532,8 +532,10 @@ class SymSpellCorrector(context: Context) {
         /** Common informal and phonetic forms that large web dictionaries list as words. */
         private val NONSTANDARD_CORRECTIONS = mapOf(
             "wen" to "when",
-            "bout" to "about",
-            "cud" to "could",
+            // "bout" and "cud" are gone from here on purpose. Both are real
+            // words - a bout of flu, a cow chewing its cud - and this map is
+            // applied one token at a time, so it cannot tell which is meant.
+            // They live in GrammarSafetyNet now, where there is context.
             "sorta" to "sort of",
             "becuz" to "because",
             "probly" to "probably",

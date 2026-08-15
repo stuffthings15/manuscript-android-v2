@@ -1033,6 +1033,22 @@ object GrammarSafetyNet {
         ).replace(result) { match ->
             if (match.value.first().isUpperCase()) "People" else "people"
         }
+        // A bout is a real thing - a boxing bout, a bout of flu - so what the
+        // writer meant is decided by what comes before it. The noun wants a
+        // determiner in front of it, and "learned much bout it" or "a reason
+        // to care bout something" have none. Ported from the archive tree,
+        // where this survived every check seventeen times across the corpus
+        // before anyone noticed it.
+        result = Regex(
+            "(?i)(?<!\\b(?:a|an|the|this|that|one|another|each|every|first|" +
+                "last|next|title|championship|boxing|wrestling|drinking|" +
+                "coughing|sneezing|second|third|final)\\s)\\bbout\\b(?=\\s+\\p{L})",
+        ).replace(result, "about")
+        // Cud is what a cow chews, so a determiner in front means the writer
+        // meant the noun. Anything else followed by a word is "could".
+        result = Regex(
+            "(?i)(?<!\\b(?:the|its|his|her|their|a)\\s)\\bcud\\b(?=\\s+\\p{L})",
+        ).replace(result, "could")
         result = Regex("(?i)\\bpay\\s+attention\\s+too(?=\\s*[.,!?;:]|$)")
             .replace(result, "pay attention to")
         result = Regex(
