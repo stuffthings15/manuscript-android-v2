@@ -555,7 +555,6 @@ class SymSpellCorrector(context: Context) {
             "exagerating" to "exaggerating",
             "wakees" to "wakes",
             "makees" to "makes",
-            "peoples" to "people",
             "dsty" to "dusty",
             "looing" to "looking",
             "fud" to "food",

@@ -1020,6 +1020,19 @@ object GrammarSafetyNet {
         val immutable = DeterministicCleanup.protect(value)
         var result = immutable.text
         result = Regex("(?i)\\band\\s+but\\b").replace(result, "but")
+        // "peoples" is a real word for nations, which is why an unconditional
+        // entry in the speller's word map was wrong: it rewrote "indigenous
+        // peoples" every time it appeared. It lived in NONSTANDARD_CORRECTIONS,
+        // which is applied one token at a time and so cannot see the word in
+        // front of it. Here there is context, so the words that make the real
+        // sense are excluded and everything else is still repaired.
+        result = Regex(
+            "(?i)(?<!\\b(?:indigenous|native|tribal|many|various|different|" +
+                "all|the|two|three|several|world's|ancient|coastal|nomadic)\\s)" +
+                "\\bpeoples\\b",
+        ).replace(result) { match ->
+            if (match.value.first().isUpperCase()) "People" else "people"
+        }
         result = Regex("(?i)\\bpay\\s+attention\\s+too(?=\\s*[.,!?;:]|$)")
             .replace(result, "pay attention to")
         result = Regex(
