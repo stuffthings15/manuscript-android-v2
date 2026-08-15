@@ -30,6 +30,11 @@ param(
     # is always honest; pass a shorthand like s20 to match the ledger's naming.
     [string]$EvidenceName,
 
+    # Run a corpus that is not the hash-pinned animal-pet twenty. Its essays get
+    # pushed and pulled the same way, but there are no per-error keys for them,
+    # so score_all.py is skipped and a reader judges the shipped text.
+    [string]$CorpusDirectory,
+
     # -Backend legacy runs the same essays on the llama.cpp runtime.
     [string]$Backend,
 
@@ -96,16 +101,45 @@ function Invoke-RunAs {
         -AllowFailure:$AllowFailure
 }
 
-# The corpus is hash-pinned. Reuse the campaign module rather than writing a
-# second hash check that can drift from the first.
-Import-Module (Join-Path $PSScriptRoot 'EssayQualityCampaign.psm1') -Force
-$corpus = Get-ManuscriptEssayCorpus -ProjectRoot $projectRoot
-Write-Host "Corpus verified: $($corpus.Essays.Count) essays, $($corpus.SectionCount) sections."
+if ([string]::IsNullOrWhiteSpace($CorpusDirectory)) {
+    # The pinned corpus is hash-checked. Reuse the campaign module rather than
+    # writing a second hash check that can drift from the first.
+    Import-Module (Join-Path $PSScriptRoot 'EssayQualityCampaign.psm1') -Force
+    $corpus = Get-ManuscriptEssayCorpus -ProjectRoot $projectRoot
+    $essays = @($corpus.Essays | ForEach-Object {
+        [pscustomobject]@{ Id = $_.Id; Path = $_.FixturePath; Sections = $_.Sections.Count }
+    })
+    $scoreAgainstKeys = $true
+    Write-Host "Corpus verified: $($essays.Count) essays, $($corpus.SectionCount) sections."
+} else {
+    # A second corpus that is not pinned in the tree. There are no per-error
+    # keys for it, so score_all.py is skipped and the judging is done by
+    # reading the shipped text. The damage scan still runs, because a word the
+    # app invented is a defect in any document.
+    $corpusRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($CorpusDirectory)
+    if (-not (Test-Path -LiteralPath $corpusRoot -PathType Container)) {
+        throw "No corpus directory at $corpusRoot"
+    }
+    $essays = @(Get-ChildItem -LiteralPath $corpusRoot -Filter '*.txt' | Sort-Object Name | ForEach-Object {
+        $text = [System.IO.File]::ReadAllText($_.FullName)
+        $blocks = @($text -split '(?:\r?\n){2,}' | Where-Object { $_.Trim() })
+        [pscustomobject]@{
+            Id = [System.IO.Path]::GetFileNameWithoutExtension($_.Name)
+            Path = $_.FullName
+            Sections = $blocks.Count
+        }
+    })
+    if ($essays.Count -eq 0) { throw "No .txt essays in $corpusRoot" }
+    $scoreAgainstKeys = $false
+    $env:MANUSCRIPT_CORPUS_SRC = $corpusRoot
+    $sectionTotal = ($essays | Measure-Object -Property Sections -Sum).Sum
+    Write-Host "Corpus (unpinned): $($essays.Count) essays, $sectionTotal sections, from $corpusRoot"
+}
 
 $selected = if ([string]::IsNullOrWhiteSpace($Essay)) {
-    @($corpus.Essays)
+    @($essays)
 } else {
-    $matching = @($corpus.Essays | Where-Object { $_.Id.StartsWith($Essay) })
+    $matching = @($essays | Where-Object { $_.Id.StartsWith($Essay) })
     if ($matching.Count -ne 1) { throw "Essay filter '$Essay' matched $($matching.Count) essays." }
     $matching
 }
@@ -131,19 +165,24 @@ $apkSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $targetApk).Hash.ToLow
 # scoped storage can hide shell-created external fixtures from the target app
 # even when adb can list them. The app's uid cannot traverse /data/local/tmp, so
 # the copy is piped on the device: the shell user reads, run-as writes.
+Invoke-Adb -Arguments @('-s', $Serial, 'shell', "rm -rf $stagingDirectory") -AllowFailure | Out-Null
 Invoke-Adb -Arguments @('-s', $Serial, 'shell', "mkdir -p $stagingDirectory") | Out-Null
+# Clear the inbox first. Two corpora share the same two-digit prefixes, so a
+# leftover 01_Dogs_in_Bakersfield beside a new 01_urban_beekeeping makes the
+# test's -e essay 01 filter match both and run whichever sorts first.
+Invoke-RunAs -Command 'rm -rf files/essays' -AllowFailure | Out-Null
 Invoke-RunAs -Command 'mkdir -p files/essays' | Out-Null
-foreach ($record in $corpus.Essays) {
-    $name = [System.IO.Path]::GetFileName($record.FixturePath)
-    Invoke-Adb -Arguments @('-s', $Serial, 'push', $record.FixturePath, "$stagingDirectory/$name") | Out-Null
+foreach ($record in $essays) {
+    $name = [System.IO.Path]::GetFileName($record.Path)
+    Invoke-Adb -Arguments @('-s', $Serial, 'push', $record.Path, "$stagingDirectory/$name") | Out-Null
     Invoke-Adb -Arguments @(
         '-s', $Serial, 'shell',
         "cat $stagingDirectory/$name | run-as $package sh -c 'cat > files/essays/$name'"
     ) | Out-Null
 }
 $pushed = @((Invoke-RunAs -Command 'ls files/essays').Text -split "`n" | Where-Object { $_.Trim() })
-if ($pushed.Count -ne $corpus.Essays.Count) {
-    throw "Pushed $($pushed.Count) essays but the corpus has $($corpus.Essays.Count)."
+if ($pushed.Count -ne $essays.Count) {
+    throw "Pushed $($pushed.Count) essays but the corpus has $($essays.Count)."
 }
 
 New-Item -ItemType Directory -Force -Path $outDirectory | Out-Null
@@ -222,8 +261,12 @@ foreach ($record in $selected) {
     )
 
     & python (Join-Path $corpusTools 'scan.py') $outputName
-    & python (Join-Path $corpusTools 'score_all.py') $number
-    if ($LASTEXITCODE -ne 0) { $failures += "essay ${number}: below the 97% floor" }
+    if ($scoreAgainstKeys) {
+        & python (Join-Path $corpusTools 'score_all.py') $number
+        if ($LASTEXITCODE -ne 0) { $failures += "essay ${number}: below the 97% floor" }
+    } else {
+        Write-Host "  shipped text pulled to $localOutput - no per-error keys, judge by reading it"
+    }
 
     # A kept-original section is a section the app gave up on. The run summary
     # still reports untouched=0 for it, so it has to be called out here or it

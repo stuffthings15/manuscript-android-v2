@@ -28,10 +28,17 @@ object EssayQualityEvidenceBuilder {
         val sourceSections = sections(source)
         val outputSections = sections(output)
         val reportFailures = mutableListOf<String>()
-        if (sourceSections.size != 10) reportFailures += "source_section_count"
-        if (outputSections.size != 10) reportFailures += "output_section_count"
+        // The document decides how many sections it has. This used to require
+        // exactly ten, which was the shape of the animal-pet corpus rather than
+        // anything the product guarantees, so every essay in a corpus of
+        // thirteen to nineteen sections failed on section count alone and the
+        // real result was never reached. What must hold is that the output
+        // kept the writer's sections and that every one of them was accepted.
+        val expectedSections = sourceSections.size
+        if (expectedSections == 0) reportFailures += "source_section_count"
+        if (outputSections.size != expectedSections) reportFailures += "output_section_count"
         if ('\u2014' in output) reportFailures += "em_dash"
-        if (acceptedSections != 10) reportFailures += "accepted_section_count"
+        if (acceptedSections != expectedSections) reportFailures += "accepted_section_count"
 
         val sectionReports = JSONArray()
         for (offset in 0 until maxOf(sourceSections.size, outputSections.size)) {

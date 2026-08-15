@@ -24,8 +24,12 @@ WORK = os.path.join(BASE, "work")
 OUTPUTS = os.environ.get("MANUSCRIPT_CORPUS_OUT") or os.path.join(WORK, "out")
 SUBS = os.path.join(WORK, "subs")
 # The fixtures are the writer's text, hash-pinned by
-# quality/animal-pet-essays/fixture-manifest.json.
-SOURCES = os.path.join(BASE, "..", "..", "quality", "animal-pet-essays", "fixtures")
+# quality/animal-pet-essays/fixture-manifest.json. A second corpus that is not
+# pinned in the tree passes its own directory instead, because the damage scan
+# is worth having for any document, not only the pinned twenty.
+SOURCES = os.environ.get("MANUSCRIPT_CORPUS_SRC") or os.path.join(
+    BASE, "..", "..", "quality", "animal-pet-essays", "fixtures"
+)
 DICT = os.path.join(
     BASE, "..", "..", "app", "src", "main", "assets",
     "symspell", "frequency_dictionary_en.txt",
