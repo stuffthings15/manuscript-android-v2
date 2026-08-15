@@ -50,11 +50,16 @@ consent to download pinned AI weights; writing inference stays on the device.
 ## Debug build
 
 ```powershell
-$env:JAVA_HOME='C:\Users\stuff\.gradle\jdks\eclipse_adoptium-17-amd64-windows.2'
+$env:JAVA_HOME='C:\Program Files\Android\openjdk\jdk-21.0.8'
 .\gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
 Output: `app/build/outputs/apk/debug/app-debug.apk`
+
+Build with JDK 21. The app module targets Java 17 bytecode and pins no Gradle
+toolchain, so under JDK 17 the unit tests resolve `List.removeFirst()` to the
+Java 21 `SequencedCollection` method that the runtime does not have, and
+`TrackedDelayedWorkTest` fails with `NoSuchMethodError`.
 
 ## Safe Galaxy S23 Plus update
 
