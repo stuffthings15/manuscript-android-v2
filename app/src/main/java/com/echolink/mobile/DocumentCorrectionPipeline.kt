@@ -1452,7 +1452,10 @@ class DocumentCorrectionPipeline(
         // never reached the text the user actually keeps: doubled commas
         // ("need,,") survived all the way onto the screen. Apply it per
         // paragraph as well; it is meaning-neutral by construction.
-        val tidied = MeaningNeutralCleanup.apply(candidate).text
+        val tidied = WrittenNumeralRestore.apply(
+            original,
+            MeaningNeutralCleanup.apply(candidate).text,
+        )
         val raw = runCatching { deterministicSentenceRepair(tidied) }
             .getOrNull()
             ?: tidied
