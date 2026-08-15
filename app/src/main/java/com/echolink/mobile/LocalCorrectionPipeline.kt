@@ -255,18 +255,55 @@ class FastCorrectionLayer(context: Context) {
         return value
     }
 
-    // A word repeated across a punctuation boundary ("renting one room.
-    // Room, and why") is still a repeat. Stitching a long run-on back
-    // together from repaired clauses can leave exactly this.
-    private val repeatAcrossPunctuation = Regex(
-        "(?i)\\b([A-Za-z][A-Za-z'-]{2,})([.,;:])[ \\t]+\\1\\b([,;:])?",
+    private fun removeRepeatedWords(source: String): String =
+        RepeatedWordRepair.apply(source)
+}
+
+/**
+ * Collapses a word the writer typed twice, and only then.
+ *
+ * Lifted out of [FastCorrectionLayer] so it can be tested without a Context,
+ * which is how the defect below went unseen: the rule ran only inside the
+ * review sweep, on restored text, where no test and no name guard could reach
+ * it.
+ *
+ * It deleted a pet's name. The writer wrote "or Kevin. Kevin is actually
+ * pretty good dinosaur name", the rule saw "Kevin. Kevin" and struck the
+ * second one out, and the capitalisation pass tidied up after it, so the essay
+ * shipped "or Kevin. Is actually a pretty good dinosaur name". Every name
+ * guard was blind: they judge the model's edits, and this is not a model edit.
+ *
+ * Found and fixed in the archive tree first, then ported here on 2026-08-15
+ * because this tree carried the same regex character for character.
+ */
+object RepeatedWordRepair {
+    /** "beyond the city, city, and why" - a stutter across a comma. */
+    private val acrossPunctuation = Regex(
+        "(?i)\\b([A-Za-z][A-Za-z'-]{2,})([,;:])[ \\t]+\\1\\b([,;:])?",
     )
 
-    private fun removeRepeatedWords(source: String): String =
+    /**
+     * The same across a full stop, which needs more evidence than a comma
+     * does, because a word that ends one sentence and opens the next is
+     * usually a name rather than a stutter.
+     *
+     * The case this was built for is a run-on stitched back together:
+     * "renting one room. Room, and why", where the second copy is itself
+     * followed by punctuation. Requiring that keeps the repair and leaves a
+     * sentence that simply begins with somebody's name.
+     */
+    private val acrossSentence = Regex(
+        "(?i)\\b([A-Za-z][A-Za-z'-]{2,})(\\.)[ \\t]+\\1\\b(?=[,;:])",
+    )
+
+    private val adjacent = Regex("(?i)\\b([A-Za-z][A-Za-z'-]*)\\b(?:[,;]?[ \\t]+\\1\\b)+")
+
+    fun apply(source: String): String =
         // A comma between the repeats still makes it a repeat:
         // "beyond the city, city, and why" came through untouched.
-        Regex("(?i)\\b([A-Za-z][A-Za-z'-]*)\\b(?:[,;]?[ \\t]+\\1\\b)+").replace(source, "$1")
-            .let { repeatAcrossPunctuation.replace(it, "$1$2") }
+        adjacent.replace(source, "$1")
+            .let { acrossPunctuation.replace(it, "$1$2") }
+            .let { acrossSentence.replace(it, "$1$2") }
 }
 
 object SymSpellWordPolicy {
