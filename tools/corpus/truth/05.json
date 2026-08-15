@@ -1,0 +1,425 @@
+{
+  "essay": "05_Parrots_in_Cairns_Australia.docx",
+  "pairs": [
+    {
+      "wrong": "Pett",
+      "right": "Pet",
+      "count": 7
+    },
+    {
+      "wrong": "wen",
+      "right": "When",
+      "count": 4
+    },
+    {
+      "wrong": "someboy",
+      "right": "somebody",
+      "count": 1
+    },
+    {
+      "wrong": "animul",
+      "right": "animal",
+      "count": 5
+    },
+    {
+      "wrong": "thaey",
+      "right": "they",
+      "count": 6
+    },
+    {
+      "wrong": "uusally",
+      "right": "usually",
+      "count": 1
+    },
+    {
+      "wrong": "befor",
+      "right": "before",
+      "count": 3
+    },
+    {
+      "wrong": "lernt",
+      "right": "learned",
+      "count": 1
+    },
+    {
+      "wrong": "especialy",
+      "right": "especially",
+      "count": 1
+    },
+    {
+      "wrong": "esay",
+      "right": "essay",
+      "count": 1
+    },
+    {
+      "wrong": "bout",
+      "right": "about",
+      "count": 2
+    },
+    {
+      "wrong": "haing",
+      "right": "having",
+      "count": 1
+    },
+    {
+      "wrong": "companioon",
+      "right": "companion",
+      "count": 1
+    },
+    {
+      "wrong": "afer",
+      "right": "after",
+      "count": 3
+    },
+    {
+      "wrong": "cud",
+      "right": "could",
+      "count": 4
+    },
+    {
+      "wrong": "hoem",
+      "right": "home",
+      "count": 1
+    },
+    {
+      "wrong": "habbits",
+      "right": "habits",
+      "count": 1
+    },
+    {
+      "wrong": "petts",
+      "right": "pets",
+      "count": 3
+    },
+    {
+      "wrong": "diffrent",
+      "right": "different",
+      "count": 1
+    },
+    {
+      "wrong": "pakcage",
+      "right": "package",
+      "count": 1
+    },
+    {
+      "wrong": "thier",
+      "right": "There",
+      "count": 2
+    },
+    {
+      "wrong": "emtoional",
+      "right": "emotional",
+      "count": 1
+    },
+    {
+      "wrong": "beenefits",
+      "right": "benefits",
+      "count": 1
+    },
+    {
+      "wrong": "oner",
+      "right": "owner",
+      "count": 3
+    },
+    {
+      "wrong": "skool",
+      "right": "school",
+      "count": 1
+    },
+    {
+      "wrong": "FIXIG",
+      "right": "fixing",
+      "count": 1
+    },
+    {
+      "wrong": "brroken",
+      "right": "broken",
+      "count": 1
+    },
+    {
+      "wrong": "somthing",
+      "right": "something",
+      "count": 3
+    },
+    {
+      "wrong": "woud",
+      "right": "would",
+      "count": 1
+    },
+    {
+      "wrong": "animuls",
+      "right": "animals",
+      "count": 1
+    },
+    {
+      "wrong": "becuz",
+      "right": "because",
+      "count": 3
+    },
+    {
+      "wrong": "cair",
+      "right": "care",
+      "count": 2
+    },
+    {
+      "wrong": "sumtimes",
+      "right": "sometimes",
+      "count": 2
+    },
+    {
+      "wrong": "positvie",
+      "right": "positive",
+      "count": 1
+    },
+    {
+      "wrong": "becase",
+      "right": "because",
+      "count": 1
+    },
+    {
+      "wrong": "annoynig",
+      "right": "annoying",
+      "count": 1
+    },
+    {
+      "wrong": "autmoatic",
+      "right": "automatic",
+      "count": 1
+    },
+    {
+      "wrong": "everyting",
+      "right": "everything",
+      "count": 1
+    },
+    {
+      "wrong": "wrrite",
+      "right": "write",
+      "count": 1
+    },
+    {
+      "wrong": "famly",
+      "right": "family",
+      "count": 1
+    },
+    {
+      "wrong": "anoother",
+      "right": "another",
+      "count": 1
+    },
+    {
+      "wrong": "shoud",
+      "right": "should",
+      "count": 3
+    },
+    {
+      "wrong": "probly",
+      "right": "probably",
+      "count": 2
+    },
+    {
+      "wrong": "responsiblity",
+      "right": "responsibility",
+      "count": 1
+    },
+    {
+      "wrong": "lcoal",
+      "right": "local",
+      "count": 1
+    },
+    {
+      "wrong": "avalible",
+      "right": "available",
+      "count": 1
+    },
+    {
+      "wrong": "oners",
+      "right": "owners",
+      "count": 1
+    },
+    {
+      "wrong": "anohter",
+      "right": "another",
+      "count": 1
+    },
+    {
+      "wrong": "truswtorthy",
+      "right": "trustworthy",
+      "count": 1
+    },
+    {
+      "wrong": "mstly",
+      "right": "mostly",
+      "count": 1
+    },
+    {
+      "wrong": "bcause",
+      "right": "because",
+      "count": 1
+    },
+    {
+      "wrong": "distructive",
+      "right": "destructive",
+      "count": 1
+    },
+    {
+      "wrong": "blamees",
+      "right": "blames",
+      "count": 1
+    },
+    {
+      "wrong": "Viitors",
+      "right": "Visitors",
+      "count": 1
+    },
+    {
+      "wrong": "aother",
+      "right": "another",
+      "count": 1
+    },
+    {
+      "wrong": "frist",
+      "right": "first",
+      "count": 1
+    },
+    {
+      "wrong": "seing",
+      "right": "seeing",
+      "count": 1
+    },
+    {
+      "wrong": "safey",
+      "right": "safely",
+      "count": 1
+    },
+    {
+      "wrong": "lessoon",
+      "right": "lesson",
+      "count": 1
+    },
+    {
+      "wrong": "witch",
+      "right": "which",
+      "count": 2
+    },
+    {
+      "wrong": "importent",
+      "right": "important",
+      "count": 2
+    },
+    {
+      "wrong": "evey",
+      "right": "every",
+      "count": 1
+    },
+    {
+      "wrong": "sttill",
+      "right": "still",
+      "count": 1
+    },
+    {
+      "wrong": "fud",
+      "right": "food",
+      "count": 1
+    },
+    {
+      "wrong": "habbitat",
+      "right": "habitat",
+      "count": 1
+    },
+    {
+      "wrong": "helo",
+      "right": "hello",
+      "count": 1
+    },
+    {
+      "wrong": "FOGRETS",
+      "right": "forgets",
+      "count": 1
+    },
+    {
+      "wrong": "tehre",
+      "right": "there",
+      "count": 1
+    },
+    {
+      "wrong": "morniing",
+      "right": "morning",
+      "count": 1
+    },
+    {
+      "wrong": "reaon",
+      "right": "reason",
+      "count": 1
+    },
+    {
+      "wrong": "intresting",
+      "right": "interesting",
+      "count": 1
+    },
+    {
+      "wrong": "daiily",
+      "right": "daily",
+      "count": 1
+    },
+    {
+      "wrong": "investigtae",
+      "right": "investigate",
+      "count": 1
+    },
+    {
+      "wrong": "gvies",
+      "right": "gives",
+      "count": 1
+    },
+    {
+      "wrong": "atenshun",
+      "right": "attention",
+      "count": 1
+    },
+    {
+      "wrong": "nattural",
+      "right": "natural",
+      "count": 1
+    },
+    {
+      "wrong": "entertainmetn",
+      "right": "entertainment",
+      "count": 1
+    },
+    {
+      "wrong": "edjucashunal",
+      "right": "educational",
+      "count": 1
+    },
+    {
+      "wrong": "starst",
+      "right": "starts",
+      "count": 1
+    },
+    {
+      "wrong": "wrng",
+      "right": "wrong",
+      "count": 1
+    },
+    {
+      "wrong": "entertanment",
+      "right": "entertainment",
+      "count": 1
+    },
+    {
+      "wrong": "thinggs",
+      "right": "things",
+      "count": 1
+    },
+    {
+      "wrong": "preparattion",
+      "right": "preparation",
+      "count": 1
+    },
+    {
+      "wrong": "EXXCEPT",
+      "right": "except",
+      "count": 1
+    }
+  ]
+}

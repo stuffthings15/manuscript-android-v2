@@ -1,0 +1,385 @@
+{
+  "essay": "04_Guinea_Pigs_in_Cusco_Peru.docx",
+  "pairs": [
+    {
+      "wrong": "prctice",
+      "right": "Practice",
+      "count": 1
+    },
+    {
+      "wrong": "peeple",
+      "right": "People",
+      "count": 2
+    },
+    {
+      "wrong": "diffrent",
+      "right": "different",
+      "count": 5
+    },
+    {
+      "wrong": "especialy",
+      "right": "especially",
+      "count": 1
+    },
+    {
+      "wrong": "bout",
+      "right": "about",
+      "count": 2
+    },
+    {
+      "wrong": "learnning",
+      "right": "learning",
+      "count": 1
+    },
+    {
+      "wrong": "responsiblity",
+      "right": "responsibility",
+      "count": 2
+    },
+    {
+      "wrong": "hoem",
+      "right": "home",
+      "count": 4
+    },
+    {
+      "wrong": "cud",
+      "right": "could",
+      "count": 2
+    },
+    {
+      "wrong": "thaey",
+      "right": "they",
+      "count": 5
+    },
+    {
+      "wrong": "animul",
+      "right": "animal",
+      "count": 4
+    },
+    {
+      "wrong": "oner",
+      "right": "owner",
+      "count": 6
+    },
+    {
+      "wrong": "sole",
+      "right": "solve",
+      "count": 1
+    },
+    {
+      "wrong": "probllem",
+      "right": "problem",
+      "count": 1
+    },
+    {
+      "wrong": "payying",
+      "right": "paying",
+      "count": 1
+    },
+    {
+      "wrong": "pett",
+      "right": "does",
+      "count": 1
+    },
+    {
+      "wrong": "dont",
+      "right": "not",
+      "count": 1
+    },
+    {
+      "wrong": "syaing",
+      "right": "saying",
+      "count": 1
+    },
+    {
+      "wrong": "ealier",
+      "right": "earlier",
+      "count": 1
+    },
+    {
+      "wrong": "enviroment",
+      "right": "environment",
+      "count": 1
+    },
+    {
+      "wrong": "fud",
+      "right": "food",
+      "count": 2
+    },
+    {
+      "wrong": "sipmle",
+      "right": "simple",
+      "count": 1
+    },
+    {
+      "wrong": "pett",
+      "right": "pet",
+      "count": 1
+    },
+    {
+      "wrong": "woulld",
+      "right": "would",
+      "count": 1
+    },
+    {
+      "wrong": "animuls",
+      "right": "animals",
+      "count": 1
+    },
+    {
+      "wrong": "becaue",
+      "right": "because",
+      "count": 1
+    },
+    {
+      "wrong": "cair",
+      "right": "care",
+      "count": 4
+    },
+    {
+      "wrong": "sumtimes",
+      "right": "sometimes",
+      "count": 2
+    },
+    {
+      "wrong": "becuz",
+      "right": "because",
+      "count": 5
+    },
+    {
+      "wrong": "cuntry",
+      "right": "country",
+      "count": 2
+    },
+    {
+      "wrong": "perrson",
+      "right": "person",
+      "count": 2
+    },
+    {
+      "wrong": "leran",
+      "right": "learn",
+      "count": 1
+    },
+    {
+      "wrong": "nottice",
+      "right": "notice",
+      "count": 1
+    },
+    {
+      "wrong": "wen",
+      "right": "when",
+      "count": 3
+    },
+    {
+      "wrong": "aboove",
+      "right": "above",
+      "count": 1
+    },
+    {
+      "wrong": "insteead",
+      "right": "instead",
+      "count": 1
+    },
+    {
+      "wrong": "thier",
+      "right": "there",
+      "count": 2
+    },
+    {
+      "wrong": "intresting",
+      "right": "interesting",
+      "count": 1
+    },
+    {
+      "wrong": "Csco",
+      "right": "Cusco",
+      "count": 1
+    },
+    {
+      "wrong": "eveent",
+      "right": "event",
+      "count": 1
+    },
+    {
+      "wrong": "edjucashunal",
+      "right": "educational",
+      "count": 1
+    },
+    {
+      "wrong": "ownre",
+      "right": "owner",
+      "count": 1
+    },
+    {
+      "wrong": "woud",
+      "right": "would",
+      "count": 1
+    },
+    {
+      "wrong": "befor",
+      "right": "before",
+      "count": 1
+    },
+    {
+      "wrong": "probly",
+      "right": "probably",
+      "count": 3
+    },
+    {
+      "wrong": "firsst",
+      "right": "first",
+      "count": 1
+    },
+    {
+      "wrong": "beecause",
+      "right": "because",
+      "count": 1
+    },
+    {
+      "wrong": "watter",
+      "right": "water",
+      "count": 1
+    },
+    {
+      "wrong": "were",
+      "right": "where",
+      "count": 1
+    },
+    {
+      "wrong": "chorres",
+      "right": "chores",
+      "count": 1
+    },
+    {
+      "wrong": "afer",
+      "right": "after",
+      "count": 2
+    },
+    {
+      "wrong": "cuold",
+      "right": "could",
+      "count": 1
+    },
+    {
+      "wrong": "famly",
+      "right": "family",
+      "count": 1
+    },
+    {
+      "wrong": "forgettng",
+      "right": "forgetting",
+      "count": 1
+    },
+    {
+      "wrong": "shoud",
+      "right": "should",
+      "count": 3
+    },
+    {
+      "wrong": "aobut",
+      "right": "about",
+      "count": 1
+    },
+    {
+      "wrong": "agin",
+      "right": "again",
+      "count": 1
+    },
+    {
+      "wrong": "stting",
+      "right": "setting",
+      "count": 1
+    },
+    {
+      "wrong": "avalible",
+      "right": "available",
+      "count": 1
+    },
+    {
+      "wrong": "oners",
+      "right": "owners",
+      "count": 1
+    },
+    {
+      "wrong": "exacly",
+      "right": "exactly",
+      "count": 1
+    },
+    {
+      "wrong": "trustwortthy",
+      "right": "trustworthy",
+      "count": 1
+    },
+    {
+      "wrong": "mosstly",
+      "right": "mostly",
+      "count": 1
+    },
+    {
+      "wrong": "petts",
+      "right": "pets",
+      "count": 1
+    },
+    {
+      "wrong": "nicset",
+      "right": "nicest",
+      "count": 1
+    },
+    {
+      "wrong": "coud",
+      "right": "could",
+      "count": 1
+    },
+    {
+      "wrong": "seing",
+      "right": "seeing",
+      "count": 1
+    },
+    {
+      "wrong": "witch",
+      "right": "which",
+      "count": 1
+    },
+    {
+      "wrong": "educatino",
+      "right": "education",
+      "count": 1
+    },
+    {
+      "wrong": "annnoying",
+      "right": "annoying",
+      "count": 1
+    },
+    {
+      "wrong": "rutine",
+      "right": "routine",
+      "count": 1
+    },
+    {
+      "wrong": "requres",
+      "right": "requires",
+      "count": 1
+    },
+    {
+      "wrong": "thinggs",
+      "right": "things",
+      "count": 1
+    },
+    {
+      "wrong": "eevry",
+      "right": "every",
+      "count": 1
+    },
+    {
+      "wrong": "wit",
+      "right": "with",
+      "count": 1
+    },
+    {
+      "wrong": "importent",
+      "right": "important",
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,460 @@
+{
+  "essay": "01_Dogs_in_Bakersfield_USA.docx",
+  "pairs": [
+    {
+      "wrong": "Grate",
+      "right": "Great",
+      "count": 2
+    },
+    {
+      "wrong": "Petts",
+      "right": "Pets",
+      "count": 1
+    },
+    {
+      "wrong": "errro-filled",
+      "right": "Error-Filled",
+      "count": 1
+    },
+    {
+      "wrong": "esay",
+      "right": "Essay",
+      "count": 1
+    },
+    {
+      "wrong": "Wen",
+      "right": "When",
+      "count": 4
+    },
+    {
+      "wrong": "animul",
+      "right": "animal",
+      "count": 4
+    },
+    {
+      "wrong": "pett",
+      "right": "pet",
+      "count": 4
+    },
+    {
+      "wrong": "befor",
+      "right": "before",
+      "count": 2
+    },
+    {
+      "wrong": "lernt",
+      "right": "learned",
+      "count": 1
+    },
+    {
+      "wrong": "especialy",
+      "right": "especially",
+      "count": 1
+    },
+    {
+      "wrong": "bout",
+      "right": "about",
+      "count": 3
+    },
+    {
+      "wrong": "keepin",
+      "right": "keeping",
+      "count": 1
+    },
+    {
+      "wrong": "wallking",
+      "right": "walking",
+      "count": 1
+    },
+    {
+      "wrong": "afer",
+      "right": "after",
+      "count": 1
+    },
+    {
+      "wrong": "gardin",
+      "right": "guarding",
+      "count": 1
+    },
+    {
+      "wrong": "cud",
+      "right": "could",
+      "count": 2
+    },
+    {
+      "wrong": "peeple",
+      "right": "people",
+      "count": 1
+    },
+    {
+      "wrong": "disaagree",
+      "right": "disagree",
+      "count": 1
+    },
+    {
+      "wrong": "resons",
+      "right": "reasons",
+      "count": 1
+    },
+    {
+      "wrong": "neesd",
+      "right": "needs",
+      "count": 1
+    },
+    {
+      "wrong": "personallity",
+      "right": "personality",
+      "count": 1
+    },
+    {
+      "wrong": "fammous",
+      "right": "famous",
+      "count": 1
+    },
+    {
+      "wrong": "diffrent",
+      "right": "different",
+      "count": 3
+    },
+    {
+      "wrong": "looing",
+      "right": "looking",
+      "count": 1
+    },
+    {
+      "wrong": "questons",
+      "right": "questions",
+      "count": 1
+    },
+    {
+      "wrong": "oner",
+      "right": "owner",
+      "count": 6
+    },
+    {
+      "wrong": "lern",
+      "right": "learn",
+      "count": 2
+    },
+    {
+      "wrong": "rutine",
+      "right": "routine",
+      "count": 2
+    },
+    {
+      "wrong": "mistak",
+      "right": "mistake",
+      "count": 1
+    },
+    {
+      "wrong": "prie",
+      "right": "pride",
+      "count": 1
+    },
+    {
+      "wrong": "cair",
+      "right": "care",
+      "count": 4
+    },
+    {
+      "wrong": "resaon",
+      "right": "reason",
+      "count": 1
+    },
+    {
+      "wrong": "notce",
+      "right": "notice",
+      "count": 1
+    },
+    {
+      "wrong": "fmaily",
+      "right": "family",
+      "count": 1
+    },
+    {
+      "wrong": "beisde",
+      "right": "beside",
+      "count": 1
+    },
+    {
+      "wrong": "insstead",
+      "right": "instead",
+      "count": 1
+    },
+    {
+      "wrong": "bing",
+      "right": "being",
+      "count": 1
+    },
+    {
+      "wrong": "wakees",
+      "right": "wakes",
+      "count": 1
+    },
+    {
+      "wrong": "mabye",
+      "right": "maybe",
+      "count": 1
+    },
+    {
+      "wrong": "responsiblity",
+      "right": "responsibility",
+      "count": 1
+    },
+    {
+      "wrong": "thier",
+      "right": "there",
+      "count": 2
+    },
+    {
+      "wrong": "witch",
+      "right": "which",
+      "count": 2
+    },
+    {
+      "wrong": "prolem",
+      "right": "problem",
+      "count": 1
+    },
+    {
+      "wrong": "skool",
+      "right": "school",
+      "count": 1
+    },
+    {
+      "wrong": "persno",
+      "right": "person",
+      "count": 1
+    },
+    {
+      "wrong": "weaaring",
+      "right": "wearing",
+      "count": 1
+    },
+    {
+      "wrong": "enviroment",
+      "right": "environment",
+      "count": 1
+    },
+    {
+      "wrong": "fud",
+      "right": "food",
+      "count": 1
+    },
+    {
+      "wrong": "comferting",
+      "right": "comforting",
+      "count": 1
+    },
+    {
+      "wrong": "huamn",
+      "right": "human",
+      "count": 1
+    },
+    {
+      "wrong": "Sumtimes",
+      "right": "Sometimes",
+      "count": 3
+    },
+    {
+      "wrong": "becuz",
+      "right": "because",
+      "count": 4
+    },
+    {
+      "wrong": "thaey",
+      "right": "they",
+      "count": 4
+    },
+    {
+      "wrong": "becaause",
+      "right": "because",
+      "count": 1
+    },
+    {
+      "wrong": "have",
+      "right": "has",
+      "count": 1
+    },
+    {
+      "wrong": "hoem",
+      "right": "home",
+      "count": 2
+    },
+    {
+      "wrong": "somthing",
+      "right": "something",
+      "count": 1
+    },
+    {
+      "wrong": "givse",
+      "right": "gives",
+      "count": 1
+    },
+    {
+      "wrong": "edjucashunal",
+      "right": "educational",
+      "count": 1
+    },
+    {
+      "wrong": "neveer",
+      "right": "never",
+      "count": 1
+    },
+    {
+      "wrong": "woud",
+      "right": "would",
+      "count": 1
+    },
+    {
+      "wrong": "befoore",
+      "right": "before",
+      "count": 1
+    },
+    {
+      "wrong": "probly",
+      "right": "probably",
+      "count": 1
+    },
+    {
+      "wrong": "makees",
+      "right": "makes",
+      "count": 1
+    },
+    {
+      "wrong": "shoud",
+      "right": "should",
+      "count": 2
+    },
+    {
+      "wrong": "cuntry",
+      "right": "country",
+      "count": 1
+    },
+    {
+      "wrong": "distructive",
+      "right": "destructive",
+      "count": 1
+    },
+    {
+      "wrong": "humanns",
+      "right": "humans",
+      "count": 1
+    },
+    {
+      "wrong": "peopes",
+      "right": "peoples",
+      "count": 1
+    },
+    {
+      "wrong": "watter",
+      "right": "water",
+      "count": 1
+    },
+    {
+      "wrong": "wehre",
+      "right": "where",
+      "count": 1
+    },
+    {
+      "wrong": "LIVS",
+      "right": "lives",
+      "count": 1
+    },
+    {
+      "wrong": "checkinng",
+      "right": "checking",
+      "count": 1
+    },
+    {
+      "wrong": "chroes",
+      "right": "chores",
+      "count": 1
+    },
+    {
+      "wrong": "everyting",
+      "right": "everything",
+      "count": 1
+    },
+    {
+      "wrong": "wriite",
+      "right": "write",
+      "count": 1
+    },
+    {
+      "wrong": "chhart",
+      "right": "chart",
+      "count": 1
+    },
+    {
+      "wrong": "famly",
+      "right": "family",
+      "count": 1
+    },
+    {
+      "wrong": "whicch",
+      "right": "which",
+      "count": 1
+    },
+    {
+      "wrong": "forrgetting",
+      "right": "forgetting",
+      "count": 1
+    },
+    {
+      "wrong": "anther",
+      "right": "another",
+      "count": 1
+    },
+    {
+      "wrong": "thnig",
+      "right": "thing",
+      "count": 1
+    },
+    {
+      "wrong": "respnosibility",
+      "right": "responsibility",
+      "count": 1
+    },
+    {
+      "wrong": "agin",
+      "right": "again",
+      "count": 1
+    },
+    {
+      "wrong": "dsty",
+      "right": "dusty",
+      "count": 1
+    },
+    {
+      "wrong": "reasoon",
+      "right": "reason",
+      "count": 1
+    },
+    {
+      "wrong": "monye",
+      "right": "money",
+      "count": 1
+    },
+    {
+      "wrong": "snese",
+      "right": "sense",
+      "count": 1
+    },
+    {
+      "wrong": "thinggs",
+      "right": "things",
+      "count": 1
+    },
+    {
+      "wrong": "evvery",
+      "right": "every",
+      "count": 1
+    },
+    {
+      "wrong": "importent",
+      "right": "important",
+      "count": 1
+    }
+  ]
+}

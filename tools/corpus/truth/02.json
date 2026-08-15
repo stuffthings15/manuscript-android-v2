@@ -1,0 +1,335 @@
+{
+  "essay": "02_Cats_in_Bath_England.docx",
+  "pairs": [
+    {
+      "wrong": "intentionallly",
+      "right": "Intentionally",
+      "count": 1
+    },
+    {
+      "wrong": "wen",
+      "right": "When",
+      "count": 4
+    },
+    {
+      "wrong": "animul",
+      "right": "animal",
+      "count": 6
+    },
+    {
+      "wrong": "bout",
+      "right": "about",
+      "count": 2
+    },
+    {
+      "wrong": "especialy",
+      "right": "especially",
+      "count": 1
+    },
+    {
+      "wrong": "abut",
+      "right": "about",
+      "count": 1
+    },
+    {
+      "wrong": "coulld",
+      "right": "could",
+      "count": 1
+    },
+    {
+      "wrong": "peeple",
+      "right": "people",
+      "count": 1
+    },
+    {
+      "wrong": "thaey",
+      "right": "they",
+      "count": 6
+    },
+    {
+      "wrong": "personallity",
+      "right": "personality",
+      "count": 1
+    },
+    {
+      "wrong": "petts",
+      "right": "pets",
+      "count": 1
+    },
+    {
+      "wrong": "diffeernt",
+      "right": "different",
+      "count": 1
+    },
+    {
+      "wrong": "qusetions",
+      "right": "questions",
+      "count": 1
+    },
+    {
+      "wrong": "Ansering",
+      "right": "Answering",
+      "count": 1
+    },
+    {
+      "wrong": "oner",
+      "right": "owner",
+      "count": 4
+    },
+    {
+      "wrong": "cair",
+      "right": "care",
+      "count": 4
+    },
+    {
+      "wrong": "rutine",
+      "right": "routine",
+      "count": 2
+    },
+    {
+      "wrong": "witch",
+      "right": "which",
+      "count": 2
+    },
+    {
+      "wrong": "diffrent",
+      "right": "different",
+      "count": 3
+    },
+    {
+      "wrong": "were",
+      "right": "where",
+      "count": 1
+    },
+    {
+      "wrong": "exacly",
+      "right": "exactly",
+      "count": 2
+    },
+    {
+      "wrong": "lern",
+      "right": "learn",
+      "count": 1
+    },
+    {
+      "wrong": "fud",
+      "right": "food",
+      "count": 1
+    },
+    {
+      "wrong": "eters",
+      "right": "enters",
+      "count": 1
+    },
+    {
+      "wrong": "sall",
+      "right": "small",
+      "count": 1
+    },
+    {
+      "wrong": "thier",
+      "right": "there",
+      "count": 2
+    },
+    {
+      "wrong": "becuz",
+      "right": "because",
+      "count": 5
+    },
+    {
+      "wrong": "reaosn",
+      "right": "reason",
+      "count": 1
+    },
+    {
+      "wrong": "plaace",
+      "right": "place",
+      "count": 1
+    },
+    {
+      "wrong": "wether",
+      "right": "weather",
+      "count": 2
+    },
+    {
+      "wrong": "streest",
+      "right": "streets",
+      "count": 1
+    },
+    {
+      "wrong": "hoem",
+      "right": "home",
+      "count": 1
+    },
+    {
+      "wrong": "sumtimes",
+      "right": "sometimes",
+      "count": 3
+    },
+    {
+      "wrong": "athough",
+      "right": "although",
+      "count": 1
+    },
+    {
+      "wrong": "oter",
+      "right": "other",
+      "count": 1
+    },
+    {
+      "wrong": "equipmets",
+      "right": "equipments",
+      "count": 1
+    },
+    {
+      "wrong": "befor",
+      "right": "before",
+      "count": 1
+    },
+    {
+      "wrong": "skool",
+      "right": "school",
+      "count": 1
+    },
+    {
+      "wrong": "awkard",
+      "right": "awkward",
+      "count": 1
+    },
+    {
+      "wrong": "minly",
+      "right": "mainly",
+      "count": 1
+    },
+    {
+      "wrong": "pett",
+      "right": "pet",
+      "count": 3
+    },
+    {
+      "wrong": "animuls",
+      "right": "animals",
+      "count": 1
+    },
+    {
+      "wrong": "poistive",
+      "right": "positive",
+      "count": 1
+    },
+    {
+      "wrong": "frist",
+      "right": "first",
+      "count": 1
+    },
+    {
+      "wrong": "chorees",
+      "right": "chores",
+      "count": 1
+    },
+    {
+      "wrong": "afer",
+      "right": "after",
+      "count": 1
+    },
+    {
+      "wrong": "ahile",
+      "right": "awhile",
+      "count": 1
+    },
+    {
+      "wrong": "everyting",
+      "right": "everything",
+      "count": 1
+    },
+    {
+      "wrong": "cud",
+      "right": "could",
+      "count": 2
+    },
+    {
+      "wrong": "alrams",
+      "right": "alarms",
+      "count": 1
+    },
+    {
+      "wrong": "famly",
+      "right": "family",
+      "count": 1
+    },
+    {
+      "wrong": "anoother",
+      "right": "another",
+      "count": 1
+    },
+    {
+      "wrong": "thign",
+      "right": "thing",
+      "count": 1
+    },
+    {
+      "wrong": "probly",
+      "right": "probably",
+      "count": 1
+    },
+    {
+      "wrong": "somewwhere",
+      "right": "somewhere",
+      "count": 1
+    },
+    {
+      "wrong": "avalible",
+      "right": "available",
+      "count": 1
+    },
+    {
+      "wrong": "shoud",
+      "right": "should",
+      "count": 2
+    },
+    {
+      "wrong": "grate",
+      "right": "great",
+      "count": 2
+    },
+    {
+      "wrong": "distructive",
+      "right": "destructive",
+      "count": 1
+    },
+    {
+      "wrong": "Englnd",
+      "right": "England",
+      "count": 1
+    },
+    {
+      "wrong": "eduation",
+      "right": "education",
+      "count": 1
+    },
+    {
+      "wrong": "somthing",
+      "right": "something",
+      "count": 1
+    },
+    {
+      "wrong": "rqeuirements",
+      "right": "requirements",
+      "count": 1
+    },
+    {
+      "wrong": "everry",
+      "right": "every",
+      "count": 1
+    },
+    {
+      "wrong": "wit",
+      "right": "with",
+      "count": 1
+    },
+    {
+      "wrong": "exccept",
+      "right": "except",
+      "count": 1
+    }
+  ]
+}

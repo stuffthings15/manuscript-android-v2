@@ -1,0 +1,460 @@
+{
+  "essay": "16_Alpacas_in_Arequipa_Peru.docx",
+  "pairs": [
+    {
+      "wrong": "alpaacas",
+      "right": "Alpacas",
+      "count": 1
+    },
+    {
+      "wrong": "gentel",
+      "right": "Gentle",
+      "count": 1
+    },
+    {
+      "wrong": "petts",
+      "right": "Pets",
+      "count": 3
+    },
+    {
+      "wrong": "prson",
+      "right": "person",
+      "count": 1
+    },
+    {
+      "wrong": "plcae",
+      "right": "place",
+      "count": 1
+    },
+    {
+      "wrong": "Arequuipa",
+      "right": "Arequipa",
+      "count": 1
+    },
+    {
+      "wrong": "especialy",
+      "right": "especially",
+      "count": 1
+    },
+    {
+      "wrong": "bout",
+      "right": "about",
+      "count": 2
+    },
+    {
+      "wrong": "KEEING",
+      "right": "keeping",
+      "count": 1
+    },
+    {
+      "wrong": "leearning",
+      "right": "learning",
+      "count": 1
+    },
+    {
+      "wrong": "cud",
+      "right": "could",
+      "count": 3
+    },
+    {
+      "wrong": "peeple",
+      "right": "people",
+      "count": 1
+    },
+    {
+      "wrong": "disargee",
+      "right": "disagree",
+      "count": 1
+    },
+    {
+      "wrong": "befor",
+      "right": "before",
+      "count": 2
+    },
+    {
+      "wrong": "hoever",
+      "right": "however",
+      "count": 1
+    },
+    {
+      "wrong": "thaey",
+      "right": "they",
+      "count": 3
+    },
+    {
+      "wrong": "SHHOWS",
+      "right": "shows",
+      "count": 1
+    },
+    {
+      "wrong": "animul",
+      "right": "animal",
+      "count": 3
+    },
+    {
+      "wrong": "hoem",
+      "right": "home",
+      "count": 2
+    },
+    {
+      "wrong": "diffrent",
+      "right": "different",
+      "count": 4
+    },
+    {
+      "wrong": "pcakage",
+      "right": "package",
+      "count": 1
+    },
+    {
+      "wrong": "MAKS",
+      "right": "makes",
+      "count": 1
+    },
+    {
+      "wrong": "pett",
+      "right": "pet",
+      "count": 3
+    },
+    {
+      "wrong": "avalible",
+      "right": "available",
+      "count": 1
+    },
+    {
+      "wrong": "cair",
+      "right": "care",
+      "count": 3
+    },
+    {
+      "wrong": "cuntry",
+      "right": "country",
+      "count": 2
+    },
+    {
+      "wrong": "stilll",
+      "right": "Still",
+      "count": 1
+    },
+    {
+      "wrong": "becuz",
+      "right": "because",
+      "count": 5
+    },
+    {
+      "wrong": "grate",
+      "right": "great",
+      "count": 2
+    },
+    {
+      "wrong": "wen",
+      "right": "when",
+      "count": 2
+    },
+    {
+      "wrong": "distructive",
+      "right": "destructive",
+      "count": 1
+    },
+    {
+      "wrong": "eveerybody",
+      "right": "everybody",
+      "count": 1
+    },
+    {
+      "wrong": "hmuans",
+      "right": "humans",
+      "count": 1
+    },
+    {
+      "wrong": "plannning",
+      "right": "planning",
+      "count": 1
+    },
+    {
+      "wrong": "intresting",
+      "right": "interesting",
+      "count": 1
+    },
+    {
+      "wrong": "wether",
+      "right": "weather",
+      "count": 1
+    },
+    {
+      "wrong": "NOIESS",
+      "right": "noises",
+      "count": 1
+    },
+    {
+      "wrong": "insiide",
+      "right": "inside",
+      "count": 1
+    },
+    {
+      "wrong": "sumtimes",
+      "right": "sometimes",
+      "count": 2
+    },
+    {
+      "wrong": "somthing",
+      "right": "something",
+      "count": 2
+    },
+    {
+      "wrong": "oner",
+      "right": "owner",
+      "count": 2
+    },
+    {
+      "wrong": "enetrtainment",
+      "right": "entertainment",
+      "count": 1
+    },
+    {
+      "wrong": "woud",
+      "right": "would",
+      "count": 2
+    },
+    {
+      "wrong": "probly",
+      "right": "probably",
+      "count": 1
+    },
+    {
+      "wrong": "firts",
+      "right": "first",
+      "count": 1
+    },
+    {
+      "wrong": "questons",
+      "right": "questions",
+      "count": 1
+    },
+    {
+      "wrong": "onwer",
+      "right": "owner",
+      "count": 1
+    },
+    {
+      "wrong": "worng",
+      "right": "wrong",
+      "count": 1
+    },
+    {
+      "wrong": "embbarrassed",
+      "right": "embarrassed",
+      "count": 1
+    },
+    {
+      "wrong": "mistak",
+      "right": "mistake",
+      "count": 1
+    },
+    {
+      "wrong": "protectting",
+      "right": "protecting",
+      "count": 1
+    },
+    {
+      "wrong": "witch",
+      "right": "which",
+      "count": 3
+    },
+    {
+      "wrong": "tohugh",
+      "right": "though",
+      "count": 1
+    },
+    {
+      "wrong": "compainonship",
+      "right": "companionship",
+      "count": 1
+    },
+    {
+      "wrong": "were",
+      "right": "where",
+      "count": 2
+    },
+    {
+      "wrong": "exacly",
+      "right": "exactly",
+      "count": 1
+    },
+    {
+      "wrong": "lern",
+      "right": "learn",
+      "count": 1
+    },
+    {
+      "wrong": "textille",
+      "right": "textile",
+      "count": 1
+    },
+    {
+      "wrong": "wit",
+      "right": "with",
+      "count": 3
+    },
+    {
+      "wrong": "checcks",
+      "right": "checks",
+      "count": 1
+    },
+    {
+      "wrong": "habbitat",
+      "right": "habitat",
+      "count": 1
+    },
+    {
+      "wrong": "helo",
+      "right": "hello",
+      "count": 1
+    },
+    {
+      "wrong": "shos",
+      "right": "shows",
+      "count": 1
+    },
+    {
+      "wrong": "thier",
+      "right": "there",
+      "count": 2
+    },
+    {
+      "wrong": "alpcaa",
+      "right": "alpaca",
+      "count": 1
+    },
+    {
+      "wrong": "PROLBEM",
+      "right": "problem",
+      "count": 1
+    },
+    {
+      "wrong": "littlle",
+      "right": "little",
+      "count": 1
+    },
+    {
+      "wrong": "undrstands",
+      "right": "understands",
+      "count": 1
+    },
+    {
+      "wrong": "watter",
+      "right": "water",
+      "count": 1
+    },
+    {
+      "wrong": "cheecking",
+      "right": "checking",
+      "count": 1
+    },
+    {
+      "wrong": "firrst",
+      "right": "first",
+      "count": 1
+    },
+    {
+      "wrong": "afer",
+      "right": "after",
+      "count": 1
+    },
+    {
+      "wrong": "everyting",
+      "right": "everything",
+      "count": 1
+    },
+    {
+      "wrong": "chat",
+      "right": "chart",
+      "count": 1
+    },
+    {
+      "wrong": "alars",
+      "right": "alarms",
+      "count": 1
+    },
+    {
+      "wrong": "famly",
+      "right": "family",
+      "count": 1
+    },
+    {
+      "wrong": "forgteting",
+      "right": "forgetting",
+      "count": 1
+    },
+    {
+      "wrong": "livign",
+      "right": "living",
+      "count": 1
+    },
+    {
+      "wrong": "shoud",
+      "right": "should",
+      "count": 1
+    },
+    {
+      "wrong": "responsiblity",
+      "right": "responsibility",
+      "count": 1
+    },
+    {
+      "wrong": "agin",
+      "right": "again",
+      "count": 1
+    },
+    {
+      "wrong": "textiile",
+      "right": "textile",
+      "count": 1
+    },
+    {
+      "wrong": "rutine",
+      "right": "routine",
+      "count": 1
+    },
+    {
+      "wrong": "moey",
+      "right": "money",
+      "count": 1
+    },
+    {
+      "wrong": "cleaing",
+      "right": "cleaning",
+      "count": 1
+    },
+    {
+      "wrong": "requierments",
+      "right": "requirements",
+      "count": 1
+    },
+    {
+      "wrong": "WORTHWHIEL",
+      "right": "worthwhile",
+      "count": 1
+    },
+    {
+      "wrong": "thiings",
+      "right": "things",
+      "count": 1
+    },
+    {
+      "wrong": "prepraation",
+      "right": "preparation",
+      "count": 1
+    },
+    {
+      "wrong": "importent",
+      "right": "important",
+      "count": 1
+    },
+    {
+      "wrong": "exceept",
+      "right": "except",
+      "count": 1
+    }
+  ]
+}

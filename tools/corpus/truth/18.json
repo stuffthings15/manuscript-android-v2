@@ -1,0 +1,380 @@
+{
+  "essay": "18_Rats_in_Leipzig_Germany.docx",
+  "pairs": [
+    {
+      "wrong": "pett",
+      "right": "Pet",
+      "count": 5
+    },
+    {
+      "wrong": "peope",
+      "right": "People",
+      "count": 1
+    },
+    {
+      "wrong": "intentionaly",
+      "right": "Intentionally",
+      "count": 1
+    },
+    {
+      "wrong": "error-filed",
+      "right": "Error-Filled",
+      "count": 1
+    },
+    {
+      "wrong": "Wen",
+      "right": "When",
+      "count": 4
+    },
+    {
+      "wrong": "animul",
+      "right": "animal",
+      "count": 5
+    },
+    {
+      "wrong": "thaey",
+      "right": "they",
+      "count": 4
+    },
+    {
+      "wrong": "befor",
+      "right": "before",
+      "count": 1
+    },
+    {
+      "wrong": "Leeipzig",
+      "right": "Leipzig",
+      "count": 1
+    },
+    {
+      "wrong": "bout",
+      "right": "about",
+      "count": 2
+    },
+    {
+      "wrong": "keepin",
+      "right": "keeping",
+      "count": 1
+    },
+    {
+      "wrong": "cud",
+      "right": "could",
+      "count": 2
+    },
+    {
+      "wrong": "peeple",
+      "right": "people",
+      "count": 1
+    },
+    {
+      "wrong": "hoem",
+      "right": "home",
+      "count": 1
+    },
+    {
+      "wrong": "witch",
+      "right": "which",
+      "count": 1
+    },
+    {
+      "wrong": "importent",
+      "right": "important",
+      "count": 2
+    },
+    {
+      "wrong": "tough",
+      "right": "though",
+      "count": 1
+    },
+    {
+      "wrong": "diffrent",
+      "right": "different",
+      "count": 2
+    },
+    {
+      "wrong": "stduent",
+      "right": "student",
+      "count": 1
+    },
+    {
+      "wrong": "Anoother",
+      "right": "Another",
+      "count": 1
+    },
+    {
+      "wrong": "bennefit",
+      "right": "benefit",
+      "count": 1
+    },
+    {
+      "wrong": "regulaar",
+      "right": "regular",
+      "count": 1
+    },
+    {
+      "wrong": "stretes",
+      "right": "streets",
+      "count": 1
+    },
+    {
+      "wrong": "sumtimes",
+      "right": "sometimes",
+      "count": 2
+    },
+    {
+      "wrong": "somthing",
+      "right": "something",
+      "count": 2
+    },
+    {
+      "wrong": "givves",
+      "right": "gives",
+      "count": 1
+    },
+    {
+      "wrong": "liights",
+      "right": "lights",
+      "count": 1
+    },
+    {
+      "wrong": "filtes",
+      "right": "filters",
+      "count": 1
+    },
+    {
+      "wrong": "natrual",
+      "right": "natural",
+      "count": 1
+    },
+    {
+      "wrong": "oner",
+      "right": "owner",
+      "count": 1
+    },
+    {
+      "wrong": "worrds",
+      "right": "words",
+      "count": 1
+    },
+    {
+      "wrong": "woud",
+      "right": "would",
+      "count": 2
+    },
+    {
+      "wrong": "probly",
+      "right": "probably",
+      "count": 2
+    },
+    {
+      "wrong": "Weathr",
+      "right": "Weather",
+      "count": 1
+    },
+    {
+      "wrong": "avalible",
+      "right": "available",
+      "count": 1
+    },
+    {
+      "wrong": "cair",
+      "right": "care",
+      "count": 3
+    },
+    {
+      "wrong": "shoud",
+      "right": "should",
+      "count": 3
+    },
+    {
+      "wrong": "cuntry",
+      "right": "country",
+      "count": 1
+    },
+    {
+      "wrong": "petts",
+      "right": "pets",
+      "count": 3
+    },
+    {
+      "wrong": "becuz",
+      "right": "because",
+      "count": 3
+    },
+    {
+      "wrong": "unhelathy",
+      "right": "unhealthy",
+      "count": 1
+    },
+    {
+      "wrong": "humas",
+      "right": "humans",
+      "count": 1
+    },
+    {
+      "wrong": "dleivery",
+      "right": "delivery",
+      "count": 1
+    },
+    {
+      "wrong": "wohle",
+      "right": "whole",
+      "count": 1
+    },
+    {
+      "wrong": "ordinnary",
+      "right": "ordinary",
+      "count": 1
+    },
+    {
+      "wrong": "memorabel",
+      "right": "memorable",
+      "count": 1
+    },
+    {
+      "wrong": "sory",
+      "right": "story",
+      "count": 1
+    },
+    {
+      "wrong": "EVRYBODY",
+      "right": "everybody",
+      "count": 1
+    },
+    {
+      "wrong": "laugsh",
+      "right": "laughs",
+      "count": 1
+    },
+    {
+      "wrong": "sometims",
+      "right": "sometimes",
+      "count": 1
+    },
+    {
+      "wrong": "were",
+      "right": "where",
+      "count": 1
+    },
+    {
+      "wrong": "frist",
+      "right": "first",
+      "count": 1
+    },
+    {
+      "wrong": "annoyiing",
+      "right": "annoying",
+      "count": 1
+    },
+    {
+      "wrong": "afer",
+      "right": "after",
+      "count": 1
+    },
+    {
+      "wrong": "everyting",
+      "right": "everything",
+      "count": 1
+    },
+    {
+      "wrong": "famly",
+      "right": "family",
+      "count": 1
+    },
+    {
+      "wrong": "dpeends",
+      "right": "depends",
+      "count": 1
+    },
+    {
+      "wrong": "PARAGRPAH",
+      "right": "paragraph",
+      "count": 1
+    },
+    {
+      "wrong": "skool",
+      "right": "school",
+      "count": 1
+    },
+    {
+      "wrong": "somethiing",
+      "right": "something",
+      "count": 1
+    },
+    {
+      "wrong": "wering",
+      "right": "wearing",
+      "count": 1
+    },
+    {
+      "wrong": "enviroment",
+      "right": "environment",
+      "count": 1
+    },
+    {
+      "wrong": "fud",
+      "right": "food",
+      "count": 1
+    },
+    {
+      "wrong": "relationshiip",
+      "right": "relationship",
+      "count": 1
+    },
+    {
+      "wrong": "comferting",
+      "right": "comforting",
+      "count": 1
+    },
+    {
+      "wrong": "grate",
+      "right": "great",
+      "count": 1
+    },
+    {
+      "wrong": "abot",
+      "right": "about",
+      "count": 1
+    },
+    {
+      "wrong": "requirs",
+      "right": "requires",
+      "count": 1
+    },
+    {
+      "wrong": "mney",
+      "right": "money",
+      "count": 1
+    },
+    {
+      "wrong": "researcch",
+      "right": "research",
+      "count": 1
+    },
+    {
+      "wrong": "evrey",
+      "right": "every",
+      "count": 1
+    },
+    {
+      "wrong": "rigt",
+      "right": "right",
+      "count": 1
+    },
+    {
+      "wrong": "eveery",
+      "right": "every",
+      "count": 1
+    },
+    {
+      "wrong": "chhoice",
+      "right": "choice",
+      "count": 1
+    },
+    {
+      "wrong": "partiicular",
+      "right": "particular",
+      "count": 1
+    }
+  ]
+}

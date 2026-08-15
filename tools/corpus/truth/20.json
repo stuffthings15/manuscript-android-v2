@@ -1,0 +1,460 @@
+{
+  "essay": "20_Axolotls_in_Puebla_Mexico.docx",
+  "pairs": [
+    {
+      "wrong": "unusul",
+      "right": "Unusual",
+      "count": 1
+    },
+    {
+      "wrong": "grate",
+      "right": "Great",
+      "count": 2
+    },
+    {
+      "wrong": "petts",
+      "right": "Pets",
+      "count": 1
+    },
+    {
+      "wrong": "intentionlly",
+      "right": "Intentionally",
+      "count": 1
+    },
+    {
+      "wrong": "wen",
+      "right": "When",
+      "count": 5
+    },
+    {
+      "wrong": "animul",
+      "right": "animal",
+      "count": 3
+    },
+    {
+      "wrong": "pett",
+      "right": "pet",
+      "count": 3
+    },
+    {
+      "wrong": "befor",
+      "right": "before",
+      "count": 3
+    },
+    {
+      "wrong": "lernt",
+      "right": "learned",
+      "count": 1
+    },
+    {
+      "wrong": "bout",
+      "right": "about",
+      "count": 2
+    },
+    {
+      "wrong": "PUELA",
+      "right": "Puebla",
+      "count": 1
+    },
+    {
+      "wrong": "Mexcio",
+      "right": "Mexico",
+      "count": 1
+    },
+    {
+      "wrong": "especialy",
+      "right": "especially",
+      "count": 1
+    },
+    {
+      "wrong": "animuls",
+      "right": "animals",
+      "count": 2
+    },
+    {
+      "wrong": "cud",
+      "right": "could",
+      "count": 3
+    },
+    {
+      "wrong": "peeple",
+      "right": "people",
+      "count": 1
+    },
+    {
+      "wrong": "thaey",
+      "right": "they",
+      "count": 6
+    },
+    {
+      "wrong": "animla",
+      "right": "animal",
+      "count": 1
+    },
+    {
+      "wrong": "diffrent",
+      "right": "different",
+      "count": 4
+    },
+    {
+      "wrong": "pakcage",
+      "right": "package",
+      "count": 1
+    },
+    {
+      "wrong": "frist",
+      "right": "first",
+      "count": 1
+    },
+    {
+      "wrong": "rason",
+      "right": "reason",
+      "count": 1
+    },
+    {
+      "wrong": "witch",
+      "right": "which",
+      "count": 3
+    },
+    {
+      "wrong": "importent",
+      "right": "important",
+      "count": 2
+    },
+    {
+      "wrong": "cuntry",
+      "right": "country",
+      "count": 2
+    },
+    {
+      "wrong": "were",
+      "right": "where",
+      "count": 1
+    },
+    {
+      "wrong": "exacly",
+      "right": "exactly",
+      "count": 2
+    },
+    {
+      "wrong": "lern",
+      "right": "learn",
+      "count": 1
+    },
+    {
+      "wrong": "routies",
+      "right": "routines",
+      "count": 1
+    },
+    {
+      "wrong": "notcie",
+      "right": "notice",
+      "count": 1
+    },
+    {
+      "wrong": "stdent",
+      "right": "student",
+      "count": 1
+    },
+    {
+      "wrong": "beiing",
+      "right": "being",
+      "count": 1
+    },
+    {
+      "wrong": "maaybe",
+      "right": "maybe",
+      "count": 1
+    },
+    {
+      "wrong": "bcause",
+      "right": "because",
+      "count": 1
+    },
+    {
+      "wrong": "responsiblity",
+      "right": "responsibility",
+      "count": 1
+    },
+    {
+      "wrong": "thier",
+      "right": "there",
+      "count": 1
+    },
+    {
+      "wrong": "mayeb",
+      "right": "maybe",
+      "count": 1
+    },
+    {
+      "wrong": "reasoon",
+      "right": "reason",
+      "count": 1
+    },
+    {
+      "wrong": "becuz",
+      "right": "because",
+      "count": 5
+    },
+    {
+      "wrong": "nevre",
+      "right": "never",
+      "count": 1
+    },
+    {
+      "wrong": "cose",
+      "right": "close",
+      "count": 1
+    },
+    {
+      "wrong": "Afer",
+      "right": "After",
+      "count": 2
+    },
+    {
+      "wrong": "oner",
+      "right": "owner",
+      "count": 5
+    },
+    {
+      "wrong": "becoome",
+      "right": "become",
+      "count": 2
+    },
+    {
+      "wrong": "interaaction",
+      "right": "interaction",
+      "count": 1
+    },
+    {
+      "wrong": "shoud",
+      "right": "should",
+      "count": 3
+    },
+    {
+      "wrong": "annoyign",
+      "right": "annoying",
+      "count": 1
+    },
+    {
+      "wrong": "probly",
+      "right": "probably",
+      "count": 3
+    },
+    {
+      "wrong": "THREE",
+      "right": "There",
+      "count": 1
+    },
+    {
+      "wrong": "beenefits",
+      "right": "benefits",
+      "count": 1
+    },
+    {
+      "wrong": "have",
+      "right": "has",
+      "count": 1
+    },
+    {
+      "wrong": "porblem",
+      "right": "problem",
+      "count": 1
+    },
+    {
+      "wrong": "wihle",
+      "right": "while",
+      "count": 1
+    },
+    {
+      "wrong": "pett",
+      "right": "does",
+      "count": 1
+    },
+    {
+      "wrong": "dont",
+      "right": "not",
+      "count": 1
+    },
+    {
+      "wrong": "enviroment",
+      "right": "environment",
+      "count": 1
+    },
+    {
+      "wrong": "evey",
+      "right": "every",
+      "count": 1
+    },
+    {
+      "wrong": "huan",
+      "right": "human",
+      "count": 1
+    },
+    {
+      "wrong": "emotino",
+      "right": "emotion",
+      "count": 1
+    },
+    {
+      "wrong": "woud",
+      "right": "would",
+      "count": 1
+    },
+    {
+      "wrong": "thaey",
+      "right": "animals",
+      "count": 1
+    },
+    {
+      "wrong": "cair",
+      "right": "Care",
+      "count": 3
+    },
+    {
+      "wrong": "postive",
+      "right": "positive",
+      "count": 1
+    },
+    {
+      "wrong": "watter",
+      "right": "water",
+      "count": 1
+    },
+    {
+      "wrong": "cores",
+      "right": "chores",
+      "count": 1
+    },
+    {
+      "wrong": "awhiile",
+      "right": "awhile",
+      "count": 1
+    },
+    {
+      "wrong": "excet",
+      "right": "except",
+      "count": 1
+    },
+    {
+      "wrong": "Puelba",
+      "right": "Puebla",
+      "count": 1
+    },
+    {
+      "wrong": "depedns",
+      "right": "depends",
+      "count": 1
+    },
+    {
+      "wrong": "wether",
+      "right": "weather",
+      "count": 1
+    },
+    {
+      "wrong": "hoem",
+      "right": "home",
+      "count": 1
+    },
+    {
+      "wrong": "sumtimes",
+      "right": "sometimes",
+      "count": 1
+    },
+    {
+      "wrong": "somthing",
+      "right": "something",
+      "count": 2
+    },
+    {
+      "wrong": "ntaural",
+      "right": "natural",
+      "count": 1
+    },
+    {
+      "wrong": "edjucashunal",
+      "right": "educational",
+      "count": 1
+    },
+    {
+      "wrong": "loacl",
+      "right": "local",
+      "count": 1
+    },
+    {
+      "wrong": "SOMEWERE",
+      "right": "somewhere",
+      "count": 1
+    },
+    {
+      "wrong": "oners",
+      "right": "owners",
+      "count": 1
+    },
+    {
+      "wrong": "daly",
+      "right": "daily",
+      "count": 1
+    },
+    {
+      "wrong": "copiied",
+      "right": "copied",
+      "count": 1
+    },
+    {
+      "wrong": "migth",
+      "right": "might",
+      "count": 1
+    },
+    {
+      "wrong": "soounds",
+      "right": "sounds",
+      "count": 1
+    },
+    {
+      "wrong": "niest",
+      "right": "nicest",
+      "count": 1
+    },
+    {
+      "wrong": "everyboddy",
+      "right": "everybody",
+      "count": 1
+    },
+    {
+      "wrong": "coonclusion",
+      "right": "conclusion",
+      "count": 1
+    },
+    {
+      "wrong": "liikes",
+      "right": "likes",
+      "count": 1
+    },
+    {
+      "wrong": "rutine",
+      "right": "routine",
+      "count": 1
+    },
+    {
+      "wrong": "worthhwhile",
+      "right": "worthwhile",
+      "count": 1
+    },
+    {
+      "wrong": "rigt",
+      "right": "right",
+      "count": 1
+    },
+    {
+      "wrong": "evry",
+      "right": "every",
+      "count": 1
+    },
+    {
+      "wrong": "evvery",
+      "right": "every",
+      "count": 1
+    }
+  ]
+}

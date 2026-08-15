@@ -1,0 +1,425 @@
+{
+  "essay": "10_Chickens_in_Colmar_France.docx",
+  "pairs": [
+    {
+      "wrong": "chicekns",
+      "right": "Chickens",
+      "count": 1
+    },
+    {
+      "wrong": "petts",
+      "right": "Pets",
+      "count": 2
+    },
+    {
+      "wrong": "intnetionally",
+      "right": "Intentionally",
+      "count": 1
+    },
+    {
+      "wrong": "wen",
+      "right": "When",
+      "count": 6
+    },
+    {
+      "wrong": "animul",
+      "right": "animal",
+      "count": 2
+    },
+    {
+      "wrong": "pett",
+      "right": "pet",
+      "count": 3
+    },
+    {
+      "wrong": "thaey",
+      "right": "they",
+      "count": 8
+    },
+    {
+      "wrong": "speakng",
+      "right": "speaking",
+      "count": 1
+    },
+    {
+      "wrong": "befor",
+      "right": "before",
+      "count": 2
+    },
+    {
+      "wrong": "bout",
+      "right": "about",
+      "count": 4
+    },
+    {
+      "wrong": "especialy",
+      "right": "especially",
+      "count": 1
+    },
+    {
+      "wrong": "oner",
+      "right": "owner",
+      "count": 5
+    },
+    {
+      "wrong": "wit",
+      "right": "with",
+      "count": 2
+    },
+    {
+      "wrong": "gadren",
+      "right": "garden",
+      "count": 1
+    },
+    {
+      "wrong": "raisign",
+      "right": "raising",
+      "count": 1
+    },
+    {
+      "wrong": "cud",
+      "right": "could",
+      "count": 2
+    },
+    {
+      "wrong": "peeple",
+      "right": "people",
+      "count": 1
+    },
+    {
+      "wrong": "disgree",
+      "right": "disagree",
+      "count": 1
+    },
+    {
+      "wrong": "sitll",
+      "right": "still",
+      "count": 1
+    },
+    {
+      "wrong": "aniimal",
+      "right": "animal",
+      "count": 1
+    },
+    {
+      "wrong": "diffrent",
+      "right": "different",
+      "count": 2
+    },
+    {
+      "wrong": "vsiitors",
+      "right": "Visitors",
+      "count": 1
+    },
+    {
+      "wrong": "firsst",
+      "right": "first",
+      "count": 1
+    },
+    {
+      "wrong": "safey",
+      "right": "safely",
+      "count": 1
+    },
+    {
+      "wrong": "wich",
+      "right": "which",
+      "count": 1
+    },
+    {
+      "wrong": "shoud",
+      "right": "should",
+      "count": 5
+    },
+    {
+      "wrong": "probly",
+      "right": "probably",
+      "count": 2
+    },
+    {
+      "wrong": "smoewhere",
+      "right": "somewhere",
+      "count": 1
+    },
+    {
+      "wrong": "wether",
+      "right": "Weather",
+      "count": 1
+    },
+    {
+      "wrong": "avalible",
+      "right": "available",
+      "count": 1
+    },
+    {
+      "wrong": "cair",
+      "right": "care",
+      "count": 3
+    },
+    {
+      "wrong": "cuntry",
+      "right": "country",
+      "count": 2
+    },
+    {
+      "wrong": "mght",
+      "right": "might",
+      "count": 1
+    },
+    {
+      "wrong": "exacly",
+      "right": "exactly",
+      "count": 2
+    },
+    {
+      "wrong": "grate",
+      "right": "great",
+      "count": 2
+    },
+    {
+      "wrong": "distructive",
+      "right": "destructive",
+      "count": 1
+    },
+    {
+      "wrong": "everyody",
+      "right": "everybody",
+      "count": 1
+    },
+    {
+      "wrong": "witch",
+      "right": "which",
+      "count": 1
+    },
+    {
+      "wrong": "importent",
+      "right": "important",
+      "count": 2
+    },
+    {
+      "wrong": "thoguh",
+      "right": "though",
+      "count": 1
+    },
+    {
+      "wrong": "were",
+      "right": "where",
+      "count": 1
+    },
+    {
+      "wrong": "woud",
+      "right": "would",
+      "count": 2
+    },
+    {
+      "wrong": "lern",
+      "right": "learn",
+      "count": 1
+    },
+    {
+      "wrong": "waeks",
+      "right": "wakes",
+      "count": 1
+    },
+    {
+      "wrong": "habbitat",
+      "right": "habitat",
+      "count": 1
+    },
+    {
+      "wrong": "thier",
+      "right": "there",
+      "count": 3
+    },
+    {
+      "wrong": "becuz",
+      "right": "because",
+      "count": 4
+    },
+    {
+      "wrong": "responsiblity",
+      "right": "responsibility",
+      "count": 1
+    },
+    {
+      "wrong": "chickne",
+      "right": "chicken",
+      "count": 1
+    },
+    {
+      "wrong": "reglar",
+      "right": "regular",
+      "count": 1
+    },
+    {
+      "wrong": "weathher",
+      "right": "weather",
+      "count": 1
+    },
+    {
+      "wrong": "dailly",
+      "right": "daily",
+      "count": 1
+    },
+    {
+      "wrong": "sumtimes",
+      "right": "sometimes",
+      "count": 2
+    },
+    {
+      "wrong": "somthing",
+      "right": "something",
+      "count": 2
+    },
+    {
+      "wrong": "evetn",
+      "right": "event",
+      "count": 1
+    },
+    {
+      "wrong": "atenshun",
+      "right": "attention",
+      "count": 1
+    },
+    {
+      "wrong": "enteertainment",
+      "right": "entertainment",
+      "count": 1
+    },
+    {
+      "wrong": "wors",
+      "right": "words",
+      "count": 1
+    },
+    {
+      "wrong": "feedng",
+      "right": "Feeding",
+      "count": 1
+    },
+    {
+      "wrong": "watter",
+      "right": "water",
+      "count": 1
+    },
+    {
+      "wrong": "celaning",
+      "right": "cleaning",
+      "count": 1
+    },
+    {
+      "wrong": "afer",
+      "right": "after",
+      "count": 1
+    },
+    {
+      "wrong": "BECMES",
+      "right": "becomes",
+      "count": 1
+    },
+    {
+      "wrong": "everyting",
+      "right": "everything",
+      "count": 1
+    },
+    {
+      "wrong": "chatr",
+      "right": "chart",
+      "count": 1
+    },
+    {
+      "wrong": "alrams",
+      "right": "alarms",
+      "count": 1
+    },
+    {
+      "wrong": "emtoional",
+      "right": "emotional",
+      "count": 1
+    },
+    {
+      "wrong": "beneifts",
+      "right": "benefits",
+      "count": 1
+    },
+    {
+      "wrong": "acctual",
+      "right": "actual",
+      "count": 1
+    },
+    {
+      "wrong": "schoool",
+      "right": "school",
+      "count": 1
+    },
+    {
+      "wrong": "saaying",
+      "right": "saying",
+      "count": 1
+    },
+    {
+      "wrong": "agin",
+      "right": "again",
+      "count": 1
+    },
+    {
+      "wrong": "enviroment",
+      "right": "environment",
+      "count": 1
+    },
+    {
+      "wrong": "animuls",
+      "right": "animals",
+      "count": 1
+    },
+    {
+      "wrong": "staare",
+      "right": "stare",
+      "count": 1
+    },
+    {
+      "wrong": "Comar",
+      "right": "Colmar",
+      "count": 1
+    },
+    {
+      "wrong": "rutine",
+      "right": "routine",
+      "count": 1
+    },
+    {
+      "wrong": "raeson",
+      "right": "reason",
+      "count": 1
+    },
+    {
+      "wrong": "requierments",
+      "right": "requirements",
+      "count": 1
+    },
+    {
+      "wrong": "thins",
+      "right": "things",
+      "count": 1
+    },
+    {
+      "wrong": "eveery",
+      "right": "every",
+      "count": 1
+    },
+    {
+      "wrong": "beecome",
+      "right": "become",
+      "count": 1
+    },
+    {
+      "wrong": "hoem",
+      "right": "home",
+      "count": 1
+    },
+    {
+      "wrong": "cohice",
+      "right": "choice",
+      "count": 1
+    }
+  ]
+}

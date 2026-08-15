@@ -20,3 +20,7 @@
 
 # GPT 5.6 device round artifacts are private generated evidence.
 /test-evidence/gpt56-five-page-all-tones-v2/*/
+
+# Corpus scratch: pulled essay outputs and substitution dumps for one round.
+# Committing a round would let a stale one be read as the current result.
+/tools/corpus/work/

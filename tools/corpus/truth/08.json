@@ -1,0 +1,335 @@
+{
+  "essay": "08_Turtles_in_Valletta_Malta.docx",
+  "pairs": [
+    {
+      "wrong": "patiet",
+      "right": "Patient",
+      "count": 1
+    },
+    {
+      "wrong": "pett",
+      "right": "Pet",
+      "count": 3
+    },
+    {
+      "wrong": "Peeple",
+      "right": "People",
+      "count": 1
+    },
+    {
+      "wrong": "diffrent",
+      "right": "different",
+      "count": 2
+    },
+    {
+      "wrong": "schdeules",
+      "right": "schedules",
+      "count": 1
+    },
+    {
+      "wrong": "especialy",
+      "right": "especially",
+      "count": 1
+    },
+    {
+      "wrong": "bout",
+      "right": "about",
+      "count": 3
+    },
+    {
+      "wrong": "rteired",
+      "right": "retired",
+      "count": 1
+    },
+    {
+      "wrong": "keepin",
+      "right": "keeping",
+      "count": 1
+    },
+    {
+      "wrong": "reasoons",
+      "right": "reasons",
+      "count": 1
+    },
+    {
+      "wrong": "animul",
+      "right": "animal",
+      "count": 3
+    },
+    {
+      "wrong": "beong",
+      "right": "belong",
+      "count": 1
+    },
+    {
+      "wrong": "hoem",
+      "right": "home",
+      "count": 2
+    },
+    {
+      "wrong": "turle",
+      "right": "turtle",
+      "count": 1
+    },
+    {
+      "wrong": "Thier",
+      "right": "There",
+      "count": 2
+    },
+    {
+      "wrong": "agin",
+      "right": "again",
+      "count": 1
+    },
+    {
+      "wrong": "enviroment",
+      "right": "environment",
+      "count": 1
+    },
+    {
+      "wrong": "woud",
+      "right": "would",
+      "count": 1
+    },
+    {
+      "wrong": "Sumtimes",
+      "right": "Sometimes",
+      "count": 1
+    },
+    {
+      "wrong": "animmals",
+      "right": "animals",
+      "count": 1
+    },
+    {
+      "wrong": "becuz",
+      "right": "because",
+      "count": 5
+    },
+    {
+      "wrong": "thaey",
+      "right": "they",
+      "count": 3
+    },
+    {
+      "wrong": "cair",
+      "right": "care",
+      "count": 4
+    },
+    {
+      "wrong": "wether",
+      "right": "weather",
+      "count": 1
+    },
+    {
+      "wrong": "ownner",
+      "right": "owner",
+      "count": 1
+    },
+    {
+      "wrong": "atenshun",
+      "right": "attention",
+      "count": 1
+    },
+    {
+      "wrong": "wods",
+      "right": "words",
+      "count": 1
+    },
+    {
+      "wrong": "probly",
+      "right": "probably",
+      "count": 2
+    },
+    {
+      "wrong": "rouines",
+      "right": "routines",
+      "count": 1
+    },
+    {
+      "wrong": "chcking",
+      "right": "checking",
+      "count": 1
+    },
+    {
+      "wrong": "repeaating",
+      "right": "repeating",
+      "count": 1
+    },
+    {
+      "wrong": "afer",
+      "right": "after",
+      "count": 1
+    },
+    {
+      "wrong": "wen",
+      "right": "when",
+      "count": 4
+    },
+    {
+      "wrong": "famly",
+      "right": "family",
+      "count": 1
+    },
+    {
+      "wrong": "shoud",
+      "right": "should",
+      "count": 3
+    },
+    {
+      "wrong": "firt",
+      "right": "first",
+      "count": 1
+    },
+    {
+      "wrong": "witch",
+      "right": "which",
+      "count": 2
+    },
+    {
+      "wrong": "importent",
+      "right": "important",
+      "count": 2
+    },
+    {
+      "wrong": "cuntry",
+      "right": "country",
+      "count": 2
+    },
+    {
+      "wrong": "compainonship",
+      "right": "companionship",
+      "count": 1
+    },
+    {
+      "wrong": "whhere",
+      "right": "where",
+      "count": 1
+    },
+    {
+      "wrong": "peron",
+      "right": "person",
+      "count": 1
+    },
+    {
+      "wrong": "exacly",
+      "right": "exactly",
+      "count": 1
+    },
+    {
+      "wrong": "enterrs",
+      "right": "enters",
+      "count": 1
+    },
+    {
+      "wrong": "mecahnic",
+      "right": "mechanic",
+      "count": 1
+    },
+    {
+      "wrong": "fogets",
+      "right": "forgets",
+      "count": 1
+    },
+    {
+      "wrong": "responsiblity",
+      "right": "responsibility",
+      "count": 1
+    },
+    {
+      "wrong": "travl",
+      "right": "travel",
+      "count": 1
+    },
+    {
+      "wrong": "oner",
+      "right": "owner",
+      "count": 1
+    },
+    {
+      "wrong": "petts",
+      "right": "pets",
+      "count": 2
+    },
+    {
+      "wrong": "grate",
+      "right": "great",
+      "count": 2
+    },
+    {
+      "wrong": "PLANNIGN",
+      "right": "planning",
+      "count": 1
+    },
+    {
+      "wrong": "gorwth",
+      "right": "growth",
+      "count": 1
+    },
+    {
+      "wrong": "strats",
+      "right": "starts",
+      "count": 1
+    },
+    {
+      "wrong": "mssy",
+      "right": "messy",
+      "count": 1
+    },
+    {
+      "wrong": "marrgins",
+      "right": "margins",
+      "count": 1
+    },
+    {
+      "wrong": "reocrd",
+      "right": "record",
+      "count": 1
+    },
+    {
+      "wrong": "looe",
+      "right": "loose",
+      "count": 1
+    },
+    {
+      "wrong": "wit",
+      "right": "with",
+      "count": 2
+    },
+    {
+      "wrong": "offfers",
+      "right": "offers",
+      "count": 1
+    },
+    {
+      "wrong": "requirres",
+      "right": "requires",
+      "count": 1
+    },
+    {
+      "wrong": "cmomon",
+      "right": "common",
+      "count": 1
+    },
+    {
+      "wrong": "evry",
+      "right": "every",
+      "count": 1
+    },
+    {
+      "wrong": "turtel",
+      "right": "turtle",
+      "count": 1
+    },
+    {
+      "wrong": "becme",
+      "right": "become",
+      "count": 1
+    },
+    {
+      "wrong": "particulr",
+      "right": "particular",
+      "count": 1
+    }
+  ]
+}
