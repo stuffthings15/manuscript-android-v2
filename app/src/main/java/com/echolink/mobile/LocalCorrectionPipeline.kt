@@ -100,27 +100,20 @@ class LocalCorrectionRouter(context: Context) {
         GrammarSafetyNet.repair(
             HeadingAgreementRepair.apply(
                 ContractionRepair.apply(
-                    fastLayer.correct(trustedContextualTypos(shoutedWordsCalmed(text))).text,
+                    fastLayer.correct(TrustedContextualTypos.apply(shoutedWordsCalmed(text))).text,
                 ),
             ),
         )
 
     fun verifiesDeterministicRepair(source: String, proposal: String): Boolean {
         if (proposal != deterministicRepair(source)) return false
-        val trustedBaseline = GrammarSafetyNet.repair(trustedContextualTypos(source))
+        val trustedBaseline = GrammarSafetyNet.repair(TrustedContextualTypos.apply(source))
         return ProofreadPreservationPolicy.preservesWording(
             trustedBaseline,
             proposal,
             fastLayer::knowsWord,
         )
     }
-
-    private fun trustedContextualTypos(value: String): String = value
-        .replace(Regex("(?i)\\bgardin\\b"), "guarding")
-        .replace(Regex("(?i)\\bsnese\\b"), "sense")
-        .replace(Regex("(?i)\\bgivse\\b"), "gives")
-        .replace(Regex("(?i)\\bcorretc\\b"), "correct")
-        .replace(Regex("(?i)\\bgrate(?=\\s+[a-z][a-z'-]*s\\b)"), "great")
 
     fun preservesProofreadWording(prepared: String, candidate: String): Boolean =
         ProofreadPreservationPolicy.preservesWording(
@@ -276,6 +269,45 @@ class FastCorrectionLayer(context: Context) {
  * Found and fixed in the archive tree first, then ported here on 2026-08-15
  * because this tree carried the same regex character for character.
  */
+/**
+ * Typos the speller's word map cannot reach, applied BEFORE it runs.
+ *
+ * Two kinds live here. Some are misspellings the map would decline because a
+ * one-token view cannot rank them ("gardin", "snese"). The rest are real words
+ * used wrongly, where what the writer meant is decided by the word either side
+ * - and a word map is applied one token at a time, so it can never see that.
+ *
+ * The order is the point and it is not visible from either end. This runs
+ * inside `deterministicRepair` ahead of `fastLayer.correct`, so the map only
+ * ever sees what is left over. Move any of these rules downstream, into
+ * `GrammarSafetyNet` for instance, and they become dead code: by then the map
+ * has already rewritten the word and there is nothing to match.
+ *
+ * Lifted out of `LocalCorrectionRouter` on 2026-08-15. It was a private method
+ * on a class that needs a `Context` and the SymSpell assets to build, which
+ * meant none of these rules could be tested at all.
+ */
+object TrustedContextualTypos {
+    fun apply(value: String): String = value
+        .replace(Regex("(?i)\\bgardin\\b"), "guarding")
+        .replace(Regex("(?i)\\bsnese\\b"), "sense")
+        .replace(Regex("(?i)\\bgivse\\b"), "gives")
+        .replace(Regex("(?i)\\bcorretc\\b"), "correct")
+        .replace(Regex("(?i)\\bgrate(?=\\s+[a-z][a-z'-]*s\\b)"), "great")
+        // "wether" is one spelling covering two different words. The map sends
+        // it to "whether", which is right nearly always: in the archive tree it
+        // appeared twenty-three times and every one was that misspelling. It
+        // shipped uncorrected in every run until rare-word ranking turned it
+        // up, because a wether is a real word - a castrated ram - so no scan
+        // had anything to object to.
+        //
+        // These two shapes are the exception. "its own wether" and "wether,
+        // wind and rain" are plainly the weather, and they run first so the map
+        // keeps everything else.
+        .replace(Regex("(?i)(?<=\\bown\\s)wether\\b"), "weather")
+        .replace(Regex("(?i)\\bwether\\b(?=\\s*,)"), "weather")
+}
+
 object RepeatedWordRepair {
     /** "beyond the city, city, and why" - a stutter across a comma. */
     private val acrossPunctuation = Regex(
