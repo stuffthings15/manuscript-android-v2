@@ -3,28 +3,23 @@
 This tree had no `CLAUDE.md` at all until 2026-08-14, and that absence is half
 of a defect that cost about three weeks of repeated work.
 
-## Which tree is canonical is DISPUTED - ask before you build here
+## This tree is canonical (settled 2026-08-15)
 
-Two sources disagree, and each is authoritative to whoever reads it first:
+Curtis decided it: `Manuscript/Android Version 2` is the canonical Manuscript
+Android tree and all work happens here. `Manuscript/Android` is the archive.
 
-- `Manuscript/Android/CLAUDE.md` says `Manuscript/Android` is the live tree and
-  that this one is an unmerged parallel repo that will not ship.
-- The Claude memory file `manuscript-android-v2-tree.md` says the live tree is
-  this one, `Android Version 2`, and calls `Manuscript/Android` the older
-  folder.
+It was disputed for about three weeks, and this file not existing was half of
+the reason. A session working in `Manuscript/Android` read a `CLAUDE.md`
+saying THAT tree was canonical; a session working here read nothing and fell
+back on the Claude memory file saying the opposite. Both followed the only
+guidance they could see. On 2026-08-14 that produced commit `6bee2c2` here,
+porting `score_all.py`, `scan.py`, `derive.py` and twenty `truth/NN.json` keys
+into this tree, while another session was extending those same tools there.
 
-A session working in `Manuscript/Android` reads a `CLAUDE.md` telling it that
-tree is canonical. A session working here read nothing, because this file did
-not exist, and fell back on the memory file saying the opposite. Both sessions
-were following the only guidance they could see, and they split.
-
-What it cost on 2026-08-14 alone: commit `6bee2c2` here ports `score_all.py`,
-`scan.py`, `derive.py` and twenty `truth/NN.json` keys into this tree, while
-another session was extending those same tools in `Manuscript/Android`. The
-same work, done twice, in two trees, on one day.
-
-**Ask Curtis which tree is canonical before starting work in either.** Do not
-resolve it by picking one. Do not delete either tree.
+The archive still holds work this tree does not, and Curtis chose to port what
+is missing deliberately rather than let it be rediscovered piece by piece. So
+`Manuscript/Android` is worth READING while that port is outstanding. It is
+not a place to make changes.
 
 ## Where each tree stands, as at 2026-08-14
 
