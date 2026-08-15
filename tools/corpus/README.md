@@ -87,3 +87,48 @@ byte-identical between the trees.
 
 Those numbers describe the Version 1 engine. They are not a Version 2 baseline
 and must not be quoted as one.
+
+## The keyless corpus: `score_new.py`
+
+`20_error_riddled_essays_500_percent_more_errors` has no per-error key, only a
+`manifest.csv` counting how many error operations were injected per essay. So
+the score is built the one way that stays honest without a key: run the SAME
+detector over the writer's text and over the shipped text.
+
+    fixed = (errors in source) - (errors in shipped)
+    rate  = fixed / errors in source
+
+Both sides are measured identically, so the number means something even though
+the detector is not omniscient. What it cannot see is excluded from the
+numerator AND the denominator, which is why it reports coverage against the
+manifest: if the manifest says 56 spelling operations and the detector finds 54,
+it is seeing essentially all of that class. Where coverage is poor the honest
+move is to read the text, and the residual errors are printed so a person can.
+
+An error the app INTRODUCED counts double, as in `score_all.py`. Damage is worse
+than an omission: the writer can see an uncorrected mistake and will never
+notice a quietly rewritten sentence.
+
+The floor here is 95 per essay, and the scorer exits non-zero below it.
+
+```bash
+python tools/corpus/score_new.py       # every essay, worst first
+python tools/corpus/score_new.py 01    # one essay, with what is still wrong
+```
+
+### Two changes from the Version 1 copy, both of which it needed
+
+- **A run that did not finish is refused, not scored.** A timed-out run writes
+  the writer's own text back out. Version 1's keyed scorer already guarded this;
+  the keyless one did not. On the only real TIMEOUT file in the archive that
+  omission reported 10.6% of errors fixed for a run that fixed nothing.
+- **The report header is split off at the first blank line, not a fixed count.**
+  The 10.6% above was entirely an artifact of skipping eight lines: it deleted
+  the title and the first two paragraphs, errors and all, and the deletion read
+  as repairs.
+
+`verify_new.sh` was not ported as a file. Its loop is what
+`run_essay_corpus.ps1` already does with no `-Essay` argument, and a second
+entry point for the same job is the duplication this project has been bitten by
+before. What it had that the runner lacked, one timestamped line per essay in a
+single sweep log, was folded into the runner instead.

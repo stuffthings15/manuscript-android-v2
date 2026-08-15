@@ -187,6 +187,8 @@ if ($pushed.Count -ne $essays.Count) {
 
 New-Item -ItemType Directory -Force -Path $outDirectory | Out-Null
 $env:MANUSCRIPT_CORPUS_OUT = $outDirectory
+$sweepLog = Join-Path $work "sweep-$RoundId.log"
+Set-Content -LiteralPath $sweepLog -Value "round $RoundId, $($selected.Count) essay(s), apk $apkSha256" -Encoding utf8
 $failures = @()
 
 foreach ($record in $selected) {
@@ -194,7 +196,12 @@ foreach ($record in $selected) {
     $outputName = "$($record.Id).out.txt"
     $localOutput = Join-Path $outDirectory $outputName
     Write-Host ''
-    Write-Host "== essay $number =="
+    # One timestamped line per essay across the whole sweep. A twenty-essay pass
+    # is hours long, so which essay was running when something went wrong has to
+    # be answerable afterwards from one file.
+    $banner = "== essay $number started $([DateTimeOffset]::Now.ToString('HH:mm:ss')) =="
+    Write-Host $banner
+    Add-Content -LiteralPath $sweepLog -Value $banner -Encoding utf8
 
     # Clear both copies before the run. A harness that can read a previous
     # result is a harness that can report success for work that did not happen:
@@ -265,7 +272,11 @@ foreach ($record in $selected) {
         & python (Join-Path $corpusTools 'score_all.py') $number
         if ($LASTEXITCODE -ne 0) { $failures += "essay ${number}: below the 97% floor" }
     } else {
-        Write-Host "  shipped text pulled to $localOutput - no per-error keys, judge by reading it"
+        # No per-error keys for this corpus, so score_new.py runs the same
+        # detector over the writer's text and over the shipped text and reports
+        # what it caught in each, with its coverage against the set's manifest.
+        & python (Join-Path $corpusTools 'score_new.py') $number
+        if ($LASTEXITCODE -ne 0) { $failures += "essay ${number}: below the 95% floor" }
     }
 
     # A kept-original section is a section the app gave up on. The run summary
@@ -287,7 +298,14 @@ foreach ($record in $selected) {
 
 Write-Host ''
 if ($failures.Count -gt 0) {
-    $failures | ForEach-Object { Write-Host "FAIL $_" }
+    $failures | ForEach-Object {
+        Write-Host "FAIL $_"
+        Add-Content -LiteralPath $sweepLog -Value "FAIL $_" -Encoding utf8
+    }
+    Write-Host "sweep log: $sweepLog"
     throw "$($failures.Count) essay failure(s)."
 }
-Write-Host "All $($selected.Count) essay(s) passed at or above the floor with no kept-original sections."
+$done = "All $($selected.Count) essay(s) passed at or above the floor with no kept-original sections."
+Add-Content -LiteralPath $sweepLog -Value $done -Encoding utf8
+Write-Host $done
+Write-Host "sweep log: $sweepLog"
