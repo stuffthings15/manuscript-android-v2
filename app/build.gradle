@@ -79,6 +79,16 @@ android {
     }
 }
 
+// Compile and run the tests on JDK 21 whatever JDK started Gradle. The unit
+// tests call List.removeFirst(), added to java.util.List in Java 21, so a
+// build on JDK 17 hands TrackedDelayedWorkTest a NoSuchMethodError. The
+// bytecode target stays at Java 17 in compileOptions above.
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 androidComponents {
     beforeVariants(selector().all()) { variantBuilder ->
         variantBuilder.enableUnitTest = true

@@ -56,10 +56,17 @@ $env:JAVA_HOME='C:\Program Files\Android\openjdk\jdk-21.0.8'
 
 Output: `app/build/outputs/apk/debug/app-debug.apk`
 
-Build with JDK 21. The app module targets Java 17 bytecode and pins no Gradle
-toolchain, so under JDK 17 the unit tests resolve `List.removeFirst()` to the
-Java 21 `SequencedCollection` method that the runtime does not have, and
-`TrackedDelayedWorkTest` fails with `NoSuchMethodError`.
+Gradle itself can start on JDK 17 or newer. The JDK that compiles and runs the
+app module is not that one: `app/build.gradle` pins a Java 21 toolchain, because
+the unit tests call `List.removeFirst()`, added to `java.util.List` in Java 21,
+and on a Java 17 runtime `TrackedDelayedWorkTest` fails with
+`NoSuchMethodError`. The bytecode target stays at Java 17.
+
+Gradle does not auto-detect the JDK bundled with Android Studio, so
+`gradle.properties` names its path in `org.gradle.java.installations.paths`.
+Change that path if the Android Studio JDK moves, or point it at any Java 21
+home. No toolchain download repository is configured, so the build stays
+offline.
 
 ## Safe Galaxy S23 Plus update
 
