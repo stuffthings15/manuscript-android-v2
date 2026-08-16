@@ -122,11 +122,11 @@ class AcrossAppWritingSourceTest {
 
         assertTrue(activity.contains("Settings.ACTION_ACCESSIBILITY_SETTINGS"))
         assertTrue(activity.contains("showExternalAccessDisclosure"))
-        assertTrue(
-            activity.contains(
-                "runStartupReadinessCheck(showDialog = savedInstanceState == null)",
-            ),
-        )
+        // The readiness check still runs on a fresh launch. What it no longer
+        // does is open a modal to announce the result: the Assistant Status
+        // card carries the same two facts with the same actions, so the dialog
+        // was covering the thing it duplicated.
+        assertTrue(activity.contains("runStartupReadinessCheck(showDialog = false)"))
         assertTrue(activity.contains("showStartupReadinessCheckIfNeeded()"))
         assertTrue(activity.contains("isExternalAccessEnabled()"))
         assertTrue(activity.contains("showModelInstallPromptIfNeeded(force = true)"))
@@ -173,17 +173,17 @@ class AcrossAppWritingSourceTest {
     }
 
     @Test
-    fun firstLaunchRunsAndDisplaysARealReadinessCheck() {
+    fun firstLaunchRunsARealReadinessCheckWithoutAModal() {
         val activity = source("MainActivity.kt")
         val manager = source("AiModelManager.kt")
         val selfTester = source("GemmaModelSelfTester.kt")
         val strings = File(mainRoot, "res/values/strings.xml").readText()
 
-        assertTrue(
-            activity.contains(
-                "runStartupReadinessCheck(showDialog = savedInstanceState == null)",
-            ),
-        )
+        // The readiness check still runs on a fresh launch. What it no longer
+        // does is open a modal to announce the result: the Assistant Status
+        // card carries the same two facts with the same actions, so the dialog
+        // was covering the thing it duplicated.
+        assertTrue(activity.contains("runStartupReadinessCheck(showDialog = false)"))
         assertTrue(activity.contains("showStartupReadinessCheckIfNeeded()"))
         assertTrue(activity.contains("ManuscriptStartupReadiness.nextAction"))
         assertFalse(activity.contains("if (!force && manager.hasSeenDownloadPrompt()) return"))

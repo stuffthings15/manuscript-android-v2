@@ -339,7 +339,14 @@ class MainActivity : Activity() {
             showWritePage()
         }
         root.viewTreeObserver.addOnGlobalFocusChangeListener(focusListener)
-        runStartupReadinessCheck(showDialog = savedInstanceState == null)
+        // The readiness check still runs on every launch: it verifies the
+        // installed model and refreshes the status. What it no longer does is
+        // open a dialog to announce the result, because the Assistant Status
+        // card on this screen now carries the same two facts, the across-apps
+        // permission and the AI state, with the same actions. A modal that
+        // covers the card to repeat the card is noise, and it landed on the
+        // correction controls often enough to break corpus runs.
+        runStartupReadinessCheck(showDialog = false)
         if (openModelSetup) {
             root.postDelayed({ requestModelInstallation() }, STARTUP_DIALOG_HANDOFF_DELAY_MS)
         }
@@ -423,9 +430,15 @@ class MainActivity : Activity() {
         if (::assistantStatusCard.isInitialized) renderAssistantStatus()
         refreshDownloadTelemetry()
         startDownloadTelemetryUpdates()
-        if (::root.isInitialized) {
-            root.postDelayed({ showStartupReadinessCheckIfNeeded() }, 500L)
-        }
+        // No automatic readiness dialog on resume any more. It reported the
+        // across-apps permission and the AI state, which is exactly what the
+        // Assistant Status card on this screen now shows, so it had become a
+        // modal repeating the thing it was covering. It also landed on top of
+        // the "Correct my writing" button often enough to break corpus runs.
+        //
+        // The dialog itself is unchanged and still reached from the readiness
+        // check paths, so nothing that needs to ask the user has lost its way
+        // of asking.
     }
 
     override fun onPause() {

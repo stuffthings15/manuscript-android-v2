@@ -35,9 +35,15 @@
             android:name="libOpenCL.so"
             android:required="false" />
 
+        <!-- The home screen opens on status and navigation, so the keyboard
+             stays down until the writer taps the editor. It used to open with
+             the activity and cover the lower half of the screen, including the
+             correction controls. adjustResize keeps the layout above the
+             keyboard once it is up. -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize|stateHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

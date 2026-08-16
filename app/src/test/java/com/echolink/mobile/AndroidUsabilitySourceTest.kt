@@ -153,11 +153,11 @@ class AndroidUsabilitySourceTest {
         assertTrue(editorBlock.contains("isSaveEnabled = false"))
         assertFalse(editorBlock.contains("isSaveEnabled = true"))
         assertTrue(source.contains("startupCheckShown = savedInstanceState != null"))
-        assertTrue(
-            source.contains(
-                "runStartupReadinessCheck(showDialog = savedInstanceState == null)",
-            ),
-        )
+        // The readiness check still runs on a fresh launch. What it no longer
+        // does is open a modal to announce the result: the Assistant Status
+        // card carries the same two facts with the same actions, so the dialog
+        // was covering the thing it duplicated.
+        assertTrue(source.contains("runStartupReadinessCheck(showDialog = false)"))
         assertTrue(source.contains("private fun runStartupReadinessCheck(showDialog: Boolean)"))
         assertTrue(source.contains("if (showDialog) showStartupReadinessCheckIfNeeded()"))
         assertFalse(
