@@ -234,6 +234,7 @@ class OnDeviceGrammarEngine private constructor(context: Context) {
                             correctedText,
                         )
                     },
+                    logsRejectedCandidateText = BuildConfig.DEBUG,
                 )
                 activePipeline.set(pipeline)
                 val runner = PersistentDocumentCorrectionRunner(jobStore, pipeline)

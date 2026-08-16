@@ -755,9 +755,51 @@ class DocumentCorrectionPipelineTest {
 
     @Test
     fun lineStructureChangesAreRejectedBeforeFinalRestoration() {
+        // Collapsing two list items into one is still refused, now by the guard
+        // that owns list and heading structure. The newline count alone stopped
+        // deciding this, because a lone newline inside a paragraph is a broken
+        // line rather than structure.
         val validation = AiSafetyValidator.validate(
             "- First task\n- Second task",
             "- First task - Second task",
+        )
+
+        assertFalse(validation.safe)
+        assertTrue(SafetyIssue.MARKDOWN_HIERARCHY_CHANGED in validation.hardFailures)
+    }
+
+    @Test
+    fun joiningABrokenLineInsideAParagraphIsNotAStructureChange() {
+        // The shape essay 01 of the second corpus actually ships, with its
+        // injected mid-paragraph breaks. Refusing this repair sent every long
+        // paragraph down the sentence-salvage path: seventeen model calls for
+        // one section, and a ninety second timeout.
+        val validation = AiSafetyValidator.validate(
+            "a long flowering season because street\nstreet trees, balconies\n " +
+                "and private yards bloom at different times.",
+            "a long flowering season because street trees, balconies and " +
+                "private yards bloom at different times.",
+        )
+
+        assertFalse(SafetyIssue.LINE_STRUCTURE_CHANGED in validation.hardFailures)
+    }
+
+    @Test
+    fun inventingALineBreakIsStillAStructureChange() {
+        val validation = AiSafetyValidator.validate(
+            "One sentence about hives and another about forage.",
+            "One sentence about hives\nand another about forage.",
+        )
+
+        assertFalse(validation.safe)
+        assertTrue(SafetyIssue.LINE_STRUCTURE_CHANGED in validation.hardFailures)
+    }
+
+    @Test
+    fun mergingTwoOfTheWritersParagraphsIsStillAStructureChange() {
+        val validation = AiSafetyValidator.validate(
+            "The first paragraph ends here.\n\nThe second paragraph starts here.",
+            "The first paragraph ends here. The second paragraph starts here.",
         )
 
         assertFalse(validation.safe)

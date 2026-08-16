@@ -149,6 +149,9 @@ object AiSafetyValidator {
     private val markdownPrefix = Regex(
         "(?m)^[ \\t]*(?:#{1,6}[ \\t]+|[-*+][ \\t]+|\\d+[.)][ \\t]+)",
     )
+
+    /** A blank line, which is the only newline that separates the writer's paragraphs. */
+    private val paragraphBreak = Regex("\\n[ \\t]*\\n")
     private val negation = Regex(
         "(?i)\\b(?:not|never|no(?:body|thing|where)?|neither|nor|without|cannot|can't|won't|don't|" +
             "doesn't|didn't|isn't|aren't|wasn't|weren't|hasn't|haven't|hadn't|" +
@@ -455,7 +458,27 @@ object AiSafetyValidator {
         ) {
             hard += SafetyIssue.MARKDOWN_HIERARCHY_CHANGED
         }
-        if (original.count { it == '\n' } != candidate.count { it == '\n' }) {
+        // A newline the model INVENTED can restructure a document, and losing a
+        // blank-line break merges two of the writer's paragraphs. Both stay hard
+        // failures. Joining a line break INSIDE a paragraph does neither: the
+        // chunker splits on blank lines, so a lone newline within a chunk is a
+        // broken line rather than structure.
+        //
+        // This used to reject any change in newline count at all, and that is
+        // the repair the second corpus exists to test: it injects mid-paragraph
+        // breaks as formatting errors, twenty of them in essay 01 by its own
+        // manifest. Paragraph 3 reads "because street\nstreet trees, ...
+        // gardens\n and private yards", and joining those correctly takes the
+        // count from two to zero. Refusing it sent every long paragraph down
+        // the sentence-salvage path, which is seventeen model calls and a
+        // ninety second timeout. Headings and lists keep their own guard in
+        // MARKDOWN_HIERARCHY_CHANGED.
+        val originalParagraphBreaks = paragraphBreak.findAll(original).count()
+        val candidateParagraphBreaks = paragraphBreak.findAll(candidate).count()
+        if (
+            candidateParagraphBreaks != originalParagraphBreaks ||
+            candidate.count { it == '\n' } > original.count { it == '\n' }
+        ) {
             hard += SafetyIssue.LINE_STRUCTURE_CHANGED
         }
         val sourceExplicitlyRequiresMeaningCorrection =
@@ -847,6 +870,12 @@ class DocumentCorrectionPipeline(
     // Content-free per-paragraph outcome trace. A section that comes back
     // unchanged must always be explainable from a log line alone.
     private val logParagraphOutcome: (String) -> Unit = {},
+    // Debug builds only. The outcome trace names WHICH gate refused a
+    // paragraph but never what the model actually wrote, so a refusal like
+    // CONTENT_WORD_CHANGED could only be guessed at. Off by default, and the
+    // engine passes BuildConfig.DEBUG, because this puts the writer's text in
+    // the log and their words are the product.
+    private val logsRejectedCandidateText: Boolean = false,
 ) {
     private val activeGenerationJobs = ConcurrentHashMap<String, String>()
 
@@ -971,7 +1000,14 @@ class DocumentCorrectionPipeline(
                         .ifEmpty { "none" } +
                     failure.rejectedCandidate
                         ?.let { ";counts=" + AiSafetyValidator.diagnoseCounts(chunk.text, it) }
-                        .orEmpty()
+                        .orEmpty() +
+                    if (logsRejectedCandidateText) {
+                        failure.rejectedCandidate
+                            ?.let { ";rejected=" + it.replace("\n", "\\n") }
+                            .orEmpty()
+                    } else {
+                        ""
+                    }
                 recoverParagraph(chunk, failure)
                     ?.also { outcomePath = "grammar-veto-kept" }
                     ?: proofreadFallbackParagraph(
