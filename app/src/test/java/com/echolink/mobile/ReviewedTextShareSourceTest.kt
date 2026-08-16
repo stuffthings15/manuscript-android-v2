@@ -26,7 +26,10 @@ class ReviewedTextShareSourceTest {
         assertTrue(activity.contains("Intent.createChooser("))
         assertTrue(activity.contains("startActivity(Intent.createChooser("))
         assertTrue(activity.contains("secondaryButton("))
-        assertTrue(activity.contains("MIN_TOUCH_TARGET_DP = 48"))
+        // The share button still has to meet the 48 dp accessible target. That
+        // number now has one owner, so this checks the wiring rather than a
+        // literal; ManuscriptDesignTokensTest pins the value itself at 48.
+        assertTrue(activity.contains("MIN_TOUCH_TARGET_DP = ManuscriptMetrics.TOUCH_TARGET_DP"))
     }
 
     @Test

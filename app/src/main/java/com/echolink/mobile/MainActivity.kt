@@ -2837,7 +2837,7 @@ class MainActivity : Activity() {
             marginEnd = dp(endMargin)
         }
 
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int = manuscriptDp(value)
 
     private class TargetUnderlineSpan(
         private val color: Int,
@@ -2889,7 +2889,7 @@ class MainActivity : Activity() {
         // matched on collapsed whitespace.
         private val WHITESPACE = Regex("\\s+")
         private const val BLOCK_JOIN = "\n\n"
-        const val MIN_TOUCH_TARGET_DP = 48
+        const val MIN_TOUCH_TARGET_DP = ManuscriptMetrics.TOUCH_TARGET_DP
         const val REQUEST_RECORD_AUDIO = 4801
         private const val PREFETCH_IDLE_DELAY_MS = 2_500L
         private const val PREFETCH_MIN_CHARS = 60

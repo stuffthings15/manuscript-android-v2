@@ -187,7 +187,7 @@ class AccountActivity : Activity() {
         ViewGroup.LayoutParams.WRAP_CONTENT,
     ).apply { this.bottomMargin = dp(bottomMargin) }
 
-    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int) = manuscriptDp(value)
 
     companion object {
         const val EXTRA_VERIFY_ONLY = "com.remote.Manuscript.v2.VERIFY_ACCOUNT_ONLY"

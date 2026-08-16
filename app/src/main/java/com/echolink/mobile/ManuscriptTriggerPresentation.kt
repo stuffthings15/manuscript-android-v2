@@ -1,7 +1,8 @@
 package com.echolink.mobile
 
 object ManuscriptTriggerPresentation {
-    const val TOUCH_TARGET_DP = 48
+    /** The general rule, not a second opinion. See [ManuscriptMetrics]. */
+    const val TOUCH_TARGET_DP = ManuscriptMetrics.TOUCH_TARGET_DP
     const val VISUAL_SIZE_DP = 32
     const val PADDING_DP = (TOUCH_TARGET_DP - VISUAL_SIZE_DP) / 2
 

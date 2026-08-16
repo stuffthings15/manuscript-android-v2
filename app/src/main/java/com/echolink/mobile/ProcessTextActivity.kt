@@ -347,7 +347,7 @@ class ProcessTextActivity : Activity() {
         ViewGroup.LayoutParams.WRAP_CONTENT,
     ).apply { bottomMargin = dp(bottomMarginDp) }
 
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int = manuscriptDp(value)
 
     private inner class ToneAdapter : ArrayAdapter<String>(
         this,
@@ -372,7 +372,7 @@ class ProcessTextActivity : Activity() {
         const val EXTRA_OPEN_MODEL_SETUP = "com.remote.Manuscript.v2.OPEN_MODEL_SETUP"
         const val PREFERENCES_NAME = "manuscript_preferences_v1"
         const val TONE_KEY = "writing_tone"
-        const val MIN_TOUCH_TARGET_DP = 48
+        const val MIN_TOUCH_TARGET_DP = ManuscriptMetrics.TOUCH_TARGET_DP
         const val COLOR_BACKGROUND = ManuscriptPalette.BACKGROUND
         const val COLOR_SURFACE = ManuscriptPalette.SURFACE_RAISED
         const val COLOR_CARD = ManuscriptPalette.SURFACE

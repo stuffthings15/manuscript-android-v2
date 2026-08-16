@@ -37,6 +37,5 @@ object ManuscriptTriggerViewFactory {
         })
     }
 
-    private fun Context.dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
+    private fun Context.dp(value: Int): Int = manuscriptDp(value)
 }

@@ -15,4 +15,27 @@ object ManuscriptPalette {
     const val REMOVED = 0xffff978b.toInt()
     const val INSERTED = 0xff0d1c16.toInt()
     const val INSERTED_BACKGROUND = 0xff77e2ac.toInt()
+
+    // The GUI build manual names ten semantic roles. The thirteen constants
+    // above are locked to the artwork and already cover Primary, Surface,
+    // Background, Outline and Error. These five are the rest, drawn from the
+    // same warm family so nothing here is a new colour decision.
+    //
+    // The manual's rule that colour is never the only signal still holds: each
+    // of these is paired with a label or icon at every call site.
+
+    /** Something needs attention but nothing is broken. Warm amber, not red. */
+    const val WARNING = 0xffe0a23c.toInt()
+
+    /** A correction landed. The same green the inserted-text highlight uses. */
+    const val SUCCESS = INSERTED_BACKGROUND
+
+    /** Neutral explanation, quieter than the accent so it cannot read as a control. */
+    const val INFORMATION = 0xffc9b48c.toInt()
+
+    /** A control that is present but cannot be used. Must fail contrast on purpose. */
+    const val DISABLED = 0xff6b5a41.toInt()
+
+    /** Dimming behind a sheet or dialog. Black at 60 percent. */
+    const val SCRIM = 0x99000000.toInt()
 }

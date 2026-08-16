@@ -2524,7 +2524,7 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         setStroke(dp(1), stroke)
     }
 
-    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int) = manuscriptDp(value)
 
     private data class Target(
         val reviewTargetId: ReviewTargetId,

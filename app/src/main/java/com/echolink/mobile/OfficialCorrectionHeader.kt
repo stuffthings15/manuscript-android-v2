@@ -145,10 +145,10 @@ class OfficialCorrectionHeader(
             setStroke(dp(1), stroke)
         }
 
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int = context.manuscriptDp(value)
 
     private companion object {
-        const val MIN_TOUCH_TARGET_DP = 48
+        const val MIN_TOUCH_TARGET_DP = ManuscriptMetrics.TOUCH_TARGET_DP
         const val CLOSE_GLYPH = "\u00d7"
         const val SETTINGS_GLYPH = "\u2699"
     }
