@@ -12,6 +12,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.os.SystemClock
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextPaint
@@ -41,6 +42,16 @@ import android.widget.TextView
 class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOverlayActions {
     private lateinit var windowManager: WindowManager
     private var triggerView: View? = null
+
+    /**
+     * The application the writer hid the assistant in for this visit only.
+     *
+     * Deliberately NOT persisted. "Until this app closes" is scoped to a visit,
+     * and a value that survived the service being restarted would quietly
+     * become a block, which is a different choice on the same menu.
+     */
+    private var hiddenForAppVisit: String? = null
+    private var hideChoicesView: View? = null
     private var panelView: View? = null
     private var target: Target? = null
     private var reviewSession: WritingReviewSession? = null
@@ -773,6 +784,21 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
 
     private fun showTrigger(bounds: Rect) {
         if (terminalDetachLifecycle.hasOwnership) return
+        // The writer may have sent the assistant away. Section 16 of the
+        // manual: hidden for this visit, hidden for an hour, blocked in this
+        // application, or turned off altogether. Checked here, at the one
+        // place the trigger is put on screen, so no other path can bring it
+        // back while a choice is still in force.
+        val hostPackage = target?.packageName
+        if (hostPackage != null && !suppression().mayShow(hostPackage, SystemClock.elapsedRealtime())) {
+            Log.i(
+                REVIEW_LOG_TAG,
+                "event=external-trigger-suppressed;reason=" +
+                    suppression().suppressionFor(hostPackage, SystemClock.elapsedRealtime()),
+            )
+            removeTrigger()
+            return
+        }
         rememberVisibleKeyboardFrame()
         val current = triggerView
         if (current != null) {
@@ -801,6 +827,15 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
                 openPanel()
             },
         )
+        button.setOnLongClickListener {
+            val hostPackage = target?.packageName
+            if (hostPackage == null) {
+                false
+            } else {
+                showHideChoices(hostPackage)
+                true
+            }
+        }
         var dragStartRawX = 0f
         var dragStartRawY = 0f
         var dragStartX = 0
@@ -871,6 +906,132 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             )
             publishVisibleTriggerAccessibilityAfterLayout(button, state)
         }
+    }
+
+    /**
+     * The writer's standing choices about when the assistant may appear.
+     *
+     * Read from preferences each time rather than cached, because the blocked
+     * list and the off switch are also changed from the settings screen in the
+     * other process, and a cached copy there would go stale in the direction
+     * that matters: showing an assistant somebody switched off.
+     *
+     * The one-hour hide is stored as elapsed realtime, so a reboot ends it.
+     * That is the honest reading: elapsed time cannot be compared across a
+     * restart, and quietly extending the hour would be worse than ending it.
+     */
+    private fun suppression(): AssistantSuppressionState {
+        val preferences = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+        val bootId = preferences.getLong(KEY_HIDE_BOOT_MARKER, -1L)
+        val thisBoot = System.currentTimeMillis() - SystemClock.elapsedRealtime()
+        val hiddenUntil = if (kotlin.math.abs(bootId - thisBoot) < BOOT_MARKER_TOLERANCE_MS) {
+            preferences.getLong(KEY_HIDDEN_UNTIL_ELAPSED, 0L)
+        } else {
+            0L
+        }
+        return AssistantSuppressionState(
+            turnedOffEverywhere = preferences.getBoolean(KEY_ASSISTANT_OFF, false),
+            blockedPackages = preferences.getStringSet(KEY_BLOCKED_PACKAGES, emptySet())
+                .orEmpty()
+                .toSet(),
+            hiddenUntilElapsedMs = hiddenUntil,
+            hiddenForAppVisit = hiddenForAppVisit,
+        )
+    }
+
+    /**
+     * The four choices from section 16, offered on a long press.
+     *
+     * The manual reaches them by dragging the trigger onto a hide target. A
+     * long press is the same menu without requiring a drag, which matters
+     * because dragging only exists when the overlay permission was granted,
+     * and the writer who refused it needs a way to send the assistant away
+     * just as much.
+     */
+    private fun showHideChoices(hostPackage: String) {
+        val existing = hideChoicesView
+        if (existing != null) return
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = rounded(
+                COLOR_BACKGROUND,
+                ManuscriptMetrics.RADIUS_PANEL_DP.toFloat(),
+                COLOR_ACCENT,
+                strokeWidthDp = PANEL_BORDER_DP,
+            )
+            elevation = dp(PANEL_ELEVATION_DP).toFloat()
+            val padding = dp(ManuscriptMetrics.SPACE_CARD_DP)
+            setPadding(padding, padding, padding, padding)
+        }
+        panel.addView(TextView(this).apply {
+            text = getString(R.string.assistant_hide_title)
+            textSize = ManuscriptMetrics.TEXT_SECTION_TITLE_SP
+            setTextColor(COLOR_TEXT)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) isAccessibilityHeading = true
+        }, rowParams().apply { bottomMargin = dp(ManuscriptMetrics.SPACE_RELATED_DP) })
+
+        listOf(
+            AssistantHideChoice.HIDE_UNTIL_APP_CLOSES to R.string.assistant_hide_until_app_closes,
+            AssistantHideChoice.HIDE_FOR_ONE_HOUR to R.string.assistant_hide_for_one_hour,
+            AssistantHideChoice.BLOCK_THIS_APP to R.string.assistant_block_this_app,
+            AssistantHideChoice.TURN_OFF_EVERYWHERE to R.string.assistant_turn_off_everywhere,
+        ).forEach { (choice, labelRes) ->
+            panel.addView(
+                actionButton(labelRes, false) {
+                    applyHideChoice(choice, hostPackage)
+                    dismissHideChoices()
+                },
+                rowParams().apply { bottomMargin = dp(ManuscriptMetrics.SPACE_MICRO_DP) },
+            )
+        }
+        panel.addView(
+            actionButton(R.string.close_action, false) { dismissHideChoices() },
+            rowParams(),
+        )
+
+        val metrics = resources.displayMetrics
+        val params = WindowManager.LayoutParams(
+            (metrics.widthPixels - dp(ManuscriptMetrics.SPACE_SCREEN_DP) * 2),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            if (OverlayPermission.isGranted(this)) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            },
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            android.graphics.PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.CENTER
+        }
+        if (runCatching { windowManager.addView(panel, params) }.isSuccess) {
+            hideChoicesView = panel
+        }
+    }
+
+    private fun dismissHideChoices() {
+        val panel = hideChoicesView ?: return
+        hideChoicesView = null
+        runCatching { windowManager.removeView(panel) }
+    }
+
+    /** Records a choice from the drag-to-hide panel. */
+    private fun applyHideChoice(choice: AssistantHideChoice, hostPackage: String) {
+        val now = SystemClock.elapsedRealtime()
+        val updated = suppression().after(choice, hostPackage, now)
+        hiddenForAppVisit = updated.hiddenForAppVisit
+        getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_ASSISTANT_OFF, updated.turnedOffEverywhere)
+            .putStringSet(KEY_BLOCKED_PACKAGES, updated.blockedPackages)
+            .putLong(KEY_HIDDEN_UNTIL_ELAPSED, updated.hiddenUntilElapsedMs)
+            .putLong(KEY_HIDE_BOOT_MARKER, System.currentTimeMillis() - now)
+            .apply()
+        Log.i(
+            REVIEW_LOG_TAG,
+            "event=external-trigger-hidden;choice=${choice.name};package=$hostPackage",
+        )
+        removeTrigger()
     }
 
     /**
@@ -2310,6 +2471,12 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         if (currentId != null && currentId != candidateId) {
             val switchedApplication = target?.packageName != candidate.packageName
             if (switchedApplication) {
+                // "Hide until this app closes" ends when the writer leaves it.
+                // Left standing it would behave like a block, which is the
+                // choice below it on the same menu and a much longer one.
+                hiddenForAppVisit = suppression()
+                    .onForegroundApplicationChanged(candidate.packageName)
+                    .hiddenForAppVisit
                 reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.ApplicationSwitched)
                 clearTargetRetaining(candidate.node)
             } else {
@@ -2736,6 +2903,20 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
          */
         const val KEY_TRIGGER_SIDE = "floating_trigger_side_v1"
         const val KEY_TRIGGER_FRACTION = "floating_trigger_fraction_v1"
+
+        /** Drag-to-hide, manual section 16. See AssistantSuppressionState. */
+        const val KEY_ASSISTANT_OFF = "assistant_off_everywhere_v1"
+        const val KEY_BLOCKED_PACKAGES = "assistant_blocked_packages_v1"
+        const val KEY_HIDDEN_UNTIL_ELAPSED = "assistant_hidden_until_elapsed_v1"
+
+        /**
+         * Lets a stored elapsed-realtime deadline be recognised as belonging to
+         * this boot. Elapsed time restarts at zero when the phone does, so a
+         * deadline from a previous boot would otherwise be compared against a
+         * clock that has been reset, and an hour could become a week.
+         */
+        const val KEY_HIDE_BOOT_MARKER = "assistant_hidden_boot_marker_v1"
+        const val BOOT_MARKER_TOLERANCE_MS = 5_000L
         const val TONE_KEY = "writing_tone"
         const val KEYBOARD_HIDE_DELAY_MS = 80L
         const val REPLACEMENT_VERIFY_INTERVAL_MS = 350L

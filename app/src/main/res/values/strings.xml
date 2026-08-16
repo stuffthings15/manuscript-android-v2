@@ -50,6 +50,11 @@
     <string name="write_help">Type, paste, or dictate. Then tap Correct my writing.</string>
     <string name="editor_label">Document</string>
     <string name="editor_hint">Start writing here&#8230;</string>
+    <string name="assistant_hide_title">Hide the writing assistant</string>
+    <string name="assistant_hide_until_app_closes">Hide until this app closes</string>
+    <string name="assistant_hide_for_one_hour">Hide for one hour</string>
+    <string name="assistant_block_this_app">Block this app</string>
+    <string name="assistant_turn_off_everywhere">Turn off everywhere</string>
     <string name="expanded_review_apply">Apply</string>
     <string name="expanded_review_explain">Explain</string>
     <string name="expanded_review_collapse">Collapse the review</string>
