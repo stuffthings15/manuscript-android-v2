@@ -555,7 +555,7 @@ class MainActivity : Activity() {
             contentDescription = getString(R.string.qwen_model_install_action)
         }
 
-        assistantStatusCard = buildAssistantStatusCard()
+        assistantStatusCard = buildAssistantStatusCard(qwenDownloadActions)
 
         val tabs = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -580,18 +580,7 @@ class MainActivity : Activity() {
                 bottomMargin = dp(ManuscriptMetrics.SPACE_CARD_DP)
             },
         )
-        root.addView(qwenStatus)
-        root.addView(qwenDownloadDetail)
-        root.addView(qwenDownloadProgress)
-        root.addView(qwenDownloadActions)
-        root.addView(qwenInstallButton, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).apply {
-            marginStart = dp(20)
-            marginEnd = dp(20)
-            bottomMargin = dp(8)
-        })
+        // The AI status views now live inside assistantStatusCard, added above.
         root.addView(tabs)
         root.addView(pageHost, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -606,6 +595,18 @@ class MainActivity : Activity() {
     private fun updateQwenStatus() {
         val presentation = currentDownloadPresentation()
         renderDownloadTelemetry(presentation)
+        hideEmptyAiStatusRows()
+    }
+
+    /**
+     * An empty status line still occupies its height, which was invisible when
+     * these sat loose on the screen and is a hole once they are inside a card.
+     */
+    private fun hideEmptyAiStatusRows() {
+        if (!::qwenDownloadDetail.isInitialized) return
+        listOf(qwenDownloadDetail, qwenDownloadProgress).forEach { row ->
+            row.visibility = if (row.text.isNullOrBlank()) View.GONE else View.VISIBLE
+        }
     }
 
     private fun currentDownloadPresentation(): DownloadTelemetryPresentation? {
@@ -1517,7 +1518,7 @@ class MainActivity : Activity() {
      * separate from the colour on purpose: the state has to be readable with
      * the colour ignored entirely.
      */
-    private fun buildAssistantStatusCard(): LinearLayout =
+    private fun buildAssistantStatusCard(downloadActions: View): LinearLayout =
         ManuscriptComponents.card(this).apply {
             id = R.id.assistant_status_card
             addView(
@@ -1558,7 +1559,45 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ).apply { topMargin = dp(ManuscriptMetrics.SPACE_RELATED_DP) },
             )
+
+            // The local AI is the second half of "can this assistant work",
+            // so it belongs in this card rather than in a second status
+            // system below it. These are the existing views, re-parented and
+            // stripped of the screen padding the card now provides; every
+            // download, retry and consent path that writes to them is
+            // untouched.
+            addView(
+                aiStatusSeparator(),
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(1),
+                ).apply {
+                    topMargin = dp(ManuscriptMetrics.SPACE_CARD_DP)
+                    bottomMargin = dp(ManuscriptMetrics.SPACE_RELATED_DP)
+                },
+            )
+            listOf(
+                qwenStatus,
+                qwenDownloadDetail,
+                qwenDownloadProgress,
+                downloadActions,
+                qwenInstallButton,
+            ).forEach { view ->
+                view.setPadding(0, view.paddingTop, 0, view.paddingBottom)
+                addView(
+                    view,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
+            }
         }
+
+    private fun aiStatusSeparator(): View = View(this).apply {
+        setBackgroundColor(ManuscriptPalette.BORDER)
+        alpha = 0.4f
+    }
 
     /** Every repair the card offers today lands on across-apps setup. */
     private fun onAssistantStatusAction() {
@@ -1603,10 +1642,17 @@ class MainActivity : Activity() {
             assistantStatusAction.text = getString(repair)
             assistantStatusAction.contentDescription = getString(repair)
         }
-        assistantStatusCard.contentDescription =
-            getString(R.string.assistant_status_heading) +
-                ". " + getString(status.labelRes) +
-                ". " + getString(status.detailRes)
+        // One description for the whole card, so a screen reader user hears the
+        // permission state and the AI state together rather than as two
+        // unrelated announcements.
+        hideEmptyAiStatusRows()
+        val aiLine = qwenStatus.text?.toString().orEmpty()
+        assistantStatusCard.contentDescription = buildString {
+            append(getString(R.string.assistant_status_heading))
+            append(". ").append(getString(status.labelRes))
+            append(". ").append(getString(status.detailRes))
+            if (aiLine.isNotBlank()) append(". ").append(aiLine)
+        }
     }
 
     private fun isExternalAccessEnabled(): Boolean {
