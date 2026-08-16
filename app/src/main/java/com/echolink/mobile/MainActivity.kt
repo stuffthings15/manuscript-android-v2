@@ -2968,6 +2968,104 @@ class MainActivity : Activity() {
         TriggerPulseController.applyState(assistantTrigger, state)
     }
 
+    /**
+     * Where a writer undoes what they told the floating assistant to do.
+     *
+     * Drag-to-hide can block an application or turn the assistant off across
+     * all of them, and both survive a restart. Without this card there is no
+     * way back from either inside the app: the writer would have to find the
+     * setting in Android, or reinstall. A choice that cannot be undone where
+     * it was made is a trap, not a preference.
+     */
+    private fun buildAssistantAccessCard(): View {
+        val card = ManuscriptComponents.card(this)
+        card.addView(
+            ManuscriptComponents.sectionHeader(this, getString(R.string.assistant_access_heading)),
+            matchWidth(bottomMargin = ManuscriptMetrics.SPACE_MICRO_DP),
+        )
+        val preferences = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+        val turnedOff = preferences.getBoolean(
+            AssistantSuppressionKeys.ASSISTANT_OFF,
+            false,
+        )
+        val blocked = preferences
+            .getStringSet(AssistantSuppressionKeys.BLOCKED_PACKAGES, emptySet())
+            .orEmpty()
+            .sorted()
+
+        if (!turnedOff && blocked.isEmpty()) {
+            card.addView(
+                assistantAccessNote(getString(R.string.assistant_access_none)),
+                matchWidth(),
+            )
+            return card
+        }
+
+        if (turnedOff) {
+            card.addView(
+                assistantAccessNote(getString(R.string.assistant_access_off)),
+                matchWidth(bottomMargin = ManuscriptMetrics.SPACE_RELATED_DP),
+            )
+            card.addView(
+                secondaryButton(R.string.assistant_access_turn_on) {
+                    preferences.edit()
+                        .putBoolean(AssistantSuppressionKeys.ASSISTANT_OFF, false)
+                        .apply()
+                    showPersonalizePage()
+                },
+                matchWidth(bottomMargin = ManuscriptMetrics.SPACE_RELATED_DP),
+            )
+        }
+
+        blocked.forEach { packageName ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            row.addView(
+                TextView(this).apply {
+                    // The application's own name where the system knows it.
+                    // A package name is what the writer blocked, but it is not
+                    // what they would call it.
+                    text = applicationLabelFor(packageName)
+                    textSize = ManuscriptMetrics.TEXT_BODY_SP
+                    setTextColor(COLOR_TEXT)
+                },
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+            )
+            row.addView(
+                secondaryButton(R.string.assistant_access_unblock) {
+                    val updated = AssistantSuppressionState(
+                        blockedPackages = blocked.toSet(),
+                    ).unblock(packageName)
+                    preferences.edit()
+                        .putStringSet(
+                            AssistantSuppressionKeys.BLOCKED_PACKAGES,
+                            updated.blockedPackages,
+                        )
+                        .apply()
+                    showPersonalizePage()
+                },
+            )
+            card.addView(row, matchWidth(bottomMargin = ManuscriptMetrics.SPACE_MICRO_DP))
+        }
+        return card
+    }
+
+    /** A line of explanation inside the access card, not another card. */
+    private fun assistantAccessNote(text: CharSequence): TextView = TextView(this).apply {
+        this.text = text
+        textSize = ManuscriptMetrics.TEXT_SUPPORT_SP
+        setTextColor(COLOR_TEXT_MUTED)
+    }
+
+    /** The readable name of an installed application, or its package name. */
+    private fun applicationLabelFor(packageName: String): String = runCatching {
+        packageManager.getApplicationLabel(
+            packageManager.getApplicationInfo(packageName, 0),
+        ).toString()
+    }.getOrDefault(packageName)
+
     private fun showPersonalizePage() {
         persistDraftNow()
         currentPage = Page.PERSONALIZE
@@ -2990,6 +3088,11 @@ class MainActivity : Activity() {
             textSize = 14f
             setTextColor(COLOR_TEXT_MUTED)
         }, matchWidth(bottomMargin = 12))
+
+        content.addView(
+            buildAssistantAccessCard(),
+            matchWidth(bottomMargin = ManuscriptMetrics.SPACE_SECTION_DP),
+        )
 
         localToolsStatus = TextView(this).apply {
             id = R.id.local_tools_status

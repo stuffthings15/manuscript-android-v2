@@ -90,6 +90,30 @@ data class AssistantSuppressionState(
     }
 }
 
+/**
+ * Where the writer's standing choices are stored.
+ *
+ * Here rather than inside the accessibility service, because two processes read
+ * them: the service decides whether to show the assistant, and the Personalize
+ * screen is where a block or an off switch is undone. Keys spelled twice are
+ * keys that eventually differ by a character.
+ */
+object AssistantSuppressionKeys {
+    const val PREFERENCES = "manuscript_preferences_v1"
+    const val ASSISTANT_OFF = "assistant_off_everywhere_v1"
+    const val BLOCKED_PACKAGES = "assistant_blocked_packages_v1"
+    const val HIDDEN_UNTIL_ELAPSED = "assistant_hidden_until_elapsed_v1"
+
+    /**
+     * Lets a stored elapsed-realtime deadline be recognised as belonging to
+     * this boot. Elapsed time restarts at zero when the phone does, so a
+     * deadline from a previous boot would be compared against a clock that has
+     * been reset, and an hour could become a week.
+     */
+    const val HIDDEN_BOOT_MARKER = "assistant_hidden_boot_marker_v1"
+    const val BOOT_MARKER_TOLERANCE_MS = 5_000L
+}
+
 /** Why the assistant is not on screen. Named so a screen can say which. */
 enum class AssistantSuppressionReason {
     TURNED_OFF,

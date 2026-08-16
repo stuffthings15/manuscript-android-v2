@@ -50,6 +50,11 @@
     <string name="write_help">Type, paste, or dictate. Then tap Correct my writing.</string>
     <string name="editor_label">Document</string>
     <string name="editor_hint">Start writing here&#8230;</string>
+    <string name="assistant_access_heading">Where the assistant may appear</string>
+    <string name="assistant_access_none">The assistant may appear in every app that supports it.</string>
+    <string name="assistant_access_off">The assistant is turned off in every app.</string>
+    <string name="assistant_access_turn_on">Turn the assistant back on</string>
+    <string name="assistant_access_unblock">Unblock</string>
     <string name="assistant_hide_title">Hide the writing assistant</string>
     <string name="assistant_hide_until_app_closes">Hide until this app closes</string>
     <string name="assistant_hide_for_one_hour">Hide for one hour</string>

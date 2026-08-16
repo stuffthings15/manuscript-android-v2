@@ -922,16 +922,16 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
      */
     private fun suppression(): AssistantSuppressionState {
         val preferences = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
-        val bootId = preferences.getLong(KEY_HIDE_BOOT_MARKER, -1L)
+        val bootId = preferences.getLong(AssistantSuppressionKeys.HIDDEN_BOOT_MARKER, -1L)
         val thisBoot = System.currentTimeMillis() - SystemClock.elapsedRealtime()
-        val hiddenUntil = if (kotlin.math.abs(bootId - thisBoot) < BOOT_MARKER_TOLERANCE_MS) {
-            preferences.getLong(KEY_HIDDEN_UNTIL_ELAPSED, 0L)
+        val hiddenUntil = if (kotlin.math.abs(bootId - thisBoot) < AssistantSuppressionKeys.BOOT_MARKER_TOLERANCE_MS) {
+            preferences.getLong(AssistantSuppressionKeys.HIDDEN_UNTIL_ELAPSED, 0L)
         } else {
             0L
         }
         return AssistantSuppressionState(
-            turnedOffEverywhere = preferences.getBoolean(KEY_ASSISTANT_OFF, false),
-            blockedPackages = preferences.getStringSet(KEY_BLOCKED_PACKAGES, emptySet())
+            turnedOffEverywhere = preferences.getBoolean(AssistantSuppressionKeys.ASSISTANT_OFF, false),
+            blockedPackages = preferences.getStringSet(AssistantSuppressionKeys.BLOCKED_PACKAGES, emptySet())
                 .orEmpty()
                 .toSet(),
             hiddenUntilElapsedMs = hiddenUntil,
@@ -1022,10 +1022,10 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         hiddenForAppVisit = updated.hiddenForAppVisit
         getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
             .edit()
-            .putBoolean(KEY_ASSISTANT_OFF, updated.turnedOffEverywhere)
-            .putStringSet(KEY_BLOCKED_PACKAGES, updated.blockedPackages)
-            .putLong(KEY_HIDDEN_UNTIL_ELAPSED, updated.hiddenUntilElapsedMs)
-            .putLong(KEY_HIDE_BOOT_MARKER, System.currentTimeMillis() - now)
+            .putBoolean(AssistantSuppressionKeys.ASSISTANT_OFF, updated.turnedOffEverywhere)
+            .putStringSet(AssistantSuppressionKeys.BLOCKED_PACKAGES, updated.blockedPackages)
+            .putLong(AssistantSuppressionKeys.HIDDEN_UNTIL_ELAPSED, updated.hiddenUntilElapsedMs)
+            .putLong(AssistantSuppressionKeys.HIDDEN_BOOT_MARKER, System.currentTimeMillis() - now)
             .apply()
         Log.i(
             REVIEW_LOG_TAG,
@@ -2903,20 +2903,6 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
          */
         const val KEY_TRIGGER_SIDE = "floating_trigger_side_v1"
         const val KEY_TRIGGER_FRACTION = "floating_trigger_fraction_v1"
-
-        /** Drag-to-hide, manual section 16. See AssistantSuppressionState. */
-        const val KEY_ASSISTANT_OFF = "assistant_off_everywhere_v1"
-        const val KEY_BLOCKED_PACKAGES = "assistant_blocked_packages_v1"
-        const val KEY_HIDDEN_UNTIL_ELAPSED = "assistant_hidden_until_elapsed_v1"
-
-        /**
-         * Lets a stored elapsed-realtime deadline be recognised as belonging to
-         * this boot. Elapsed time restarts at zero when the phone does, so a
-         * deadline from a previous boot would otherwise be compared against a
-         * clock that has been reset, and an hour could become a week.
-         */
-        const val KEY_HIDE_BOOT_MARKER = "assistant_hidden_boot_marker_v1"
-        const val BOOT_MARKER_TOLERANCE_MS = 5_000L
         const val TONE_KEY = "writing_tone"
         const val KEYBOARD_HIDE_DELAY_MS = 80L
         const val REPLACEMENT_VERIFY_INTERVAL_MS = 350L
