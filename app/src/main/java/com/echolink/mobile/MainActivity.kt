@@ -2383,9 +2383,7 @@ class MainActivity : Activity() {
         if (session.complete) return
         try {
             val updated = session.replaceCurrent(editor.text.toString(), selectedTone)
-            internalTextChange = true
-            editor.setText(updated)
-            internalTextChange = false
+            setEditorTextFromReview(updated)
             activeReviewChangeId = null
             finishOrRenderReview()
         } catch (_: IllegalArgumentException) {
@@ -2579,9 +2577,21 @@ class MainActivity : Activity() {
     }
 
     private fun setEditorTextFromReview(updated: String) {
+        // setText alone sends the caret to 0 and the page to the top, so
+        // accepting a correction on page four threw the writer back to page
+        // one. The manual requires both to survive a correction.
+        val previous = editor.text.toString()
+        val caret = EditorCaretRestore.offsetAfter(
+            oldText = previous,
+            newText = updated,
+            caret = editor.selectionEnd,
+        )
+        val scrollY = mainScroll?.scrollY ?: 0
         internalTextChange = true
         editor.setText(updated)
+        editor.setSelection(caret)
         internalTextChange = false
+        mainScroll?.let { scroll -> scroll.post { scroll.scrollTo(0, scrollY) } }
     }
 
     private fun closeReview() {
