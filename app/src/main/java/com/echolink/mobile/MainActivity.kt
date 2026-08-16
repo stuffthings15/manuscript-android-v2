@@ -863,8 +863,14 @@ class MainActivity : Activity() {
 
         val editorFrame = FrameLayout(this).apply {
             id = R.id.editor_frame
-            background = rounded(COLOR_SURFACE, 18f, COLOR_BORDER)
-            setPadding(dp(4), dp(4), dp(4), dp(4))
+            // Card radius from the manual's scale, replacing a hand-picked 18.
+            background = rounded(
+                COLOR_SURFACE,
+                ManuscriptMetrics.RADIUS_CARD_DP.toFloat(),
+                COLOR_BORDER,
+            )
+            val inset = dp(ManuscriptMetrics.SPACE_MICRO_DP)
+            setPadding(inset, inset, inset, inset)
         }
         editor = EditText(this).apply {
             id = R.id.review_editor
@@ -2022,14 +2028,29 @@ class MainActivity : Activity() {
         val block = session.current(selectedTone) ?: return
         reviewCounter.text = getString(R.string.review_counter, block.index, block.total)
         reviewSuggestion.text = block.original
-        reviewNote.text = getString(
-            R.string.local_ai_working_progress,
-            session.readyCount(selectedTone),
-            session.total,
+        // The opening frame used to say "Working" and disable the button
+        // whatever the state of the device. With no model installed nothing is
+        // working and nothing ever will be, so that frame showed exactly the
+        // dead button accept-ahead exists to avoid, and it was the one frame
+        // standing between the user and the install prompt. Ask the same
+        // question renderCurrentBlock asks, so the first frame tells the truth.
+        val modelMissing = !LocalAiCorrectionGate.isReady(
+            AiModelManager.get(this).installedFile(),
         )
-        replaceButton.text = getString(R.string.local_ai_working_action)
+        reviewNote.text = if (modelMissing) {
+            getString(R.string.local_ai_model_required)
+        } else {
+            getString(
+                R.string.local_ai_working_progress,
+                session.readyCount(selectedTone),
+                session.total,
+            )
+        }
+        replaceButton.text = getString(
+            if (modelMissing) R.string.qwen_model_install_action else R.string.local_ai_working_action,
+        )
         replaceButton.contentDescription = replaceButton.text
-        replaceButton.isEnabled = false
+        replaceButton.isEnabled = modelMissing
         dismissButton.text = getString(R.string.writing_dismiss_action)
         acceptChangeButton.isEnabled = false
         rejectChangeButton.isEnabled = false

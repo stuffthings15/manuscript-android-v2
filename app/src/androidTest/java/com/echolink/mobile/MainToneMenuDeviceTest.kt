@@ -42,8 +42,11 @@ class MainToneMenuDeviceTest {
 
         try {
             instrumentation.waitForIdleSync()
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-            instrumentation.waitForIdleSync()
+            // No BACK here. This used to close the keyboard that opened with
+            // the activity. The home screen now starts with the keyboard down
+            // (windowSoftInputMode stateHidden), so BACK is no longer absorbed
+            // by the keyboard: it finishes the activity, and the assertions
+            // below then run against the launcher.
             val installButtonId = activity.resources.getIdentifier(
                 "local_ai_install_action",
                 "id",
@@ -242,6 +245,11 @@ class MainToneMenuDeviceTest {
                 suggestion.text = List(80) {
                     "Long correction line ${it + 1} must not hide the approval controls."
                 }.joinToString("\n")
+                // The card lives inside a review overlay ScrollView that starts
+                // GONE, so showing the card alone leaves the whole subtree
+                // unmeasured and every child reports top = 0. Show the parent
+                // too, which is what showCorrectionOverlay does in the product.
+                (card.parent as View).visibility = View.VISIBLE
                 card.visibility = View.VISIBLE
                 accept = activity.findViewById(R.id.writing_replace_action)
             }
