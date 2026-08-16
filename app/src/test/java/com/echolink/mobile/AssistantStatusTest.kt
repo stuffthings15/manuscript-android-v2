@@ -62,6 +62,31 @@ class AssistantStatusTest {
     }
 
     @Test
+    fun editorOnlyIsNotReportedAsAPermissionFailure() {
+        // A user who never turned across-apps on is running the supported
+        // editor-only product. Calling that a permission failure would put a
+        // repair prompt in front of someone with nothing broken.
+        assertEquals(
+            AssistantStatus.EDITOR_ONLY,
+            AssistantStatus.forState(acrossAppsEnabled = false, acrossAppsRequested = false),
+        )
+        assertEquals(
+            AssistantStatus.PERMISSION_MISSING,
+            AssistantStatus.forState(acrossAppsEnabled = false, acrossAppsRequested = true),
+        )
+        assertEquals(
+            AssistantStatus.ACTIVE,
+            AssistantStatus.forState(acrossAppsEnabled = true, acrossAppsRequested = true),
+        )
+        // Enabled without a recorded request is still active: the permission is
+        // what matters, and the flag only disambiguates the off case.
+        assertEquals(
+            AssistantStatus.ACTIVE,
+            AssistantStatus.forState(acrossAppsEnabled = true, acrossAppsRequested = false),
+        )
+    }
+
+    @Test
     fun theRoundedBackgroundHasOneOwner() {
         val sources = File(
             System.getProperty("echoLinkAndroidDir") ?: ".",

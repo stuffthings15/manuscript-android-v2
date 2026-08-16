@@ -58,4 +58,8 @@
     <item name="correct_writing_action" type="id" />
     <item name="dictate_button" type="id" />
     <item name="dictation_status" type="id" />
+    <item name="assistant_status_card" type="id" />
+    <item name="assistant_status_pill" type="id" />
+    <item name="assistant_status_detail" type="id" />
+    <item name="assistant_status_action" type="id" />
 </resources>

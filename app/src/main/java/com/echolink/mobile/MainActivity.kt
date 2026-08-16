@@ -91,6 +91,10 @@ class MainActivity : Activity() {
     private lateinit var snippetSummary: TextView
     private var externalAccessStatus: TextView? = null
     private var externalAccessButton: Button? = null
+    private lateinit var assistantStatusCard: LinearLayout
+    private lateinit var assistantStatusPill: TextView
+    private lateinit var assistantStatusDetail: TextView
+    private lateinit var assistantStatusAction: Button
     private lateinit var qwenStatus: TextView
     private lateinit var qwenDownloadDetail: TextView
     private lateinit var qwenDownloadProgress: TextView
@@ -413,6 +417,10 @@ class MainActivity : Activity() {
         super.onResume()
         activityResumed = true
         updateExternalAccessStatus()
+        // The permission can be granted or revoked while this screen is in the
+        // background, so the card is read from the system on every resume
+        // rather than cached from launch.
+        if (::assistantStatusCard.isInitialized) renderAssistantStatus()
         refreshDownloadTelemetry()
         startDownloadTelemetryUpdates()
         if (::root.isInitialized) {
@@ -547,6 +555,8 @@ class MainActivity : Activity() {
             contentDescription = getString(R.string.qwen_model_install_action)
         }
 
+        assistantStatusCard = buildAssistantStatusCard()
+
         val tabs = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(dp(16), 0, dp(16), dp(10))
@@ -559,6 +569,17 @@ class MainActivity : Activity() {
         pageHost = FrameLayout(this).apply { id = R.id.page_host }
         root.addView(header)
         root.addView(privacy)
+        root.addView(
+            assistantStatusCard,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                marginStart = dp(ManuscriptMetrics.SPACE_SCREEN_DP)
+                marginEnd = dp(ManuscriptMetrics.SPACE_SCREEN_DP)
+                bottomMargin = dp(ManuscriptMetrics.SPACE_CARD_DP)
+            },
+        )
         root.addView(qwenStatus)
         root.addView(qwenDownloadDetail)
         root.addView(qwenDownloadProgress)
@@ -578,6 +599,7 @@ class MainActivity : Activity() {
             1f,
         ))
         setContentView(root)
+        renderAssistantStatus()
         updateQwenStatus()
     }
 
@@ -1166,6 +1188,11 @@ class MainActivity : Activity() {
             }
             .setPositiveButton(R.string.external_disclosure_continue) { _, _ ->
                 openingAccessibilitySettings = true
+                // Remember that across-apps was asked for. Without this, a user
+                // who granted it and later lost the permission looks identical
+                // to one who never wanted it, and the status card would call a
+                // working editor-only setup broken.
+                recordAcrossAppsRequested()
                 openAccessibilitySettingsWithGuidance()
             }
             .create()
@@ -1480,6 +1507,106 @@ class MainActivity : Activity() {
                 else showExternalAccessDisclosure()
             }
         }
+    }
+
+    /**
+     * The Assistant Status card, manual section 6.
+     *
+     * One card carrying the state's name, what it means in a sentence, and the
+     * action that repairs it when there is one. The heading and the pill are
+     * separate from the colour on purpose: the state has to be readable with
+     * the colour ignored entirely.
+     */
+    private fun buildAssistantStatusCard(): LinearLayout =
+        ManuscriptComponents.card(this).apply {
+            id = R.id.assistant_status_card
+            addView(
+                ManuscriptComponents.sectionHeader(
+                    this@MainActivity,
+                    getString(R.string.assistant_status_heading),
+                ),
+            )
+            assistantStatusPill = ManuscriptComponents
+                .statusPill(this@MainActivity, AssistantStatus.EDITOR_ONLY)
+                .apply { id = R.id.assistant_status_pill }
+            addView(
+                assistantStatusPill,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { topMargin = dp(ManuscriptMetrics.SPACE_RELATED_DP) },
+            )
+            assistantStatusDetail = TextView(this@MainActivity).apply {
+                id = R.id.assistant_status_detail
+                textSize = ManuscriptMetrics.TEXT_SUPPORT_SP
+                setTextColor(COLOR_TEXT_MUTED)
+            }
+            addView(
+                assistantStatusDetail,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { topMargin = dp(ManuscriptMetrics.SPACE_RELATED_DP) },
+            )
+            assistantStatusAction = ManuscriptComponents
+                .secondaryButton(this@MainActivity, "") { onAssistantStatusAction() }
+                .apply { id = R.id.assistant_status_action }
+            addView(
+                assistantStatusAction,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { topMargin = dp(ManuscriptMetrics.SPACE_RELATED_DP) },
+            )
+        }
+
+    /** Every repair the card offers today lands on across-apps setup. */
+    private fun onAssistantStatusAction() {
+        when (currentAssistantStatus()) {
+            AssistantStatus.PERMISSION_MISSING -> openAccessibilitySettingsWithGuidance()
+            AssistantStatus.EDITOR_ONLY -> showExternalAccessDisclosure()
+            else -> Unit
+        }
+    }
+
+    private fun recordAcrossAppsRequested() {
+        getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_ACROSS_APPS_REQUESTED, true)
+            .apply()
+    }
+
+    private fun acrossAppsRequested(): Boolean =
+        getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+            .getBoolean(KEY_ACROSS_APPS_REQUESTED, false)
+
+    private fun currentAssistantStatus(): AssistantStatus = AssistantStatus.forState(
+        acrossAppsEnabled = isExternalAccessEnabled(),
+        acrossAppsRequested = acrossAppsRequested(),
+    )
+
+    private fun renderAssistantStatus() {
+        val status = currentAssistantStatus()
+        assistantStatusPill.text = getString(status.labelRes)
+        assistantStatusPill.background = ManuscriptComponents.rounded(
+            this,
+            status.color,
+            ManuscriptMetrics.RADIUS_CHIP_DP,
+            status.color,
+        )
+        assistantStatusDetail.text = getString(status.detailRes)
+        val repair = status.repairActionRes
+        if (repair == null) {
+            assistantStatusAction.visibility = View.GONE
+        } else {
+            assistantStatusAction.visibility = View.VISIBLE
+            assistantStatusAction.text = getString(repair)
+            assistantStatusAction.contentDescription = getString(repair)
+        }
+        assistantStatusCard.contentDescription =
+            getString(R.string.assistant_status_heading) +
+                ". " + getString(status.labelRes) +
+                ". " + getString(status.detailRes)
     }
 
     private fun isExternalAccessEnabled(): Boolean {
@@ -2870,6 +2997,7 @@ class MainActivity : Activity() {
         private const val REVIEW_KEYBOARD_HIDE_LIMIT_MS = 360L
         private const val REVIEW_KEYBOARD_POLL_MS = 16L
         const val PREFERENCES_NAME = "manuscript_preferences_v1"
+        const val KEY_ACROSS_APPS_REQUESTED = "across_apps_requested_v1"
         const val TONE_KEY = "writing_tone"
         private const val REVIEW_LOG = "ManuscriptReview"
         private const val DOWNLOAD_LOG = "ManuscriptDownload"

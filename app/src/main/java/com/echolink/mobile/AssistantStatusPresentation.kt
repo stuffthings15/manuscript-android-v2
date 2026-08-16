@@ -69,4 +69,29 @@ enum class AssistantStatus(
     /** True when the state is one the user should act on. */
     val needsAttention: Boolean
         get() = this == PERMISSION_MISSING || this == SERVICE_ERROR
+
+    companion object {
+        /**
+         * Which state the home card should show.
+         *
+         * [acrossAppsRequested] is what separates a user who never turned
+         * across-apps on, who is running the supported editor-only product,
+         * from one who did and has since lost the permission, which is a
+         * failure that must link to its repair. Without that flag the two are
+         * the same reading and the card would call a working setup broken.
+         *
+         * PAUSED and SERVICE_ERROR are defined but not produced here yet:
+         * there is no pause control and no service health signal to read.
+         * They are reachable the moment those exist, and until then this
+         * returns only states it can actually establish.
+         */
+        fun forState(
+            acrossAppsEnabled: Boolean,
+            acrossAppsRequested: Boolean,
+        ): AssistantStatus = when {
+            acrossAppsEnabled -> ACTIVE
+            acrossAppsRequested -> PERMISSION_MISSING
+            else -> EDITOR_ONLY
+        }
+    }
 }
