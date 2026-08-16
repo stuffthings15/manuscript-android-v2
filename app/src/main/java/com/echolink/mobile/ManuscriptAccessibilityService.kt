@@ -801,13 +801,41 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
                 openPanel()
             },
         )
-        button.setOnTouchListener { _, motionEvent ->
+        var dragStartRawX = 0f
+        var dragStartRawY = 0f
+        var dragStartX = 0
+        var dragStartY = 0
+        var dragging = false
+        val touchSlop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+        button.setOnTouchListener { view, motionEvent ->
             when (motionEvent.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> {
                     Log.i(REVIEW_LOG_TAG, "event=external-trigger-down")
                     triggerPressed = true
                     mainHandler.removeCallbacks(releaseTriggerPress)
                     cancelTargetClear()
+                    dragStartRawX = motionEvent.rawX
+                    dragStartRawY = motionEvent.rawY
+                    dragStartX = params.x
+                    dragStartY = params.y
+                    dragging = false
+                    false
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    // Dragging is only offered when the writer granted the
+                    // overlay permission. On the accessibility overlay the
+                    // trigger is positioned against the field being edited, so
+                    // moving it would fight the thing that placed it.
+                    if (!canDragTrigger()) return@setOnTouchListener false
+                    val dx = (motionEvent.rawX - dragStartRawX).toInt()
+                    val dy = (motionEvent.rawY - dragStartRawY).toInt()
+                    val movement = maxOf(kotlin.math.abs(dx), kotlin.math.abs(dy))
+                    if (!dragging && !FloatingAssistantPlacement.isDrag(movement, touchSlop)) {
+                        return@setOnTouchListener false
+                    }
+                    dragging = true
+                    moveTriggerTo(view, params, dragStartX + dx, dragStartY + dy)
+                    true
                 }
                 android.view.MotionEvent.ACTION_UP,
                 android.view.MotionEvent.ACTION_CANCEL,
@@ -816,9 +844,18 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
                     // Keep the press guard alive briefly so the click handler
                     // and its focus fallout cannot race the trigger away.
                     mainHandler.postDelayed(releaseTriggerPress, PRESS_GUARD_MS)
+                    if (dragging) {
+                        settleTriggerAtEdge(view, params)
+                        dragging = false
+                        // Swallow the release so a drag does not also open the
+                        // review, which is what the finger was NOT asking for.
+                        true
+                    } else {
+                        false
+                    }
                 }
+                else -> false
             }
-            false
         }
         val state = visibleTriggerState()
         TriggerPulseController.applyState(button, state)
@@ -834,6 +871,82 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             )
             publishVisibleTriggerAccessibilityAfterLayout(button, state)
         }
+    }
+
+    /**
+     * Whether this trigger can be moved.
+     *
+     * Only an application overlay can be. On the accessibility overlay the
+     * trigger is placed against the field being edited, so a drag would fight
+     * whatever put it there.
+     */
+    private fun canDragTrigger(): Boolean = OverlayPermission.isGranted(this)
+
+    /** Follows the finger, without letting the trigger leave the screen. */
+    private fun moveTriggerTo(
+        trigger: View,
+        params: WindowManager.LayoutParams,
+        xPx: Int,
+        yPx: Int,
+    ) {
+        val metrics = resources.displayMetrics
+        val insets = currentSystemBottomInsets()
+        val size = dp(WritingAssistUiPolicy.ICON_TOUCH_TARGET_DP)
+        params.x = xPx.coerceIn(0, maxOf(0, metrics.widthPixels - size))
+        params.y = FloatingAssistantPlacement.clampY(
+            yPx = yPx,
+            triggerSizePx = size,
+            screenHeightPx = metrics.heightPixels,
+            protectedTopPx = 0,
+            protectedBottomPx = insets.protectedBottomPx,
+        )
+        runCatching { windowManager.updateViewLayout(trigger, params) }
+    }
+
+    /**
+     * Snaps the trigger to the nearer edge and remembers where it landed.
+     *
+     * The height is stored as a fraction rather than a pixel count, so the
+     * position means the same thing after a rotation, a split-screen change or
+     * a fold. See [FloatingAssistantPlacement].
+     */
+    private fun settleTriggerAtEdge(trigger: View, params: WindowManager.LayoutParams) {
+        val metrics = resources.displayMetrics
+        val insets = currentSystemBottomInsets()
+        val size = dp(WritingAssistUiPolicy.ICON_TOUCH_TARGET_DP)
+        val side = FloatingAssistantPlacement.snapSide(params.x, size, metrics.widthPixels)
+        params.x = FloatingAssistantPlacement.restingX(
+            side = side,
+            triggerSizePx = size,
+            screenWidthPx = metrics.widthPixels,
+            marginPx = dp(ManuscriptMetrics.SPACE_RELATED_DP),
+        )
+        runCatching { windowManager.updateViewLayout(trigger, params) }
+        val fraction = FloatingAssistantPlacement.verticalFraction(
+            yPx = params.y,
+            triggerSizePx = size,
+            screenHeightPx = metrics.heightPixels,
+            protectedTopPx = 0,
+            protectedBottomPx = insets.protectedBottomPx,
+        )
+        getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+            .edit()
+            .putString(KEY_TRIGGER_SIDE, side.name)
+            .putFloat(KEY_TRIGGER_FRACTION, fraction)
+            .apply()
+        Log.i(
+            REVIEW_LOG_TAG,
+            "event=external-trigger-settled;side=${side.name};fraction=$fraction",
+        )
+    }
+
+    /** The side and height the writer last left the trigger at, if any. */
+    private fun storedTriggerPlacement(): Pair<FloatingAssistantPlacement.Side, Float>? {
+        val preferences = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+        val side = preferences.getString(KEY_TRIGGER_SIDE, null) ?: return null
+        val parsed = runCatching { FloatingAssistantPlacement.Side.valueOf(side) }.getOrNull()
+            ?: return null
+        return parsed to preferences.getFloat(KEY_TRIGGER_FRACTION, 0.5f)
     }
 
     private fun triggerWindowParams(
@@ -878,6 +991,27 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             gravity = Gravity.TOP or Gravity.START
             this.x = x
             this.y = y
+            // A trigger the writer has moved stays where they put it. Only on
+            // the application overlay: on the accessibility overlay the
+            // position belongs to the field being edited, and overriding it
+            // would put the trigger somewhere unrelated to the writing.
+            if (OverlayPermission.isGranted(this@ManuscriptAccessibilityService)) {
+                storedTriggerPlacement()?.let { (side, fraction) ->
+                    this.x = FloatingAssistantPlacement.restingX(
+                        side = side,
+                        triggerSizePx = size,
+                        screenWidthPx = metrics.widthPixels,
+                        marginPx = dp(ManuscriptMetrics.SPACE_RELATED_DP),
+                    )
+                    this.y = FloatingAssistantPlacement.yForFraction(
+                        fraction = fraction,
+                        triggerSizePx = size,
+                        screenHeightPx = metrics.heightPixels,
+                        protectedTopPx = 0,
+                        protectedBottomPx = currentSystemBottomInsets().protectedBottomPx,
+                    )
+                }
+            }
         }
     }
 
@@ -2594,6 +2728,14 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         const val EXTRA_OPEN_PERSONALIZE = "com.remote.Manuscript.v2.OPEN_PERSONALIZE"
         const val EXTRA_OPEN_MODEL_SETUP = "com.remote.Manuscript.v2.OPEN_MODEL_SETUP"
         const val PREFERENCES_NAME = "manuscript_preferences_v1"
+
+        /**
+         * Where the writer last left the floating trigger. The height is a
+         * fraction of usable height, not a pixel count, so it still means the
+         * same place after a rotation or a fold. See FloatingAssistantPlacement.
+         */
+        const val KEY_TRIGGER_SIDE = "floating_trigger_side_v1"
+        const val KEY_TRIGGER_FRACTION = "floating_trigger_fraction_v1"
         const val TONE_KEY = "writing_tone"
         const val KEYBOARD_HIDE_DELAY_MS = 80L
         const val REPLACEMENT_VERIFY_INTERVAL_MS = 350L
