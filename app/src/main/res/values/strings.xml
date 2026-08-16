@@ -173,4 +173,23 @@
     <string name="account_failed">Sign-in failed. Check the email and password.</string>
     <string name="account_check_failed">Subscription could not be checked. Check the connection and try again.</string>
     <string name="account_signed_out">Signed out.</string>
+
+    <!-- Assistant Status card, GUI build manual section 6. Every state carries
+         a label so colour is never the only signal, and every state the user
+         can act on carries the name of that action. -->
+    <string name="assistant_status_heading">Assistant status</string>
+    <string name="assistant_status_active">Active</string>
+    <string name="assistant_status_active_detail">Manuscript is checking your writing here and in supported apps.</string>
+    <string name="assistant_status_paused">Paused</string>
+    <string name="assistant_status_paused_detail">Manuscript is not checking anything until you resume it.</string>
+    <string name="assistant_status_resume">Resume</string>
+    <string name="assistant_status_permission_missing">Permission missing</string>
+    <string name="assistant_status_permission_missing_detail">Across-apps access was turned off, so Manuscript works only in its own editor.</string>
+    <string name="assistant_status_restore_access">Restore access</string>
+    <string name="assistant_status_service_error">Service error</string>
+    <string name="assistant_status_service_error_detail">The local writing service stopped answering. Your text was not sent anywhere.</string>
+    <string name="assistant_status_reconnect">Reconnect</string>
+    <string name="assistant_status_editor_only">Editor only</string>
+    <string name="assistant_status_editor_only_detail">Manuscript checks writing in its own editor. Turn on across-apps to use it elsewhere.</string>
+    <string name="assistant_status_enable_across_apps">Enable across apps</string>
 </resources>

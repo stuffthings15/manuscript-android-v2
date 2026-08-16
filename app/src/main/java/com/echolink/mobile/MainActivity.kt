@@ -2819,12 +2819,8 @@ class MainActivity : Activity() {
         isSaveEnabled = false
     }
 
-    private fun rounded(fill: Int, radiusDp: Float, stroke: Int): GradientDrawable = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        setColor(fill)
-        cornerRadius = dp(radiusDp.toInt()).toFloat()
-        setStroke(dp(1), stroke)
-    }
+    private fun rounded(fill: Int, radiusDp: Float, stroke: Int): GradientDrawable =
+        ManuscriptComponents.rounded(this, fill, radiusDp.toInt(), stroke)
 
     private fun matchWidth(bottomMargin: Int = 0): LinearLayout.LayoutParams = LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT,

@@ -335,12 +335,8 @@ class ProcessTextActivity : Activity() {
         setOnClickListener { action() }
     }
 
-    private fun rounded(fill: Int, radiusDp: Float, stroke: Int): GradientDrawable = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        setColor(fill)
-        cornerRadius = dp(radiusDp.toInt()).toFloat()
-        setStroke(dp(1), stroke)
-    }
+    private fun rounded(fill: Int, radiusDp: Float, stroke: Int): GradientDrawable =
+        ManuscriptComponents.rounded(this, fill, radiusDp.toInt(), stroke)
 
     private fun matchWidth(bottomMarginDp: Int): LinearLayout.LayoutParams = LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT,

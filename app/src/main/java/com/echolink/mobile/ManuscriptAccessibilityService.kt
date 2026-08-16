@@ -2517,12 +2517,8 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         marginEnd = dp(end)
     }
 
-    private fun rounded(fill: Int, radiusDp: Float, stroke: Int) = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        setColor(fill)
-        cornerRadius = dp(radiusDp.toInt()).toFloat()
-        setStroke(dp(1), stroke)
-    }
+    private fun rounded(fill: Int, radiusDp: Float, stroke: Int) =
+        ManuscriptComponents.rounded(this, fill, radiusDp.toInt(), stroke)
 
     private fun dp(value: Int) = manuscriptDp(value)
 

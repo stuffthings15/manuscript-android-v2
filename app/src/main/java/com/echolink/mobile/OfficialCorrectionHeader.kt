@@ -138,12 +138,7 @@ class OfficialCorrectionHeader(
     }
 
     private fun rounded(fill: Int, radiusDp: Float, stroke: Int): GradientDrawable =
-        GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(fill)
-            cornerRadius = dp(radiusDp.toInt()).toFloat()
-            setStroke(dp(1), stroke)
-        }
+        ManuscriptComponents.rounded(context, fill, radiusDp.toInt(), stroke)
 
     private fun dp(value: Int): Int = context.manuscriptDp(value)
 
