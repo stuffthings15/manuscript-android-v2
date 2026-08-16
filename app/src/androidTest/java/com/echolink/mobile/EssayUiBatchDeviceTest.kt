@@ -67,6 +67,28 @@ class EssayUiBatchDeviceTest {
         val backend = arguments.getString("backend").orEmpty()
         AiModelManager.get(context)
             .forceLegacyBackendForTesting(backend.equals("legacy", ignoreCase = true))
+        // -e mode faster runs the same essays on a smaller tier. Without it the
+        // hardware policy chose Qwen3-4B on a Samsung S20, where one model call
+        // takes about 30 seconds, so section 2 of a nineteen-section essay hit
+        // the 90 second section timeout before any quality could be measured.
+        // Which tier produced a score has to be part of the run, not a note.
+        val mode = arguments.getString("mode").orEmpty()
+        if (mode.isNotEmpty()) {
+            val chosen = when (mode.lowercase()) {
+                "faster", "fast" -> AiUserMode.FASTER
+                "auto" -> AiUserMode.AUTO
+                "best", "best_quality", "thorough" -> AiUserMode.BEST_QUALITY
+                else -> error("Unknown mode argument: $mode")
+            }
+            AiModelManager.get(context).setUserMode(chosen)
+        }
+        val activeSelection = AiModelManager.get(context).selectedRuntime()
+        Log.i(
+            TAG,
+            "mode=${AiModelManager.get(context).userMode().name} " +
+                "artifact=${activeSelection.artifact.fileName} " +
+                "backend=${activeSelection.backend.name}",
+        )
         context.getSharedPreferences("manuscript_preferences_v1", android.content.Context.MODE_PRIVATE)
             .edit()
             .putString(MainActivity.TONE_KEY, WritingTone.PROOFREAD.label)

@@ -38,6 +38,11 @@ param(
     # -Backend legacy runs the same essays on the llama.cpp runtime.
     [string]$Backend,
 
+    # auto, faster or best. The hardware policy picks the tier when this is
+    # omitted, and on an S20 that chose Qwen3-4B at about 30 seconds a call.
+    [ValidateSet('', 'auto', 'faster', 'best')]
+    [string]$Mode = '',
+
     [switch]$SkipInstall,
 
     [switch]$AllowDisabledAccessibilityBeforeInstall
@@ -136,13 +141,18 @@ if ([string]::IsNullOrWhiteSpace($CorpusDirectory)) {
     Write-Host "Corpus (unpinned): $($essays.Count) essays, $sectionTotal sections, from $corpusRoot"
 }
 
-$selected = if ([string]::IsNullOrWhiteSpace($Essay)) {
-    @($essays)
-} else {
-    $matching = @($essays | Where-Object { $_.Id.StartsWith($Essay) })
-    if ($matching.Count -ne 1) { throw "Essay filter '$Essay' matched $($matching.Count) essays." }
-    $matching
-}
+# Wrap the whole assignment. A one-essay filter returns a single object from the
+# if-block, PowerShell unrolls it, and $selected.Count then throws under
+# StrictMode because a bare PSCustomObject has no Count.
+$selected = @(
+    if ([string]::IsNullOrWhiteSpace($Essay)) {
+        $essays
+    } else {
+        $matching = @($essays | Where-Object { $_.Id.StartsWith($Essay) })
+        if ($matching.Count -ne 1) { throw "Essay filter '$Essay' matched $($matching.Count) essays." }
+        $matching
+    }
+)
 
 if (-not $SkipInstall) {
     $installArguments = @{
@@ -225,6 +235,9 @@ foreach ($record in $selected) {
     )
     if (-not [string]::IsNullOrWhiteSpace($Backend)) {
         $instrumentArguments += @('-e', 'backend', $Backend)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Mode)) {
+        $instrumentArguments += @('-e', 'mode', $Mode)
     }
     $instrumentArguments += $runner
     $runLog = Join-Path $work "run-$number.txt"
