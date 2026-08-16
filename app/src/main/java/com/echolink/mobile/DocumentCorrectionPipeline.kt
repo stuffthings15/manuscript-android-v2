@@ -120,6 +120,11 @@ class ParagraphCorrectionException(
     val stage: String? = null,
     val rejectedCandidate: String? = null,
     val validation: SafetyValidation? = null,
+    // The text the candidate was actually judged against. For a proofread this
+    // is the deterministically prepared target, not what the writer typed, and
+    // the difference is why a refusal could not be reproduced from the
+    // writer's text and the model's answer alone.
+    val preparedOriginal: String? = null,
 ) : IllegalStateException(message)
 
 /** Rejects model-authored fewer/less swaps; deterministic grammar owns those repairs. */
@@ -1002,9 +1007,17 @@ class DocumentCorrectionPipeline(
                         ?.let { ";counts=" + AiSafetyValidator.diagnoseCounts(chunk.text, it) }
                         .orEmpty() +
                     if (logsRejectedCandidateText) {
-                        failure.rejectedCandidate
-                            ?.let { ";rejected=" + it.replace("\n", "\\n") }
-                            .orEmpty()
+                        // Both sides, because they are not the pair a reader
+                        // would assume. A proofread candidate is judged against
+                        // the prepared target, so logging the candidate alone
+                        // left a refusal that could not be reproduced from the
+                        // writer's text and the model's answer.
+                        failure.preparedOriginal
+                            ?.let { ";prepared=" + it.replace("\n", "\\n") }
+                            .orEmpty() +
+                            failure.rejectedCandidate
+                                ?.let { ";rejected=" + it.replace("\n", "\\n") }
+                                .orEmpty()
                     } else {
                         ""
                     }
@@ -1753,6 +1766,7 @@ class DocumentCorrectionPipeline(
             stage = operation.name,
             rejectedCandidate = lastCandidate,
             validation = lastValidation,
+            preparedOriginal = generationTarget,
         )
     }
 

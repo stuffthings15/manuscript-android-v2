@@ -1020,6 +1020,23 @@ object GrammarSafetyNet {
     fun repair(value: String): String {
         val immutable = DeterministicCleanup.protect(value)
         var result = immutable.text
+        // "rather then" and "other then" are the comparative "than", always.
+        // Neither word pairs with a temporal "then" the way a comparative can:
+        // "it got better then worse" is a real sentence, "rather then" is not.
+        //
+        // This has to be a deterministic repair rather than something the model
+        // is allowed to do. Both spellings are real words the dictionary knows
+        // and neither is a function word, so when the model corrected "rather
+        // then" itself, ProofreadPreservationPolicy read it as a content-word
+        // swap and refused the whole paragraph. On essay 01 of the 500-percent
+        // corpus that single word cost paragraph 2 its correction: measured on
+        // the JVM against the phone's own prepared text and answer, it was the
+        // ONLY one of six repairs in that paragraph the policy would not allow.
+        // Repairing it here means the prepared text already says "than", so
+        // there is nothing left for the model to swap.
+        result = Regex("(?i)\\b(rather|other)\\s+then\\b").replace(result) { match ->
+            match.groupValues[1] + " than"
+        }
         result = Regex("(?i)\\band\\s+but\\b").replace(result, "but")
         // "peoples" is a real word for nations, which is why an unconditional
         // entry in the speller's word map was wrong: it rewrote "indigenous
