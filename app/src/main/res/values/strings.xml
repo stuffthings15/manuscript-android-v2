@@ -50,6 +50,11 @@
     <string name="write_help">Type, paste, or dictate. Then tap Correct my writing.</string>
     <string name="editor_label">Document</string>
     <string name="editor_hint">Start writing here&#8230;</string>
+    <string name="expanded_review_apply">Apply</string>
+    <string name="expanded_review_explain">Explain</string>
+    <string name="expanded_review_collapse">Collapse the review</string>
+    <string name="expanded_review_open">Open the full review</string>
+    <string name="expanded_review_no_explanation">No explanation for this change.</string>
     <string name="edit_category_capitalization">Capitalization</string>
     <string name="edit_category_punctuation">Punctuation</string>
     <string name="edit_category_spelling">Spelling</string>

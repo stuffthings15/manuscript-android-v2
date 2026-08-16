@@ -64,4 +64,16 @@
     <item name="assistant_status_action" type="id" />
     <item name="draft_status" type="id" />
     <item name="writing_category" type="id" />
+    <item name="expanded_review_sheet" type="id" />
+    <item name="expanded_review_handle" type="id" />
+    <item name="expanded_review_navigator" type="id" />
+    <item name="expanded_review_category" type="id" />
+    <item name="expanded_review_original" type="id" />
+    <item name="expanded_review_suggested" type="id" />
+    <item name="expanded_review_explanation" type="id" />
+    <item name="expanded_review_apply" type="id" />
+    <item name="expanded_review_dismiss" type="id" />
+    <item name="expanded_review_undo" type="id" />
+    <item name="expanded_review_explain" type="id" />
+    <item name="expanded_review_open_action" type="id" />
 </resources>

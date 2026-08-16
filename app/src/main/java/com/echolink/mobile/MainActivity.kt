@@ -113,6 +113,8 @@ class MainActivity : Activity() {
     private lateinit var draftStore: EncryptedEditorDraftStore
     private var draftStatusView: TextView? = null
     private lateinit var reviewCategoryTag: TextView
+    private var expandedReviewSheet: ExpandedReviewSheet? = null
+    private var reviewExpanded = false
     private var mainScroll: ScrollView? = null
     private var reviewSession: WritingReviewSession? = null
     private var activeTargetSpan: TargetUnderlineSpan? = null
@@ -312,7 +314,19 @@ class MainActivity : Activity() {
         val insideToneMenu = newFocus != null &&
             ::mainToneMenu.isInitialized &&
             isDescendant(newFocus, mainToneMenu)
-        if (newFocus !== editor && newFocus !== assistantTrigger && !insideCard && !insideToneMenu) {
+        // The expanded sheet is the same review, so focus moving into it is
+        // not target loss. Without this, opening the full review hid the
+        // focused card, focus left it, and the review closed itself: the
+        // expand control read as a close.
+        val insideSheet = newFocus != null &&
+            expandedReviewSheet?.let { sheet -> isDescendant(newFocus, sheet) } == true
+        if (
+            newFocus !== editor &&
+            newFocus !== assistantTrigger &&
+            !insideCard &&
+            !insideToneMenu &&
+            !insideSheet
+        ) {
             invalidateMainReviewSurface(ReviewSurfaceEvent.TargetLost)
         }
         updateAssistantTrigger()
@@ -1007,11 +1021,20 @@ class MainActivity : Activity() {
             dp(WritingAssistUiPolicy.ICON_TOUCH_TARGET_DP),
             Gravity.END or Gravity.TOP,
         ).apply { setMargins(0, dp(10), dp(10), 0) })
+        expandedReviewSheet = buildExpandedReviewSheet()
+        // A ScrollView takes one child, so the card and the expanded sheet
+        // share a column inside it. Only one of the two is ever visible: they
+        // are two views of the same review, not two reviews.
+        val reviewColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(correctionCard, matchWidth())
+            addView(expandedReviewSheet, matchWidth())
+        }
         val reviewOverlay = ScrollView(this).apply {
             isFillViewport = false
             isVerticalScrollBarEnabled = true
             visibility = View.GONE
-            addView(correctionCard, ViewGroup.LayoutParams(
+            addView(reviewColumn, ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ))
@@ -1731,6 +1754,65 @@ class MainActivity : Activity() {
         return enabledServices.split(':').any { it.equals(component, ignoreCase = true) }
     }
 
+    /**
+     * The manual's expanded review.
+     *
+     * Every action here is one the card already had, pointed at the same
+     * function. The sheet is a second view of one review, so a correction
+     * cannot be accepted in one place and still be pending in the other.
+     */
+    private fun buildExpandedReviewSheet(): ExpandedReviewSheet = ExpandedReviewSheet(
+        context = this,
+        onApply = { replaceCurrentBlock() },
+        onDismiss = { dismissCurrentBlock() },
+        onUndo = { undoReviewAction() },
+        onExplain = { showCurrentExplanation() },
+        onCollapse = { setReviewExpanded(false) },
+    ).apply { visibility = View.GONE }
+
+    /**
+     * Swaps between the compact card and the expanded sheet.
+     *
+     * Both are inside the review overlay, and exactly one is visible, so there
+     * is never a moment where the writer can see the same correction twice.
+     */
+    private fun setReviewExpanded(expanded: Boolean) {
+        val sheet = expandedReviewSheet ?: return
+        reviewExpanded = expanded
+        // Hand focus over before hiding whichever view currently holds it. A
+        // hidden focused view drops focus wherever the tree happens to send it
+        // next, and the focus listener reads an unrecognised destination as
+        // the writing target being lost.
+        if (expanded) {
+            sheet.visibility = View.VISIBLE
+            sheet.isFocusableInTouchMode = true
+            sheet.requestFocus()
+            correctionCard.visibility = View.GONE
+        } else {
+            correctionCard.visibility = View.VISIBLE
+            correctionCard.isFocusableInTouchMode = true
+            correctionCard.requestFocus()
+            sheet.visibility = View.GONE
+        }
+        renderCurrentBlock(requestModel = false)
+    }
+
+    /**
+     * What the Explain action shows.
+     *
+     * The note the diff already writes, and an honest sentence when there is
+     * none, rather than an empty panel that looks like a failure.
+     */
+    private fun showCurrentExplanation() {
+        val session = reviewSession ?: return
+        val change = session.currentChanges(selectedTone)
+            .firstOrNull { it.id == activeReviewChangeId }
+        expandedReviewSheet?.showExplanation(
+            change?.note?.takeIf { it.isNotBlank() }
+                ?: getString(R.string.expanded_review_no_explanation),
+        )
+    }
+
     private fun buildCorrectionCard(): LinearLayout {
         val card = LinearLayout(this).apply {
             id = R.id.writing_suggestion_card
@@ -1861,6 +1943,14 @@ class MainActivity : Activity() {
         changeActionRow.addView(acceptChangeButton, weightedParams(endMargin = 4))
         changeActionRow.addView(rejectChangeButton, weightedParams(startMargin = 4))
         card.addView(changeActionRow, matchWidth(bottomMargin = 4))
+        // The way into the manual's expanded review, where the writer's own
+        // sentence is shown beside the suggested one.
+        card.addView(
+            secondaryButton(R.string.expanded_review_open) { setReviewExpanded(true) }.apply {
+                id = R.id.expanded_review_open_action
+            },
+            matchWidth(bottomMargin = ManuscriptMetrics.SPACE_MICRO_DP),
+        )
         // Correcting a page takes minutes on a phone. A line of text is not
         // enough feedback for that: the bar shows how far along the document
         // is and that work is still happening.
@@ -2178,6 +2268,12 @@ class MainActivity : Activity() {
     }
 
     private fun showCorrectionOverlay() {
+        // Every review opens compact. Without this the expanded sheet survived
+        // a close and the next review showed the card and the sheet at once,
+        // because hiding the overlay hides both without settling which one is
+        // meant to be showing.
+        reviewExpanded = false
+        expandedReviewSheet?.visibility = View.GONE
         correctionCard.visibility = View.VISIBLE
         correctionCardOverlay?.apply {
             val wasGone = visibility == View.GONE
@@ -2248,7 +2344,18 @@ class MainActivity : Activity() {
             ?: changes.firstOrNull()
         activeReviewChangeId = focusedChange?.id
         renderCategoryTag(focusedChange)
-        reviewSuggestion.text = inlineCorrectionText(visibleBlock, focusedChange?.id)
+        val suggestionText = inlineCorrectionText(visibleBlock, focusedChange?.id)
+        reviewSuggestion.text = suggestionText
+        expandedReviewSheet?.render(
+            index = block.index,
+            total = block.total,
+            original = block.original,
+            suggested = suggestionText,
+            category = focusedChange?.category,
+            explanationText = null,
+            canUndo = session.canUndo(),
+            canApply = modelReady,
+        )
         val modelMissing = !LocalAiCorrectionGate.isReady(
             AiModelManager.get(this).installedFile(),
         )
