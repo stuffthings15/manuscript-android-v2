@@ -1247,8 +1247,26 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
     private fun buildPanel(): View {
         val panel = ExpandableReviewPanel(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(4), dp(10), dp(6))
-            background = rounded(COLOR_BACKGROUND, 20f, COLOR_ACCENT)
+            setPadding(
+                dp(ManuscriptMetrics.SPACE_CARD_DP),
+                dp(ManuscriptMetrics.SPACE_MICRO_DP),
+                dp(ManuscriptMetrics.SPACE_CARD_DP),
+                dp(ManuscriptMetrics.SPACE_RELATED_DP),
+            )
+            // This panel is drawn over somebody else's application, and the
+            // manual requires it to hold up against a light one and a dark one
+            // alike. Manuscript's own surface is dark warm, which all but
+            // disappears against a dark host, so the edge does the work: a
+            // 2 dp accent border rather than a hairline, and elevation so the
+            // system draws a shadow that separates the panel from whatever is
+            // underneath, whatever colour that is.
+            background = rounded(
+                COLOR_BACKGROUND,
+                ManuscriptMetrics.RADIUS_PANEL_DP.toFloat(),
+                COLOR_ACCENT,
+                strokeWidthDp = PANEL_BORDER_DP,
+            )
+            elevation = dp(PANEL_ELEVATION_DP).toFloat()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 accessibilityPaneTitle = getString(R.string.external_panel_title)
             }
@@ -1263,8 +1281,11 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             setPadding(0, 0, 0, 0)
             installPanelResizeGesture(this)
         }, LinearLayout.LayoutParams(
+            // The control that resizes the whole panel was a 24 dp strip, half
+            // the manual's minimum. The bar still looks the same; the row a
+            // finger has to land on is now a full target.
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(24),
+            dp(ManuscriptMetrics.TOUCH_TARGET_DP),
         ))
         val headingRow = OfficialCorrectionHeader(
             context = this,
@@ -2517,8 +2538,8 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         marginEnd = dp(end)
     }
 
-    private fun rounded(fill: Int, radiusDp: Float, stroke: Int) =
-        ManuscriptComponents.rounded(this, fill, radiusDp.toInt(), stroke)
+    private fun rounded(fill: Int, radiusDp: Float, stroke: Int, strokeWidthDp: Int = 1) =
+        ManuscriptComponents.rounded(this, fill, radiusDp.toInt(), stroke, strokeWidthDp)
 
     private fun dp(value: Int) = manuscriptDp(value)
 
@@ -2575,6 +2596,13 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         const val TERMINAL_DETACH_EVENT_RETRY_INTERVAL_MS = 250L
         const val RAW_EVENT_DIAGNOSTIC_INTERVAL_MS = 250L
         const val PRESS_GUARD_MS = 600L
+        /**
+         * The panel's edge treatment, which is what makes it legible over an
+         * application Manuscript does not control. See buildPanel.
+         */
+        const val PANEL_BORDER_DP = 2
+        const val PANEL_ELEVATION_DP = 8
+
         const val COLOR_BACKGROUND = ManuscriptPalette.BACKGROUND
         const val COLOR_SURFACE = ManuscriptPalette.SURFACE_RAISED
         const val COLOR_SURFACE_FOCUSED = ManuscriptPalette.SURFACE_FOCUSED
