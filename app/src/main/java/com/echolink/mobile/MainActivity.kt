@@ -582,17 +582,13 @@ class MainActivity : Activity() {
         pageHost = FrameLayout(this).apply { id = R.id.page_host }
         root.addView(header)
         root.addView(privacy)
-        root.addView(
-            assistantStatusCard,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply {
-                marginStart = dp(ManuscriptMetrics.SPACE_SCREEN_DP)
-                marginEnd = dp(ManuscriptMetrics.SPACE_SCREEN_DP)
-                bottomMargin = dp(ManuscriptMetrics.SPACE_CARD_DP)
-            },
-        )
+        // The status card is NOT added here. As a fixed sibling above the
+        // weighted page host it took the screen and left the host 99 pixels,
+        // which the device tests caught: the correction card wanted 1141 and
+        // could not show, so the trigger never returned and the tone menu sat
+        // off-screen. It goes inside the Write page's own scroll view instead,
+        // where it is still the first thing on screen and scrolls away once
+        // the writer starts working.
         // The AI status views now live inside assistantStatusCard, added above.
         root.addView(tabs)
         root.addView(pageHost, LinearLayout.LayoutParams(
@@ -829,6 +825,14 @@ class MainActivity : Activity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
+        // showWritePage rebuilds this column, so detach the card from the
+        // previous one before re-adding it. A view with a parent cannot be
+        // added twice.
+        (assistantStatusCard.parent as? ViewGroup)?.removeView(assistantStatusCard)
+        content.addView(
+            assistantStatusCard,
+            matchWidth(bottomMargin = ManuscriptMetrics.SPACE_CARD_DP),
+        )
         content.addView(TextView(this).apply {
             text = getString(R.string.write_heading)
             textSize = 20f
