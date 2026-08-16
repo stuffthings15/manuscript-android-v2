@@ -148,7 +148,13 @@ class MainToneMenuDeviceTest {
 
                 val row = menu.getChildAt(0) as ViewGroup
                 val buttons = (0 until row.childCount).map { row.getChildAt(it) as Button }
-                assertEquals(WritingTone.entries.map { it.label }, buttons.map { it.text.toString() })
+                // Six presets, not every tone. ToneMenuPolicy is the one
+                // list, so the menu is asserted against it rather than against
+                // a second copy that would drift.
+                assertEquals(
+                    ToneMenuPolicy.items(WritingTone.PROOFREAD).map { it.label },
+                    buttons.map { it.text.toString() },
+                )
                 buttons.single { it.text.toString() == WritingTone.FORMAL.label }.performClick()
                 menu.scrollTo(row.width, 0)
             }
@@ -200,7 +206,7 @@ class MainToneMenuDeviceTest {
 
                 val reviewButtons = toneButtons(reviewMenu)
                 assertEquals(
-                    WritingTone.entries.map { it.label },
+                    ToneMenuPolicy.items(WritingTone.PROOFREAD).map { it.label },
                     reviewButtons.map { it.text.toString() },
                 )
                 reviewButtons.single {
@@ -245,11 +251,17 @@ class MainToneMenuDeviceTest {
                 suggestion.text = List(80) {
                     "Long correction line ${it + 1} must not hide the approval controls."
                 }.joinToString("\n")
-                // The card lives inside a review overlay ScrollView that starts
-                // GONE, so showing the card alone leaves the whole subtree
-                // unmeasured and every child reports top = 0. Show the parent
-                // too, which is what showCorrectionOverlay does in the product.
-                (card.parent as View).visibility = View.VISIBLE
+                // The card sits inside a column inside a review overlay
+                // ScrollView that starts GONE, so showing the card alone
+                // leaves the subtree unmeasured and every child reports
+                // top = 0. Walk the whole chain, because the depth changed
+                // once the expanded sheet joined the card in that column and
+                // showing only the immediate parent silently stopped working.
+                var ancestor = card.parent
+                while (ancestor is View) {
+                    (ancestor as View).visibility = View.VISIBLE
+                    ancestor = (ancestor as View).parent
+                }
                 card.visibility = View.VISIBLE
                 accept = activity.findViewById(R.id.writing_replace_action)
             }

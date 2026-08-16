@@ -115,6 +115,7 @@ class MainActivity : Activity() {
     private lateinit var reviewCategoryTag: TextView
     private var expandedReviewSheet: ExpandedReviewSheet? = null
     private var reviewExpanded = false
+    private var reopenGuardUntilElapsedMs = 0L
     private var mainScroll: ScrollView? = null
     private var reviewSession: WritingReviewSession? = null
     private var activeTargetSpan: TargetUnderlineSpan? = null
@@ -944,7 +945,17 @@ class MainActivity : Activity() {
         assistantTrigger = ManuscriptTriggerViewFactory.create(
             context = this,
             contentDescription = getString(R.string.assistant_open),
-            onClick = { openReview() },
+            onClick = {
+                // Only the trigger is guarded. It returns to where Close just
+                // was, so it is the control a closing tap lands on by
+                // accident. "Correct my writing" is never guarded: pressing
+                // that is unambiguous.
+                if (withinReopenGuard()) {
+                    Log.i(REVIEW_LOG, "event=trigger-reopen-suppressed")
+                } else {
+                    openReview()
+                }
+            },
         ).apply {
             id = R.id.writing_assist_icon
         }
@@ -1016,11 +1027,27 @@ class MainActivity : Activity() {
         // Keep the editor trigger inside the visible writing viewport. When
         // the keyboard scrolls a long editor to its cursor, a trigger inside
         // the editor can be clipped while still reporting itself as shown.
+        //
+        // BOTTOM, not TOP, and this is the fix for a bug Curtis reported as
+        // the app being impossible to close. At the top it sat 54 px from the
+        // review card's Close button, so their 48 dp touch targets overlapped:
+        // closing the review made the trigger reappear under the finger that
+        // had just closed it, and the next tap reopened the review. The log
+        // showed close and open alternating forever, which reads as a frozen
+        // screen. Close is at the top of the card, so the trigger lives at the
+        // bottom, where a tap meant for one cannot land on the other.
         pageHost.addView(assistantTrigger, FrameLayout.LayoutParams(
             dp(WritingAssistUiPolicy.ICON_TOUCH_TARGET_DP),
             dp(WritingAssistUiPolicy.ICON_TOUCH_TARGET_DP),
-            Gravity.END or Gravity.TOP,
-        ).apply { setMargins(0, dp(10), dp(10), 0) })
+            Gravity.END or Gravity.BOTTOM,
+        ).apply {
+            setMargins(
+                0,
+                0,
+                dp(ManuscriptMetrics.SPACE_CARD_DP),
+                dp(ManuscriptMetrics.SPACE_CARD_DP),
+            )
+        })
         expandedReviewSheet = buildExpandedReviewSheet()
         // A ScrollView takes one child, so the card and the expanded sheet
         // share a column inside it. Only one of the two is ever visible: they
@@ -2769,8 +2796,24 @@ class MainActivity : Activity() {
 
     private fun closeReview() {
         Log.i(REVIEW_LOG, "cancel=closeReview")
+        // The trigger comes back where the Close button just was. Without this
+        // the next tap lands on it and reopens the review, which is exactly
+        // the tap somebody makes when a button seems not to have worked. The
+        // review looked impossible to close: every close succeeded and was
+        // immediately undone, and the log showed the pair over and over.
+        reopenGuardUntilElapsedMs = SystemClock.elapsedRealtime() + REOPEN_GUARD_MS
         reviewSurfaceExecutor.dispatch(ReviewSurfaceEvent.CloseRequested)
     }
+
+    /**
+     * True while a just-closed review must not be reopened by the same finger.
+     *
+     * Short on purpose. It is long enough to swallow the second tap of a
+     * double tap and the reflex retry, and too short to be in the way of
+     * somebody who genuinely wants the review again.
+     */
+    private fun withinReopenGuard(): Boolean =
+        SystemClock.elapsedRealtime() < reopenGuardUntilElapsedMs
 
     private fun cancelModelRequestsOffUi() {
         val detached = modelRequests.detachAll()
@@ -3405,6 +3448,21 @@ class MainActivity : Activity() {
         const val STATE_REVIEW_JOB_ID = "manuscript.review.job_id"
         private const val STARTUP_DIALOG_HANDOFF_DELAY_MS = 200L
         private const val DRAFT_SAVE_DELAY_MS = 400L
+
+        /**
+         * How long after a close the trigger refuses to reopen the review.
+         *
+         * The trigger reappears where the Close button was, so the reflex
+         * second tap landed on it and reopened what had just been closed.
+         *
+         * 600 ms was measured as too short: taps 700 ms apart still reopened
+         * the review, and somebody who thinks a button is broken taps slower
+         * than a double tap, not faster. 1.5 seconds covers the retry. It is
+         * still a guard rather than a cure: the real fault is that Close and
+         * the trigger occupy the same corner, and moving one of them is a
+         * layout decision worth taking on its own.
+         */
+        private const val REOPEN_GUARD_MS = 1_500L
         private const val TRIGGER_REFRESH_DELAY_MS = 120L
         private const val ACTIVE_REVIEW_REQUEST_TAG = "active-review-request"
         private const val REVIEW_KEYBOARD_HIDE_LIMIT_MS = 360L
