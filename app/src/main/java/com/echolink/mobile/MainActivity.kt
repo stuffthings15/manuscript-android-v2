@@ -111,6 +111,7 @@ class MainActivity : Activity() {
 
     private lateinit var localTools: AndroidLocalPersonalToolsStore
     private lateinit var draftStore: EncryptedEditorDraftStore
+    private var draftStatusView: TextView? = null
     private var mainScroll: ScrollView? = null
     private var reviewSession: WritingReviewSession? = null
     private var activeTargetSpan: TargetUnderlineSpan? = null
@@ -936,7 +937,23 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ))
-        content.addView(editorFrame, matchWidth(bottomMargin = 10))
+        content.addView(editorFrame, matchWidth(bottomMargin = ManuscriptMetrics.SPACE_MICRO_DP))
+
+        // The manual asks for autosave to be visible rather than silent. The
+        // failure state is the reason: the draft is encrypted through the
+        // keystore, and a refused write means the words are in the editor and
+        // nowhere else. Metadata size, so it reports without competing with
+        // the writing.
+        draftStatusView = TextView(this).apply {
+            id = R.id.draft_status
+            textSize = ManuscriptMetrics.TEXT_METADATA_SP
+            setTextColor(COLOR_TEXT_MUTED)
+            visibility = View.GONE
+        }
+        content.addView(
+            draftStatusView,
+            matchWidth(bottomMargin = ManuscriptMetrics.SPACE_RELATED_DP),
+        )
 
         // Primary way in. The small icon inside the editor sits at the text
         // edge, so taps near it land in the EditText and pop the keyboard
@@ -960,6 +977,7 @@ class MainActivity : Activity() {
             statusHandler.removeCallbacks(draftSave)
             editor.text.clear()
             draftStore.clear()
+            renderDraftStatus(DraftSaveStatus.IDLE)
         }, weightedParams(endMargin = 6))
         actions.addView(secondaryButton(R.string.share_document_action) { shareDocument() }, weightedParams(startMargin = 6))
         content.addView(actions, matchWidth(bottomMargin = 10))
@@ -1158,8 +1176,31 @@ class MainActivity : Activity() {
 
     private fun scheduleDraftPersistence() {
         if (!::draftStore.isInitialized) return
+        renderDraftStatus(DraftSaveStatus.SAVING)
         statusHandler.removeCallbacks(draftSave)
         statusHandler.postDelayed(draftSave, DRAFT_SAVE_DELAY_MS)
+    }
+
+    private fun renderDraftStatus(status: DraftSaveStatus) {
+        val view = draftStatusView ?: return
+        val labelRes = status.labelRes
+        if (labelRes == null) {
+            view.visibility = View.GONE
+            view.text = ""
+            view.contentDescription = null
+            return
+        }
+        view.visibility = View.VISIBLE
+        view.text = getString(labelRes)
+        view.setTextColor(status.color)
+        view.contentDescription = view.text
+        // A failed save is the one state the writer must not scroll past, so
+        // it interrupts a screen reader instead of waiting to be found.
+        view.accessibilityLiveRegion = if (status.needsAttention) {
+            View.ACCESSIBILITY_LIVE_REGION_ASSERTIVE
+        } else {
+            View.ACCESSIBILITY_LIVE_REGION_POLITE
+        }
     }
 
     private fun persistDraftNow() {
@@ -1172,14 +1213,16 @@ class MainActivity : Activity() {
         ) {
             return
         }
-        draftStore.save(
+        val text = editor.text.toString()
+        val saved = draftStore.save(
             EditorDraft(
-                text = editor.text.toString(),
+                text = text,
                 selectionStart = editor.selectionStart.coerceAtLeast(0),
                 selectionEnd = editor.selectionEnd.coerceAtLeast(0),
                 scrollY = mainScroll?.scrollY ?: 0,
             ),
         )
+        renderDraftStatus(DraftSaveStatus.afterWrite(text.isEmpty(), saved))
     }
 
     private fun buildExternalAccessCard(): View = LinearLayout(this).apply {

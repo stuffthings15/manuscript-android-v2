@@ -50,6 +50,9 @@
     <string name="write_help">Type, paste, or dictate. Then tap Correct my writing.</string>
     <string name="editor_label">Document</string>
     <string name="editor_hint">Start writing here&#8230;</string>
+    <string name="draft_status_saving">Saving&#8230;</string>
+    <string name="draft_status_saved">Saved on this device</string>
+    <string name="draft_status_failed">Not saved. Your writing is only in the editor.</string>
     <string name="correct_writing_action">Correct my writing</string>
     <string name="correct_writing_hint">Write or dictate, then tap Correct my writing.</string>
     <string name="assistant_open">Open Manuscript writing suggestions</string>
