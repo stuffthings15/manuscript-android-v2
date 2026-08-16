@@ -1686,7 +1686,10 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        WritingTone.entries.forEach { tone ->
+        // The same six presets the in-app menu offers. ToneMenuPolicy is the
+        // one list, so the panel over another application cannot drift from
+        // the editor's own menu.
+        ToneMenuPolicy.items(selectedTone).map(ToneMenuItem::tone).forEach { tone ->
             val button = Button(this).apply {
                 text = tone.label
                 contentDescription = getString(R.string.select_tone_description, tone.label)
