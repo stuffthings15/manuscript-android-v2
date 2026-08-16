@@ -157,6 +157,33 @@ object ManuscriptComponents {
     }
 
     /**
+     * A label that reports rather than invites, such as the category on a
+     * correction card.
+     *
+     * Chip-shaped but deliberately not a [chip]: it is not clickable, not
+     * focusable and carries no touch target, because a control the writer can
+     * press and that does nothing is worse than no control. Quieter than the
+     * accent so it cannot be mistaken for one.
+     */
+    fun tag(context: Context, label: CharSequence): TextView =
+        TextView(context).apply {
+            text = label
+            textSize = ManuscriptMetrics.TEXT_METADATA_SP
+            isAllCaps = false
+            setTextColor(ManuscriptPalette.INFORMATION)
+            val horizontal = context.manuscriptDp(ManuscriptMetrics.SPACE_RELATED_DP)
+            val vertical = context.manuscriptDp(ManuscriptMetrics.SPACE_MICRO_DP)
+            setPadding(horizontal, vertical, horizontal, vertical)
+            background = rounded(
+                context,
+                ManuscriptPalette.SURFACE_RAISED,
+                ManuscriptMetrics.RADIUS_CHIP_DP,
+                ManuscriptPalette.INFORMATION,
+            )
+            contentDescription = label
+        }
+
+    /**
      * The Assistant Status pill: a colour, and always the state's name beside
      * it. See [AssistantStatus].
      */

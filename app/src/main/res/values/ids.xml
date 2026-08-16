@@ -63,4 +63,5 @@
     <item name="assistant_status_detail" type="id" />
     <item name="assistant_status_action" type="id" />
     <item name="draft_status" type="id" />
+    <item name="writing_category" type="id" />
 </resources>

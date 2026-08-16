@@ -50,6 +50,17 @@
     <string name="write_help">Type, paste, or dictate. Then tap Correct my writing.</string>
     <string name="editor_label">Document</string>
     <string name="editor_hint">Start writing here&#8230;</string>
+    <string name="edit_category_capitalization">Capitalization</string>
+    <string name="edit_category_punctuation">Punctuation</string>
+    <string name="edit_category_spelling">Spelling</string>
+    <string name="edit_category_word_form">Word form</string>
+    <string name="edit_category_agreement">Agreement</string>
+    <string name="edit_category_pronoun">Pronoun</string>
+    <string name="edit_category_contextual_word">Word choice</string>
+    <string name="edit_category_insertion">Missing word</string>
+    <string name="edit_category_deletion">Extra word</string>
+    <string name="edit_category_reordering">Word order</string>
+    <string name="edit_category_style">Style</string>
     <string name="draft_status_saving">Saving&#8230;</string>
     <string name="draft_status_saved">Saved on this device</string>
     <string name="draft_status_failed">Not saved. Your writing is only in the editor.</string>

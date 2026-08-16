@@ -112,6 +112,7 @@ class MainActivity : Activity() {
     private lateinit var localTools: AndroidLocalPersonalToolsStore
     private lateinit var draftStore: EncryptedEditorDraftStore
     private var draftStatusView: TextView? = null
+    private lateinit var reviewCategoryTag: TextView
     private var mainScroll: ScrollView? = null
     private var reviewSession: WritingReviewSession? = null
     private var activeTargetSpan: TargetUnderlineSpan? = null
@@ -1735,8 +1736,16 @@ class MainActivity : Activity() {
             id = R.id.writing_suggestion_card
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
-            background = rounded(COLOR_CARD, 18f, COLOR_ACCENT_DARK)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = rounded(
+                COLOR_CARD,
+                ManuscriptMetrics.RADIUS_CARD_DP.toFloat(),
+                COLOR_ACCENT_DARK,
+            )
+            val pad = dp(ManuscriptMetrics.SPACE_CARD_DP)
+            setPadding(pad, pad, pad, pad)
+            // The manual's floor for a correction card. It is a floor, not a
+            // fixed height: this card grows with the correction it shows.
+            minimumHeight = dp(ManuscriptMetrics.CARD_MIN_HEIGHT_DP)
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -1811,7 +1820,26 @@ class MainActivity : Activity() {
         documentActionRow.addView(restoreOriginalButton, weightedParams(startMargin = 4))
         card.addView(documentActionRow, matchWidth(bottomMargin = 8))
 
-        card.addView(caption(R.string.suggestion_label))
+        // "Suggestion" on the left, the kind of mistake on the right. The
+        // manual's compact card carries a category, and the classifier has
+        // been producing one on every edit without ever showing it.
+        val suggestionHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        suggestionHeader.addView(
+            caption(R.string.suggestion_label),
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        reviewCategoryTag = ManuscriptComponents.tag(this, "").apply {
+            id = R.id.writing_category
+            visibility = View.GONE
+        }
+        suggestionHeader.addView(reviewCategoryTag)
+        card.addView(
+            suggestionHeader,
+            matchWidth(bottomMargin = ManuscriptMetrics.SPACE_MICRO_DP),
+        )
         reviewSuggestion = bodyText(R.id.writing_suggestion).apply {
             movementMethod = LinkMovementMethod.getInstance()
             highlightColor = Color.TRANSPARENT
@@ -2070,6 +2098,9 @@ class MainActivity : Activity() {
         val session = reviewSession ?: return
         val block = session.current(selectedTone) ?: return
         reviewCounter.text = getString(R.string.review_counter, block.index, block.total)
+        // Nothing has been judged yet on the opening frame, so there is no
+        // category to name.
+        renderCategoryTag(null)
         reviewSuggestion.text = block.original
         // The opening frame used to say "Working" and disable the button
         // whatever the state of the device. With no model installed nothing is
@@ -2167,12 +2198,34 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * Shows the kind of mistake, or nothing at all.
+     *
+     * A block with no focused change has no category to report, and inventing
+     * one would put a confident word on the card for a finding that does not
+     * exist.
+     */
+    private fun renderCategoryTag(change: ApplicationEdit?) {
+        if (!::reviewCategoryTag.isInitialized) return
+        if (change == null) {
+            reviewCategoryTag.visibility = View.GONE
+            reviewCategoryTag.text = ""
+            reviewCategoryTag.contentDescription = null
+            return
+        }
+        val label = getString(EditCategoryPresentation.labelRes(change.category))
+        reviewCategoryTag.visibility = View.VISIBLE
+        reviewCategoryTag.text = label
+        reviewCategoryTag.contentDescription = label
+    }
+
     private fun renderCurrentBlock(requestModel: Boolean = true) {
         val session = reviewSession ?: return
         val block = session.current(selectedTone)
         clearTargetUnderline()
         if (block == null) {
             reviewCounter.text = getString(R.string.review_complete_counter, session.total, session.total)
+            renderCategoryTag(null)
             reviewSuggestion.text = getString(R.string.review_complete_suggestion)
             reviewNote.text = ""
             hideReviewProgress()
@@ -2194,6 +2247,7 @@ class MainActivity : Activity() {
         val focusedChange = changes.firstOrNull { it.id == activeReviewChangeId }
             ?: changes.firstOrNull()
         activeReviewChangeId = focusedChange?.id
+        renderCategoryTag(focusedChange)
         reviewSuggestion.text = inlineCorrectionText(visibleBlock, focusedChange?.id)
         val modelMissing = !LocalAiCorrectionGate.isReady(
             AiModelManager.get(this).installedFile(),
