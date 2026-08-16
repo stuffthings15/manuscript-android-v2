@@ -7,6 +7,20 @@ def manuscriptGitCommit = providers.exec {
     commandLine "git", "-C", rootProject.projectDir, "rev-parse", "--short=12", "HEAD"
 }.standardOutput.asText.get().trim()
 
+// Upload signing, read from the environment so the key never enters this repo.
+// The same four names the archive tree uses, because the key is the same kind
+// of secret and a second spelling would be a second thing to get wrong.
+//
+// Absent by design on this machine: a build with no key still produces an
+// unsigned release bundle, so the release path can be exercised without the
+// secret. Play will not accept the unsigned artifact, which is correct.
+def manuscriptStoreFile = System.getenv("MANUSCRIPT_UPLOAD_STORE_FILE")
+def manuscriptStorePassword = System.getenv("MANUSCRIPT_UPLOAD_STORE_PASSWORD")
+def manuscriptKeyAlias = System.getenv("MANUSCRIPT_UPLOAD_KEY_ALIAS")
+def manuscriptKeyPassword = System.getenv("MANUSCRIPT_UPLOAD_KEY_PASSWORD")
+def hasReleaseSigning = manuscriptStoreFile && manuscriptStorePassword &&
+    manuscriptKeyAlias && manuscriptKeyPassword
+
 android {
     namespace "com.echolink.mobile"
     compileSdk 36
@@ -28,6 +42,19 @@ android {
         testApplicationId "com.remote.Manuscript.v2.debug.test"
     }
 
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(manuscriptStoreFile)
+                storePassword manuscriptStorePassword
+                keyAlias manuscriptKeyAlias
+                keyPassword manuscriptKeyPassword
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
+    }
+
     buildTypes {
         debug {
             buildConfigField "boolean", "SUBSCRIPTION_ENFORCED", "false"
@@ -38,6 +65,7 @@ android {
             buildConfigField "boolean", "SUBSCRIPTION_ENFORCED", "false"
             minifyEnabled false
             shrinkResources false
+            if (hasReleaseSigning) signingConfig signingConfigs.release
         }
     }
 
