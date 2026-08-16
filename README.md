@@ -42,8 +42,14 @@ consent to download pinned AI weights; writing inference stays on the device.
   spans, prompt caching, and idle or memory-pressure unloading.
 - Auto, Faster, and Best Quality modes plus active AI, backend, storage, and
   Remove AI controls.
-- No clipboard shortcut, `InputMethodService` keyboard, `SYSTEM_ALERT_WINDOW`
-  permission, or cloud fallback. The bounded panel is an Android accessibility overlay.
+- No clipboard shortcut, `InputMethodService` keyboard, or cloud fallback. The
+  bounded correction panel is an Android accessibility overlay.
+- `SYSTEM_ALERT_WINDOW` is declared, for the draggable floating assistant only.
+  This reverses an earlier boundary: the app previously listed the absence of
+  this permission as a feature. It remains optional and is never assumed.
+  Android grants it only through a settings screen the user visits, and without
+  the grant the trigger falls back to the accessibility overlay, which cannot
+  be dragged but works. No writing leaves the device either way.
 - The across-app helper is off by default and requires a clear in-app disclosure plus
   user activation in Android Accessibility settings.
 

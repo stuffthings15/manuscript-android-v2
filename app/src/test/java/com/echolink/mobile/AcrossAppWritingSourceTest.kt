@@ -23,7 +23,17 @@ class AcrossAppWritingSourceTest {
         assertTrue(service.contains("ExternalWritingPolicy.metadataSnapshot"))
         assertTrue(service.contains("AccessibilityTraversalBudget()"))
         assertFalse(service.contains("node.text?.isNotBlank()"))
-        assertFalse(manifest.contains("android.permission.SYSTEM_ALERT_WINDOW"))
+        // This asserted the absence of SYSTEM_ALERT_WINDOW until the GUI build
+        // manual's floating assistant was adopted, which needs an application
+        // overlay to be draggable. The reversal is deliberate and recorded in
+        // the manifest comment and the README.
+        //
+        // What still has to hold is that the permission is optional. The
+        // correction panel is unchanged: it remains an accessibility overlay,
+        // so a user who never grants this keeps the whole across-app feature.
+        assertTrue(manifest.contains("android.permission.SYSTEM_ALERT_WINDOW"))
+        assertTrue(service.contains("OverlayPermission.isGranted(this)"))
+        assertTrue(service.contains("TYPE_ACCESSIBILITY_OVERLAY"))
     }
 
     @Test

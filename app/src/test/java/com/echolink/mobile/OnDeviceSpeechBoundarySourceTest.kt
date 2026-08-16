@@ -60,11 +60,17 @@ class OnDeviceSpeechBoundarySourceTest {
 
         assertFalse(manifest.contains("android.permission.BIND_INPUT_METHOD"))
         assertTrue(manifest.contains("android.permission.BIND_ACCESSIBILITY_SERVICE"))
-        assertFalse(manifest.contains("android.permission.SYSTEM_ALERT_WINDOW"))
+        // SYSTEM_ALERT_WINDOW and TYPE_APPLICATION_OVERLAY are now present, for
+        // the GUI build manual's draggable floating assistant. That is the one
+        // boundary this test used to guard which has been deliberately
+        // reversed; the rest of it still stands, and matters more.
+        //
+        // Manuscript still does not replace the keyboard, and still never
+        // touches the clipboard. The across-app correction panel is still an
+        // accessibility overlay, so the overlay permission stays optional.
         assertFalse(source.contains("InputMethodService"))
         assertTrue(source.contains("AccessibilityService"))
         assertTrue(source.contains("TYPE_ACCESSIBILITY_OVERLAY"))
-        assertFalse(source.contains("TYPE_APPLICATION_OVERLAY"))
         assertFalse(source.contains("ClipboardManager"))
         assertFalse(source.contains("ClipData"))
     }

@@ -854,10 +854,22 @@ class ManuscriptAccessibilityService : AccessibilityService(), AccessibilityOver
         } else {
             WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         }
+        // The floating assistant of the GUI build manual is an application
+        // overlay, which is what lets it be dragged and kept where the writer
+        // put it. Manuscript did not hold that permission before this manual
+        // was adopted, and it still does not require it: without the grant the
+        // trigger falls back to the accessibility overlay it has always used,
+        // which cannot be dragged but works. A refused permission leaves a
+        // complete product, so nothing here assumes the answer is yes.
+        val windowType = if (OverlayPermission.isGranted(this)) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        }
         return WindowManager.LayoutParams(
             size,
             size,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 touchabilityFlag,
