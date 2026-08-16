@@ -1027,11 +1027,23 @@ class MainActivity : Activity() {
         // are two views of the same review, not two reviews.
         val reviewColumn = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            // Bottom of the scrim, so the sheet reads as rising from the edge
+            // of the screen rather than hanging in the middle of the page.
+            gravity = Gravity.BOTTOM
             addView(correctionCard, matchWidth())
             addView(expandedReviewSheet, matchWidth())
         }
         val reviewOverlay = ScrollView(this).apply {
-            isFillViewport = false
+            // The review floats over the page. Without a scrim the page shows
+            // around it, so the tone chips were sliced in half along the top
+            // edge and the Correct my writing button sat under the bottom
+            // edge: it read as two screens fighting rather than one review.
+            // ManuscriptPalette.SCRIM exists for this.
+            setBackgroundColor(ManuscriptPalette.SCRIM)
+            // The manual's expanded review is a BOTTOM sheet, and a short
+            // review anchored to the top left a gap that the page showed
+            // through. Filling the viewport lets the column sit at the bottom.
+            isFillViewport = true
             isVerticalScrollBarEnabled = true
             visibility = View.GONE
             addView(reviewColumn, ViewGroup.LayoutParams(
