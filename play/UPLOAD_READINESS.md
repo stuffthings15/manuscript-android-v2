@@ -41,7 +41,7 @@ The credential is DPAPI-protected for this Windows account, so copying it to
 another machine will NOT work. A backup means the keystore plus the password
 recorded somewhere safe, not a copy of the .xml.
 
-Rebuild the signed bundle any time with `.	oolsuild_play_bundle.ps1`.
+Rebuild the signed bundle any time with `tools/build_play_bundle.ps1`.
 
 ### 2. Create the app in Play Console
 
