@@ -24,3 +24,8 @@
 # Corpus scratch: pulled essay outputs and substitution dumps for one round.
 # Committing a round would let a stale one be read as the current result.
 /tools/corpus/work/
+
+# Signed release bundles. Kept on disk for upload, never committed: the
+# outer Echo-Link repo already carries 5 GB of these in history and GitHub
+# refuses any file over 100 MB.
+/releases/
