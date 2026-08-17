@@ -33,15 +33,38 @@ class UserVisibleAiTerminologyTest {
     }
 
     @Test
-    fun versionTwoDistributionCopyKeepsPlayDisabled() {
+    fun versionTwoDistributionCopyMatchesItsOwnPlayApp() {
         val distributionCopy = source("play/README.md")
 
-        assertTrue(distributionCopy.contains("USB-only"))
-        assertTrue(distributionCopy.contains("Do not"))
+        // This asserted that the copy kept Play DISABLED and said "USB-only".
+        // Curtis decided on 2026-08-16 that Version 2 ships as its own Play
+        // app, so that assertion described a rule that no longer exists. The
+        // reason the rule existed does still exist, and is what is checked
+        // now: V2 must not collide with Version 1's listing.
+        assertTrue(distributionCopy.contains("com.remote.Manuscript.v2"))
+
+        // Version 1's tester opt-in URL must never be reused. A new app issues
+        // its own, and pasting the old one sends testers to the wrong product.
         assertFalse(distributionCopy.contains("internaltest/"))
+
         assertFalse(
             "Version 2 distribution copy exposed a model name: $distributionCopy",
             forbidden.containsMatchIn(distributionCopy),
+        )
+    }
+
+    @Test
+    fun theUploadChecklistDoesNotReuseVersionOnesTesterLink() {
+        // Same rule, the other file. The checklist is the document somebody
+        // follows while clicking through Play Console, so it is the likeliest
+        // place for a copied link to do damage.
+        val readiness = source("play/UPLOAD_READINESS.md")
+
+        assertTrue(readiness.contains("com.remote.Manuscript.v2"))
+        assertFalse(readiness.contains("internaltest/"))
+        assertFalse(
+            "Upload checklist exposed a model name: $readiness",
+            forbidden.containsMatchIn(readiness),
         )
     }
 
