@@ -3,13 +3,15 @@
 Builds the signed Version 2 Play bundle using the existing Manuscript upload key.
 
 .DESCRIPTION
-Curtis decided on 2026-08-16 that Version 2 ships as its own Play app under
-com.remote.Manuscript.v2, signed with the SAME upload key as Version 1. A Play
-upload key may be reused across apps; the package is what separates them.
+Version 2 ships as its own Play app under com.remote.Manuscript.v2, signed with
+its own upload key, created by tools/create_upload_key.ps1. Reusing Version 1's
+key was considered and dropped: a brand new Play app has no upload key until
+its first upload, so there is nothing to inherit, and separate keys mean losing
+or rotating one cannot affect the other app.
 
 The key never enters this repository. It is read from the DPAPI-protected
 credential in %LOCALAPPDATA%\Manuscript, which only this Windows account can
-decrypt, exactly as the archive tree's build_play_bundle.ps1 does.
+decrypt, the same arrangement the archive tree uses.
 
 The certificate fingerprint is checked before anything is built. Signing an
 upload with the wrong key produces a bundle Play rejects at the very end of the
@@ -23,9 +25,9 @@ environment in the finally block.
 .\tools\build_play_bundle.ps1
 #>
 param(
-    [string]$CredentialFile = "$env:LOCALAPPDATA\Manuscript\play-upload-credential.xml",
-    [string]$KeyStoreFile = "$env:LOCALAPPDATA\Manuscript\play-upload.jks",
-    [string]$KeyAlias = 'manuscript-upload'
+    [string]$CredentialFile = "$env:LOCALAPPDATA\Manuscript\manuscript-v2-upload-credential.xml",
+    [string]$KeyStoreFile = "$env:LOCALAPPDATA\Manuscript\manuscript-v2-upload.jks",
+    [string]$KeyAlias = 'manuscript-v2-upload'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,9 +35,11 @@ Set-StrictMode -Version Latest
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 
-# The same certificate the archive tree pins. Version 2 reuses the key, so it
-# must present the same fingerprint; a different one means a different key.
-$expectedUploadCertificateSha256 = '4521793E05165F4C7745B14285959594EB08B7A91BB937AD264492621F852F8B'
+# Version 2's OWN upload certificate, created by tools/create_upload_key.ps1.
+# A new Play app has no upload key until its first upload, so V2 does not have
+# to inherit Version 1's, and keeping them separate means rotating or losing
+# one key never touches the other app.
+$expectedUploadCertificateSha256 = '20278C05A2E9DBE3F7F7067C1EA3BEA27E6D1EC8880F20D0B37062F8AAC5DD05'
 
 if (-not (Test-Path -LiteralPath $KeyStoreFile)) {
     throw "Manuscript upload key is missing: $KeyStoreFile"

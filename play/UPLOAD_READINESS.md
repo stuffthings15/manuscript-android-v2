@@ -17,18 +17,31 @@ published to **Internal testing** only. Decided by Curtis on 2026-08-16.
 
 ## Blocked on Curtis, in order
 
-### 1. The upload key
+### 1. The upload key: DONE
 
-Nothing signable exists without it. Set all four, then rebuild:
+Version 2 has its own upload key, created by `tools/create_upload_key.ps1`:
+4096-bit RSA, valid 10,000 days, alias `manuscript-v2-upload`, password from
+the cryptographic RNG and stored only in a DPAPI credential that no other
+Windows account can read.
 
-```bash
-MANUSCRIPT_UPLOAD_STORE_FILE / _STORE_PASSWORD / _KEY_ALIAS / _KEY_PASSWORD
-```
+    Certificate SHA256  20278C05A2E9DBE3F7F7067C1EA3BEA27E6D1EC8880F20D0B37062F8AAC5DD05
 
-Reusing V1's key is acceptable; a fresh key for V2 is cleaner. Either way the
-key stays outside this repository. Confirm afterwards that the AAB actually
-carries a signature rather than assuming it: an unsigned bundle looks identical
-in every other respect, which is how it goes unnoticed.
+Reusing V1's key was tried first and then dropped on purpose: a brand new Play
+app has no upload key until its first upload, so there is nothing to inherit,
+and separate keys mean losing or rotating one cannot affect the other app.
+
+**Back this key up.** If it is lost after Play has seen it, replacing it needs
+Google's key reset process. The two files are in `%LOCALAPPDATA%\Manuscript`
+and are useless without each other:
+
+    manuscript-v2-upload.jks
+    manuscript-v2-upload-credential.xml
+
+The credential is DPAPI-protected for this Windows account, so copying it to
+another machine will NOT work. A backup means the keystore plus the password
+recorded somewhere safe, not a copy of the .xml.
+
+Rebuild the signed bundle any time with `.	oolsuild_play_bundle.ps1`.
 
 ### 2. Create the app in Play Console
 
