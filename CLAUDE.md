@@ -43,8 +43,21 @@ can be given on evidence rather than on which file a session happened to open.
 - `tools\install_s23_manuscript.ps1` verifies a Galaxy S23 Plus before it will
   touch a device. The phone usually attached to this machine is an S20, which
   that script refuses by design.
-- Distribution is local and USB-only. Do not reuse V1 package IDs, signing
-  keys, or tester links.
+- **Every update is published to Google Play Internal testing.** This is
+  Curtis's standing workflow, set on 2026-07-22 and restated since: test on the
+  device and the full suite, build a new signed version, publish it to the
+  Internal testing track, and confirm it reached the testers. Version 2 has its
+  own Play app, package `com.remote.Manuscript.v2`, and its own upload key.
+  Build the bundle with `tools/build_play_bundle.ps1`.
+
+  This line used to restrict Version 2 to sideloading and forbid the store.
+  That was a temporary rule from an August reliability loop, it outlived its
+  task, and
+  because it sat in the file every session reads, three separate sessions
+  treated it as current and made Curtis repeat an instruction he had already
+  given. If a rule here contradicts a standing instruction in AI Brain, the
+  standing instruction wins and this file is the thing that is wrong.
+- Do not reuse V1 package IDs, signing keys, artifacts, URLs, or tester links.
 - Commit named files only. Never `git add -A`.
 
 ## Everything else

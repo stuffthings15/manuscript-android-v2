@@ -1,13 +1,19 @@
 # Version 2 distribution
 
-Curtis decided on 2026-08-16: **Version 2 gets its own Google Play app under
-the package `com.remote.Manuscript.v2`, published to Internal testing.**
+**Version 2 gets its own Google Play app under the package
+`com.remote.Manuscript.v2`, published to Internal testing.**
 
-This reverses what this file said before, which was that the V2 workspace was
-local and USB-only and must never be used for a Play upload. That rule existed
-to stop V2 colliding with V1's listing, and it is replaced rather than
-forgotten: the collision is avoided by V2 having its own package and its own
-app, not by V2 staying off Play.
+This is not a new decision. Curtis set the standing Android workflow on
+2026-07-22: every update is tested, signed, published to the Internal testing
+track, and confirmed available to the testers. He reauthorised it repeatedly
+across sessions and it kept being reverted, which is the thing this file now
+exists to stop.
+
+What this file said before was a temporary restriction from an August
+reliability loop, written to stop Version 2 colliding with Version 1's listing.
+It outlived its task. The collision is avoided by Version 2 having its own
+package and its own app, not by keeping it off the store, so the restriction
+was replaced rather than carried forward.
 
 ## What still holds
 

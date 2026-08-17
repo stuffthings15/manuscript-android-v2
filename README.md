@@ -96,5 +96,11 @@ its data.
 
 ## Distribution boundary
 
-Version 2 is local and USB-only. Do not reuse Version 1 package IDs, signing
-credentials, artifacts, URLs, or tester links.
+Version 2 publishes to Google Play **Internal testing** under its own package,
+`com.remote.Manuscript.v2`, with its own upload key. That is Curtis's standing
+workflow, set on 2026-07-22: every update is tested, signed, published to the
+Internal testing track, and confirmed available to the testers. USB installs
+remain how a build is checked before it goes up, not the destination.
+
+Do not reuse Version 1 package IDs, signing credentials, artifacts, URLs, or
+tester links. Version 1's listing is a separate app and stays untouched.
