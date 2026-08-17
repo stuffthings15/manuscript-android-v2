@@ -1,0 +1,23 @@
+﻿{
+    "schema":  "manuscript-s23-install-receipt-v1",
+    "startedAt":  "2026-08-14T21:29:49.0492553-07:00",
+    "completedAt":  "2026-08-14T21:30:10.6146515-07:00",
+    "serial":  "RFCRA0A6CFH",
+    "model":  "SM-G988U1",
+    "variant":  "debug",
+    "package":  "com.remote.Manuscript.v2.debug",
+    "versionName":  "2.0.0-internal-debug",
+    "versionCode":  "1",
+    "signerSha256":  "8BD69027DA4681EBA4DA0C860313708A8B16139D921127B8A4C6650EE89B6EDF",
+    "apkPath":  "C:\\Users\\stuff\\Documents\\Echo-Link\\Manuscript\\Android Version 2\\app\\build\\outputs\\apk\\debug\\app-debug.apk",
+    "apkSha256":  "516FA0A3BB635B6942BECB10D71E602CF612A75429C1D103A82DA10DA218A7FC",
+    "commit":  "6bee2c201ea33df3a4d50276f3defe686375faee",
+    "installedUpdateTime":  "2026-08-14 21:30:01",
+    "dataDirectoryExistedBefore":  false,
+    "localAiDirectoryStateBefore":  "not-installed",
+    "accessibilityBefore":  "null",
+    "accessibilityAfter":  "null",
+    "keyboardBefore":  "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME",
+    "keyboardAfter":  "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME",
+    "processIdAfter":  "13571"
+}

@@ -1,0 +1,23 @@
+﻿{
+    "schema":  "manuscript-s23-install-receipt-v1",
+    "startedAt":  "2026-08-15T19:06:34.0381494-07:00",
+    "completedAt":  "2026-08-15T19:07:01.6485020-07:00",
+    "serial":  "RFCRA0A6CFH",
+    "model":  "SM-G988U1",
+    "variant":  "debug",
+    "package":  "com.remote.Manuscript.v2.debug",
+    "versionName":  "2.0.0-internal-debug",
+    "versionCode":  "1",
+    "signerSha256":  "8BD69027DA4681EBA4DA0C860313708A8B16139D921127B8A4C6650EE89B6EDF",
+    "apkPath":  "C:\\Users\\stuff\\Documents\\Echo-Link\\Manuscript\\Android Version 2\\app\\build\\outputs\\apk\\debug\\app-debug.apk",
+    "apkSha256":  "6E89A514A71F968CB91CD0053909F462B75FB59E5C9B670BB2C0B7FF03E2C76D",
+    "commit":  "eddefe2b8e5347f324d9b60b6a629364547be567",
+    "installedUpdateTime":  "2026-08-15 19:06:53",
+    "dataDirectoryExistedBefore":  true,
+    "localAiDirectoryStateBefore":  "/system/bin/sh: syntax error: unexpected \u0027then\u0027",
+    "accessibilityBefore":  "null",
+    "accessibilityAfter":  "null",
+    "keyboardBefore":  "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME",
+    "keyboardAfter":  "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME",
+    "processIdAfter":  "20116"
+}
