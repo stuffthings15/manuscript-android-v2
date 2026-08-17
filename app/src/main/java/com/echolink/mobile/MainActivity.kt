@@ -1753,15 +1753,42 @@ class MainActivity : Activity() {
         acrossAppsRequested = acrossAppsRequested(),
     )
 
+    /**
+     * The status pill's background, allocated once and recoloured.
+     *
+     * This used to be a fresh GradientDrawable on every render, and it caused
+     * an ANR. A GradientDrawable builds a Paint, Paint registers a native
+     * allocation, and registering one asks the runtime whether native pressure
+     * warrants a collection. With a 1.3 to 2.5 GB model mapped by llama.cpp
+     * the answer is yes, so the allocation BLOCKED the main thread long enough
+     * for input dispatch to time out. The captured trace is unambiguous:
+     *
+     *   VMRuntime.notifyNativeAllocation
+     *   Paint.<init> -> GradientDrawable.<init>
+     *   ManuscriptComponents.rounded
+     *   MainActivity.renderAssistantStatus
+     *   MainActivity.onResume
+     *   Subject: Input dispatching timed out
+     *
+     * One drawable, mutated in place, allocates nothing per render.
+     */
+    private val assistantStatusPillBackground: GradientDrawable by lazy {
+        ManuscriptComponents.rounded(
+            this,
+            ManuscriptPalette.ACCENT,
+            ManuscriptMetrics.RADIUS_CHIP_DP,
+            ManuscriptPalette.ACCENT,
+        )
+    }
+
     private fun renderAssistantStatus() {
         val status = currentAssistantStatus()
         assistantStatusPill.text = getString(status.labelRes)
-        assistantStatusPill.background = ManuscriptComponents.rounded(
-            this,
-            status.color,
-            ManuscriptMetrics.RADIUS_CHIP_DP,
-            status.color,
-        )
+        assistantStatusPillBackground.setColor(status.color)
+        assistantStatusPillBackground.setStroke(dp(1), status.color)
+        if (assistantStatusPill.background !== assistantStatusPillBackground) {
+            assistantStatusPill.background = assistantStatusPillBackground
+        }
         assistantStatusDetail.text = getString(status.detailRes)
         val repair = status.repairActionRes
         if (repair == null) {
